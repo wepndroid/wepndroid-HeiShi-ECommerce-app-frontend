@@ -130,14 +130,20 @@ function isZhLanguage(lang = i18n.language): boolean {
   return lang.startsWith('zh');
 }
 
+export function formatCityLabel(city: RegionCity): string {
+  return isZhLanguage() ? city.cn : city.name;
+}
+
+export function formatStateHeading(state: string, stateName: string): string {
+  return formatStateName(state, stateName);
+}
+
 export function formatAreaLabel(area: string): string {
   if (area === ALL_AREAS) return i18n.t('region.allAreas');
   if (area === OTHER_AREAS) return i18n.t('region.otherAreas');
-  return area;
-}
-
-export function formatCityLabel(city: RegionCity): string {
-  return isZhLanguage() ? `${city.cn} ${city.name}` : city.name;
+  const key = `region.areaNames.${area}`;
+  const translated = i18n.t(key);
+  return translated === key ? area : translated;
 }
 
 export function formatStateName(state: string, fallback: string): string {
@@ -147,14 +153,19 @@ export function formatStateName(state: string, fallback: string): string {
 }
 
 export function regionLabel(region: RegionSelection): string {
-  if (region.area === ALL_AREAS) return region.city;
+  const group = regionData.find((g) => g.state === region.state);
+  const city = group?.cities.find((c) => c.name === region.city);
+  if (region.area === ALL_AREAS) return city ? formatCityLabel(city) : region.city;
   return formatAreaLabel(region.area);
 }
 
 export function regionSummary(region: RegionSelection): string {
-  const state = formatStateName(region.state, region.state);
+  const group = regionData.find((g) => g.state === region.state);
+  const city = group?.cities.find((c) => c.name === region.city);
+  const stateLabel = formatStateName(region.state, group?.stateName ?? region.state);
+  const cityLabel = city ? formatCityLabel(city) : region.city;
   const areaPart = region.area === ALL_AREAS ? '' : ` · ${formatAreaLabel(region.area)}`;
-  return `${region.state} · ${region.city}${areaPart}`;
+  return `${stateLabel} · ${cityLabel}${areaPart}`;
 }
 
 export function productInRegion(

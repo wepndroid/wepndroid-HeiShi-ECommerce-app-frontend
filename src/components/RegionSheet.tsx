@@ -14,6 +14,7 @@ import {
   cityHasSecondaryAreas,
   formatAreaLabel,
   formatCityLabel,
+  formatStateHeading,
   formatStateName,
   getPrimaryAreas,
   getSecondaryAreas,
@@ -29,7 +30,7 @@ import { colors, fonts, radius, amazingStyle, amazingStyleHighlight } from '../t
 const SHEET_SLIDE_OFFSET = 420;
 
 export function RegionSheet() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const {
     region,
     setRegion,
@@ -38,7 +39,6 @@ export function RegionSheet() {
   } = useApp();
   const slideAnim = useRef(new Animated.Value(SHEET_SLIDE_OFFSET)).current;
   const [expandedOtherCity, setExpandedOtherCity] = useState<string | null>(null);
-  const isZh = i18n.language.startsWith('zh');
 
   useEffect(() => {
     if (!regionSheetVisible) {
@@ -107,10 +107,10 @@ export function RegionSheet() {
                   <View style={amazingStyleHighlight} pointerEvents="none" />
                   <View style={styles.cardTitle}>
                     <Text style={styles.cardTitleStrong}>
-                      {group.state} · {formatStateName(group.state, group.stateName)}
+                      {formatStateHeading(group.state, group.stateName)}
                     </Text>
                     <Text style={styles.cardTitleSmall} numberOfLines={1}>
-                      {group.cities.map((c) => (isZh ? c.cn : c.name)).join(' / ')}
+                      {group.cities.map((c) => formatCityLabel(c)).join(' / ')}
                     </Text>
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>

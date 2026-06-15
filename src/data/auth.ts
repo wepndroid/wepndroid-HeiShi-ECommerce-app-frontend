@@ -28,7 +28,8 @@ export type AuthErrorKey =
   | 'nicknameRequired'
   | 'passwordMismatch'
   | 'phoneTaken'
-  | 'invalidCredentials';
+  | 'invalidCredentials'
+  | 'networkError';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);

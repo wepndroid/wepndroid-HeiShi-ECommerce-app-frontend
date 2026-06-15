@@ -213,6 +213,9 @@ export default {
       TAS: '塔斯马尼亚州',
       NT: '北领地',
     },
+    areaNames: {
+      'Glen Osmond 附近': 'Glen Osmond 附近',
+    },
   },
   services: {
     moving: { title: 'Clayton 小件搬家', price: 'A$60起', desc: 'SUV小件搬家，适合行李、桌椅、小家电。' },
@@ -696,6 +699,7 @@ export default {
         passwordMismatch: '两次密码不一致',
         phoneTaken: '该手机号已注册',
         invalidCredentials: '手机号或密码错误',
+        networkError: '网络连接失败，请检查后重试',
       },
     },
     safetyCenter: {

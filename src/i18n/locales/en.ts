@@ -213,6 +213,9 @@ export default {
       TAS: 'Tasmania',
       NT: 'Northern Territory',
     },
+    areaNames: {
+      'Glen Osmond 附近': 'Near Glen Osmond',
+    },
   },
   services: {
     moving: {
@@ -761,6 +764,7 @@ export default {
         passwordMismatch: 'Passwords do not match',
         phoneTaken: 'This number is already registered',
         invalidCredentials: 'Incorrect phone number or password',
+        networkError: 'Connection failed. Check your network and try again.',
       },
     },
     safetyCenter: {

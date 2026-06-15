@@ -15,6 +15,22 @@ import {
   validateRegisterInput,
 } from '../data/auth';
 
+function mapAuthApiError(err: unknown, fallback: AuthErrorKey): AuthErrorKey {
+  if (err instanceof ApiError) {
+    switch (err.code) {
+      case 'PHONE_TAKEN':
+        return 'phoneTaken';
+      case 'INVALID_CREDENTIALS':
+        return 'invalidCredentials';
+      case 'VALIDATION_ERROR':
+        return 'phoneInvalid';
+      default:
+        return fallback;
+    }
+  }
+  return 'networkError';
+}
+
 function mapUser(dto: AuthUserDto): AuthUser {
   return {
     id: dto.heishiId || dto.id,
@@ -74,11 +90,11 @@ export async function loginWithAuth(
     const tokens = await authApi.login({ phone: normalizePhone(phone.trim()), password });
     const user = await applyTokens(tokens);
     return { user };
-  } catch {
+  } catch (err) {
     if (API_USE_MOCK_FALLBACK) {
       return localLogin(phone, password);
     }
-    return { error: 'invalidCredentials' };
+    return { error: mapAuthApiError(err, 'invalidCredentials') };
   }
 }
 
@@ -99,11 +115,11 @@ export async function registerWithAuth(input: {
     });
     const user = await applyTokens(tokens);
     return { user };
-  } catch {
+  } catch (err) {
     if (API_USE_MOCK_FALLBACK) {
       return localRegister(input);
     }
-    return { error: 'phoneTaken' };
+    return { error: mapAuthApiError(err, 'invalidCredentials') };
   }
 }
 
