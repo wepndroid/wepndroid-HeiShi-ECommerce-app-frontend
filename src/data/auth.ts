@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface AuthUser {
   id: string;
+  heishiId: string;
   nickname: string;
   phone: string;
 }
@@ -14,7 +15,8 @@ const SESSION_KEY = 'authSession';
 const ACCOUNTS_KEY = 'authAccounts';
 
 const DEMO_ACCOUNT: StoredAccount = {
-  id: '12345678',
+  id: '00000000-0000-4000-8000-000000000001',
+  heishiId: 'HS12345678',
   nickname: 'Holden',
   phone: '0400000000',
   password: 'demo123',
@@ -49,12 +51,21 @@ async function writeAccounts(accounts: StoredAccount[]) {
   await AsyncStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
 }
 
+function normalizeAuthUser(raw: AuthUser): AuthUser | null {
+  if (!raw?.id || !raw.nickname || !raw.phone) return null;
+  return {
+    id: raw.id,
+    heishiId: raw.heishiId ?? raw.id,
+    nickname: raw.nickname,
+    phone: raw.phone,
+  };
+}
+
 export async function loadSession(): Promise<AuthUser | null> {
   const raw = await AsyncStorage.getItem(SESSION_KEY);
   if (!raw) return null;
   try {
-    const user = JSON.parse(raw) as AuthUser;
-    if (user?.id && user.nickname && user.phone) return user;
+    return normalizeAuthUser(JSON.parse(raw) as AuthUser);
   } catch {
     // ignore corrupt session
   }
@@ -120,13 +131,19 @@ export async function registerAccount(input: {
   if (accounts.some((a) => a.phone === phone)) return { error: 'phoneTaken' };
 
   const user: StoredAccount = {
-    id: String(Date.now()).slice(-8),
+    id: `local-${Date.now()}`,
+    heishiId: `HS${phone.slice(-8)}`,
     nickname,
     phone,
     password,
   };
   await writeAccounts([...accounts, user]);
-  const session: AuthUser = { id: user.id, nickname: user.nickname, phone: user.phone };
+  const session: AuthUser = {
+    id: user.id,
+    heishiId: user.heishiId,
+    nickname: user.nickname,
+    phone: user.phone,
+  };
   await saveSession(session);
   return { user: session };
 }
@@ -144,7 +161,12 @@ export async function loginAccount(
   const match = accounts.find((a) => a.phone === normalizedPhone && a.password === password);
   if (!match) return { error: 'invalidCredentials' };
 
-  const user: AuthUser = { id: match.id, nickname: match.nickname, phone: match.phone };
+  const user: AuthUser = {
+    id: match.id,
+    heishiId: match.heishiId ?? match.id,
+    nickname: match.nickname,
+    phone: match.phone,
+  };
   await saveSession(user);
   return { user };
 }

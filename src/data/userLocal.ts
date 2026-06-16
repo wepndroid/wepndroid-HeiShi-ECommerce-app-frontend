@@ -68,7 +68,7 @@ const MOCK_PAYOUT_METHODS: PayoutMethodDto[] = [
 function profileFromSession(user: AuthUser | null): AuthUserDto {
   return {
     id: user?.id ?? 'guest',
-    heishiId: user?.id ?? 'guest',
+    heishiId: user?.heishiId ?? user?.id ?? 'guest',
     nickname: user?.nickname ?? 'Guest',
     phone: user?.phone ?? '',
     ...DEFAULT_PROFILE,

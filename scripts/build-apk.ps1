@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$RepoRoot = Split-Path -Parent $ProjectRoot
+$StageRoot = "C:\HM"
 $ToolsDir = Join-Path $ProjectRoot ".tools"
 $JdkDir = Join-Path $ToolsDir "jdk-17"
 $SdkDir = Join-Path $ToolsDir "android-sdk"
@@ -70,12 +72,51 @@ function Ensure-AndroidSdk {
   }
 }
 
+function Sync-StageRoot {
+  param([string]$SourceRoot, [string]$DestRoot)
+  Write-Host "Syncing project to short path: $DestRoot"
+  New-Item -ItemType Directory -Force -Path $DestRoot | Out-Null
+  $exclude = @(
+    "android\app\build",
+    "android\build",
+    "android\.gradle",
+    ".expo",
+    "dist",
+    "dist-web-test",
+    "test-results",
+    ".tools",
+    "node_modules"
+  )
+  & robocopy.exe $SourceRoot $DestRoot /MIR /XD $exclude /NFL /NDL /NJH /NJS /nc /ns /np | Out-Null
+  if ($LASTEXITCODE -gt 7) {
+    throw "robocopy failed with exit code $LASTEXITCODE"
+  }
+
+  $stageTools = Join-Path $DestRoot ".tools"
+  if (Test-Path $stageTools) {
+    cmd /c "rmdir `"$stageTools`" 2>nul"
+  }
+  cmd /c "mklink /J `"$stageTools`" `"$ToolsDir`""
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to link .tools into staging root."
+  }
+
+  # Install dependencies at the short path instead of mirroring node_modules (robocopy skips deep files).
+  Write-Host "Installing node_modules at staging root..."
+  Push-Location $DestRoot
+  if (Test-Path "node_modules") { Remove-Item "node_modules" -Recurse -Force }
+  npm ci --prefer-offline --no-audit --no-fund
+  Pop-Location
+}
+
 $JdkHome = Ensure-Jdk
 Ensure-AndroidSdk -JavaHome $JdkHome
 
 $env:JAVA_HOME = $JdkHome
 $env:ANDROID_HOME = $SdkDir
-$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\cmdline-tools\latest\bin;" + $env:Path
+$nodeDir = Split-Path -Parent (Get-Command node -ErrorAction Stop).Source
+$env:Path = "$nodeDir;$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\cmdline-tools\latest\bin;" + $env:Path
+$env:GRADLE_USER_HOME = "C:\gradle-home"
 
 Set-Location $ProjectRoot
 
@@ -84,24 +125,40 @@ if (-not (Test-Path "android")) {
   npx expo prebuild --platform android --no-install
 }
 
-Write-Host "Building release APK..."
-Set-Location (Join-Path $ProjectRoot "android")
+Sync-StageRoot -SourceRoot $ProjectRoot -DestRoot $StageRoot
+
+$stageSdkDir = Join-Path $StageRoot ".tools\android-sdk"
+$localProps = "sdk.dir=$($stageSdkDir -replace '\\', '\\\\')"
+Set-Content -Path (Join-Path $StageRoot "android\local.properties") -Value $localProps -Encoding ASCII
+
+Write-Host "Building debug APK from $StageRoot..."
+Set-Location (Join-Path $StageRoot "android")
 $env:GRADLE_OPTS = "-Dorg.gradle.internal.http.connectionTimeout=600000 -Dorg.gradle.internal.http.socketTimeout=600000"
-.\gradlew.bat --init-script init.gradle assembleRelease --no-daemon --max-workers=1
+.\gradlew.bat --init-script init.gradle assembleDebug --no-daemon --max-workers=1 "-PreactNativeArchitectures=arm64-v8a"
+$debugExit = $LASTEXITCODE
 
-$apk = Get-ChildItem -Path "app\build\outputs\apk\release" -Filter "*.apk" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+$apk = $null
+if ($debugExit -eq 0) {
+  $apk = Get-ChildItem -Path "app\build\outputs\apk\debug" -Filter "*.apk" -Recurse -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+}
+
 if (-not $apk) {
-  Write-Host "Release APK not found, trying debug APK..."
-  .\gradlew.bat --init-script init.gradle assembleDebug --no-daemon --max-workers=1
-  $apk = Get-ChildItem -Path "app\build\outputs\apk\debug" -Filter "*.apk" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+  Write-Host "Debug build failed (exit $debugExit), trying release APK..."
+  .\gradlew.bat --init-script init.gradle assembleRelease --no-daemon --max-workers=1 "-PreactNativeArchitectures=arm64-v8a"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Gradle release build failed with exit code $LASTEXITCODE."
+  }
+  $apk = Get-ChildItem -Path "app\build\outputs\apk\release" -Filter "*.apk" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
-if ($apk) {
-  $outDir = Join-Path $ProjectRoot "dist"
-  New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-  $dest = Join-Path $outDir "heishi-mvp-rn.apk"
-  Copy-Item $apk.FullName $dest -Force
-  Write-Host "APK built: $dest"
-} else {
-  throw "APK build failed."
+if (-not $apk) {
+  throw "APK build failed: no output artifact found."
 }
+
+$outDir = Join-Path $RepoRoot "app_built"
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$dest = Join-Path $outDir "heishi-mvp-rn.apk"
+Get-ChildItem $outDir -Filter "*.apk" -ErrorAction SilentlyContinue | Remove-Item -Force
+Copy-Item $apk.FullName $dest -Force
+$sizeMb = [math]::Round($apk.Length / 1048576, 1)
+Write-Host "APK built: $dest ($sizeMb MB, $($apk.LastWriteTime))"

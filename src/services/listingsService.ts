@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { listingsApi } from '../api';
 import {
   mapListingDtoToUiListing,
@@ -9,22 +10,29 @@ import {
   createLocalListing,
   createLocalResaleDraft,
   listLocalListings,
-  uploadLocalImagePlaceholder,
 } from '../data/listingsLocal';
 import type { UiListing } from '../types';
 
 export async function uploadListingImage(
-  _localUri: string | undefined,
+  localUri: string,
   isLoggedIn: boolean,
+  mimeType = 'image/jpeg',
+  fileName = 'photo.jpg',
 ): Promise<string> {
   if (isLoggedIn) {
     try {
       const formData = new FormData();
-      formData.append('file', {
-        uri: _localUri,
-        name: 'photo.jpg',
-        type: 'image/jpeg',
-      } as unknown as Blob);
+      if (Platform.OS === 'web') {
+        const response = await fetch(localUri);
+        const blob = await response.blob();
+        formData.append('file', blob, fileName);
+      } else {
+        formData.append('file', {
+          uri: localUri,
+          name: fileName,
+          type: mimeType,
+        } as unknown as Blob);
+      }
       const result = await listingsApi.uploadImage(formData);
       return result.url;
     } catch {
@@ -32,7 +40,7 @@ export async function uploadListingImage(
     }
   }
 
-  return uploadLocalImagePlaceholder();
+  return localUri;
 }
 
 export async function publishListing(

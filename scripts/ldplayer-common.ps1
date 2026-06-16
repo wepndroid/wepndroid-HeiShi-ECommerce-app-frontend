@@ -31,18 +31,33 @@ $env:GRADLE_OPTS = "-Dorg.gradle.internal.http.connectionTimeout=600000 -Dorg.gr
 function Connect-LdPlayer {
   param([int]$Port = 5555)
   Write-Host "Connecting to LDPlayer at 127.0.0.1:$Port ..."
-  adb kill-server | Out-Null
   adb start-server | Out-Null
   adb connect "127.0.0.1:$Port" | Out-Null
-  $devicesText = adb devices | Out-String
-  Write-Host $devicesText.Trim()
-  if ($devicesText -notmatch "127\.0\.0\.1:$Port\s+device") {
-    throw "LDPlayer not connected. Enable ADB in LDPlayer settings and confirm port $Port."
+
+  for ($attempt = 1; $attempt -le 6; $attempt++) {
+    Start-Sleep -Seconds 1
+    $devicesText = adb devices | Out-String
+    if ($devicesText -match "127\.0\.0\.1:$Port\s+device") {
+      $script:LdPlayerSerial = "127.0.0.1:$Port"
+      $env:ANDROID_SERIAL = $script:LdPlayerSerial
+      Write-Host $devicesText.Trim()
+      return
+    }
+    if ($devicesText -match "emulator-5554\s+device") {
+      $script:LdPlayerSerial = "emulator-5554"
+      $env:ANDROID_SERIAL = $script:LdPlayerSerial
+      Write-Host "Using LDPlayer via emulator-5554"
+      Write-Host $devicesText.Trim()
+      return
+    }
+    adb connect "127.0.0.1:$Port" | Out-Null
   }
+
+  throw "LDPlayer not connected. Enable ADB in LDPlayer settings and confirm port $Port."
 }
 
 function Set-MetroPortForward {
-  param([int[]]$Ports = @(8081, 8082))
+  param([int[]]$Ports = @(8081, 8082, 8000))
   foreach ($p in $Ports) {
     adb -s $script:LdPlayerSerial reverse "tcp:$p" "tcp:$p" | Out-Null
     Write-Host "Port forward: device:$p -> PC:$p"

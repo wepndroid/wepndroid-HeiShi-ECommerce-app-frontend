@@ -51,7 +51,7 @@ export function ProfileScreen() {
                     <Text style={styles.profileBadge}>{t('screens.profile.badge')}</Text>
                   </Text>
                   <Text style={styles.profileSub}>
-                    {t('screens.profile.idLineLoggedIn', { id: user.id })}
+                    {t('screens.profile.idLineLoggedIn', { id: user.heishiId })}
                   </Text>
                 </>
               ) : (

@@ -28,12 +28,14 @@ import {
   TitleBar,
 } from '../components/UI';
 import { AppIcon } from '../components/AppIcon';
+import { usePhotoSearch } from '../hooks/usePhotoSearch';
 import { colors, fonts, radius } from '../theme';
 
 export function SearchScreen() {
   const { t } = useTranslation();
   const { openDetail, region, searchValue, setSearchValue, toast } = useApp();
   const { results, suggestions } = useSearch(region, searchValue);
+  const searchByPhoto = usePhotoSearch(toast);
 
   return (
     <ScreenScroll screenId="search">
@@ -43,6 +45,8 @@ export function SearchScreen() {
         value={searchValue}
         onChangeText={setSearchValue}
         onSubmit={() => toast(t('toast.search', { query: searchValue }))}
+        showCamera
+        onCameraPress={() => void searchByPhoto()}
       />
       <SectionHead
         title={t('screens.search.guessTitle')}

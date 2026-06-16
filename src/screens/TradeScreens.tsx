@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +15,7 @@ import { AmazingSurface } from '../components/AmazingSurface';
 import { OrderThumb, ProductGrid } from '../components/ProductUI';
 import { PillButton, ScreenScroll, TitleBar } from '../components/UI';
 import { colors, fonts, radius } from '../theme';
-import { OrderFilterKey, OrderStatus } from '../types';
+import { OrderFilterKey, OrderStatus, Product } from '../types';
 
 const FILTER_LABEL_KEYS: Record<OrderFilterKey, 'screens.orders.all' | 'screens.orders.pendingPay' | 'screens.orders.pendingShip' | 'screens.orders.pendingReceive' | 'screens.orders.pendingReview'> = {
   all: 'screens.orders.all',
@@ -91,14 +91,14 @@ export function OrdersScreen() {
   const [activeFilter, setActiveFilter] = useState<OrderFilterKey>('all');
   const localizedProducts = useLocalizedProducts(products);
 
-  const resolveTitle = useMemo(
-    () => (productId: number) =>
-      localizedProducts.find((p) => p.id === productId)?.title ?? '',
+  const resolveTitle = useCallback(
+    (product: Product) =>
+      localizedProducts.find((p) => p.id === product.id)?.title ?? product.apiTitle ?? '',
     [localizedProducts],
   );
-  const resolveSeller = useMemo(
-    () => (productId: number) =>
-      localizedProducts.find((p) => p.id === productId)?.seller ?? '',
+  const resolveSeller = useCallback(
+    (product: Product) =>
+      localizedProducts.find((p) => p.id === product.id)?.seller ?? product.seller ?? '',
     [localizedProducts],
   );
 
@@ -107,8 +107,8 @@ export function OrdersScreen() {
     isLoggedIn,
     authReady,
     products,
-    (product) => resolveTitle(product.id),
-    (product) => resolveSeller(product.id),
+    resolveTitle,
+    resolveSeller,
   );
 
   const handleSecondaryAction = async (order: (typeof visibleOrders)[number]) => {

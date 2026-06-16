@@ -15,6 +15,7 @@ import {
 } from '../components/UI';
 import { Banner, ProductFeed } from '../components/ProductUI';
 import { HomeTabKey, ProductCatKey } from '../types';
+import { usePhotoSearch } from '../hooks/usePhotoSearch';
 import { colors, fonts, amazingStyleHighlight, amazingStylePill, filterIconColor, filterIconLabelColor, filterIconTile } from '../theme';
 
 const HOME_TABS: HomeTabKey[] = [
@@ -45,7 +46,9 @@ export function HomeScreen() {
     region,
     regionLabelText,
     openRegionSheet,
+    toast,
   } = useApp();
+  const searchByPhoto = usePhotoSearch(toast);
 
   const titleKey = feedTitleKey(homeTabKey, region);
   const feedTitle = t(
@@ -98,6 +101,7 @@ export function HomeScreen() {
         readonly
         showCamera
         onPress={() => nav('search')}
+        onCameraPress={() => void searchByPhoto()}
       />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabs}>

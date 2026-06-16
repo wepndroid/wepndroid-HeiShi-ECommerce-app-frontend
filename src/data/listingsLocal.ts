@@ -89,7 +89,3 @@ export async function createLocalResaleDraft(sourceListingId: number, title: str
     'draft',
   );
 }
-
-export async function uploadLocalImagePlaceholder(): Promise<string> {
-  return productImageUrls[1];
-}

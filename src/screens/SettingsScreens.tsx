@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
-import { Text } from '../components/typography';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { ScreenId } from '../types';
 import { useApp } from '../context/AppContext';
@@ -14,6 +14,8 @@ import { usePaymentMethodsSettings, usePayoutMethods } from '../hooks/usePayment
 import { usePrivacySettings } from '../hooks/usePrivacySettings';
 import { useCreditProfile, useReviewSummary, useVerificationStatus } from '../hooks/useTrustProfile';
 import { useUserProfile } from '../hooks/useUserProfile';
+import { pickImagesFromLibrary } from '../services/mediaPicker';
+import { uploadListingImage } from '../services/listingsService';
 import type { VerificationStatus } from '../services/userService';
 import {
   Chevron,
@@ -381,13 +383,36 @@ export function EditProfileScreen() {
   const [nickname, setNickname] = React.useState('');
   const [bio, setBio] = React.useState('');
   const [city, setCity] = React.useState('');
+  const [avatarUrl, setAvatarUrl] = React.useState<string | undefined>();
 
   React.useEffect(() => {
     if (!profile) return;
     setNickname(profile.nickname);
     setBio(profile.bio ?? '');
     setCity(profile.city ?? 'Melbourne');
+    setAvatarUrl(profile.avatarUrl);
   }, [profile]);
+
+  const handlePickAvatar = async () => {
+    try {
+      const picked = await pickImagesFromLibrary({ max: 1 });
+      if (!picked.length) return;
+      const url = await uploadListingImage(
+        picked[0].uri,
+        isLoggedIn,
+        picked[0].mimeType,
+        picked[0].fileName,
+      );
+      setAvatarUrl(url);
+      toast(t('toast.photoAdded'));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'permission_denied') {
+        toast(t('toast.mediaPermissionDenied'));
+      } else {
+        toast(t('toast.publishFailed'));
+      }
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -396,6 +421,7 @@ export function EditProfileScreen() {
         bio: bio.trim(),
         city: city.trim(),
         language: i18n.language.startsWith('zh') ? 'zh' : 'en',
+        avatarUrl,
       });
       updateUser({ nickname: next.nickname });
       toast(t('toast.profileSaved'));
@@ -409,15 +435,19 @@ export function EditProfileScreen() {
   return (
     <SimplePage screenId="editProfile" title={t('screens.editProfile.title')}>
       <DetailCard>
-        <View style={styles.profileTop}>
+        <Pressable style={styles.profileTop} onPress={() => void handlePickAvatar()}>
           <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>{avatarLetter}</Text>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.profileAvatarImage} />
+            ) : (
+              <Text style={styles.profileAvatarText}>{avatarLetter}</Text>
+            )}
           </View>
           <View>
             <Text style={styles.profileName}>{profile?.nickname ?? user?.nickname ?? 'Guest'}</Text>
             <Text style={styles.profileSub}>{t('screens.editProfile.changeAvatar')}</Text>
           </View>
-        </View>
+        </Pressable>
       </DetailCard>
       <FormCard>
         <View style={styles.editField}>
@@ -1109,6 +1139,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffefbd',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   profileAvatarText: {
     fontSize: 22,
@@ -1163,5 +1198,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: colors.text,
     fontSize: 14,
+    backgroundColor: '#fafafa',
   },
 });

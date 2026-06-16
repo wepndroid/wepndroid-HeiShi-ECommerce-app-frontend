@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Text } from '../components/typography';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { AuthErrorKey } from '../data/auth';
@@ -38,7 +38,6 @@ function AuthField({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
-        underlineColorAndroid="transparent"
       />
     </View>
   );

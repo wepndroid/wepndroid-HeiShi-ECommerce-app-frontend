@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from './typography';
+import { Pressable, StyleSheet, TextInputProps, View } from 'react-native';
+import { Text, TextInput } from './typography';
 import { AmazingSurface } from './AmazingSurface';
 import { colors, fonts, radius } from '../theme';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -29,6 +29,48 @@ export function FieldRow({
       ) : null}
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.value}>{value}</Text>
+      {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
+    </View>
+  );
+}
+
+export function FieldInputRow({
+  icon,
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  suffix,
+  multiline,
+  keyboardType,
+}: {
+  icon?: AppIconName;
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  suffix?: string;
+  multiline?: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+}) {
+  return (
+    <View style={[styles.field, multiline && styles.fieldMultiline]}>
+      {icon ? (
+        <View style={[styles.ficonWrap, multiline && styles.ficonWrapTop]}>
+          <AppIcon name={icon} size={18} color="#f2a400" />
+        </View>
+      ) : null}
+      <Text style={[styles.label, multiline && styles.labelMultiline]}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.inputMultiline]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#999999"
+        multiline={multiline}
+        keyboardType={keyboardType}
+        selectionColor={colors.brand2}
+      />
       {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
     </View>
   );
@@ -203,6 +245,30 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 14,
     color: colors.text,
+  },
+  fieldMultiline: {
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+  },
+  ficonWrapTop: {
+    marginTop: 2,
+  },
+  labelMultiline: {
+    marginTop: 2,
+  },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    color: colors.text,
+    paddingVertical: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  inputMultiline: {
+    minHeight: 56,
+    textAlignVertical: 'top',
+    paddingTop: 2,
   },
   suffix: {
     color: colors.text,

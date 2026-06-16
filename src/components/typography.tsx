@@ -8,6 +8,7 @@ import {
   TextStyle,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { plainTextInput } from '../theme';
 
 const INTER = {
   regular: 'Inter_400Regular',
@@ -44,7 +45,13 @@ export function Text({ style, ...rest }: TextProps) {
 export function TextInput({ style, ...rest }: TextInputProps) {
   const { i18n } = useTranslation();
   const isEn = !i18n.language.startsWith('zh');
-  return <RNTextInput style={[style, isEn ? englishFontStyle(style) : null]} {...rest} />;
+  return (
+    <RNTextInput
+      style={[plainTextInput, style, isEn ? englishFontStyle(style) : null]}
+      underlineColorAndroid="transparent"
+      {...rest}
+    />
+  );
 }
 
 export {

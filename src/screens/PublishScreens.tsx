@@ -7,11 +7,13 @@ import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useChat } from '../hooks/useChat';
 import { useLocalizedProduct, useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { resalePrice } from '../hooks/useProductFilters';
-import { publishListing, publishServiceListing, createResaleDraft, uploadListingImage } from '../services/listingsService';
-import { FieldRow, FormCard, TableNote } from '../components/FormUI';
+import { publishListing, publishServiceListing, createResaleDraft } from '../services/listingsService';
+import { FieldInputRow, FormCard, TableNote } from '../components/FormUI';
+import { PhotoUploadGrid } from '../components/PhotoUploadGrid';
 import { OrderThumb } from '../components/ProductUI';
 import { AppIcon, AppIconName } from '../components/AppIcon';
 import { BackButton, IconButton, Notice, PillButton, ScreenScroll, TitleBar } from '../components/UI';
+import { useListingPhotos } from '../hooks/useListingPhotos';
 import { colors, fonts, radius, spacing } from '../theme';
 
 const PUBLISH_OPTIONS: {
@@ -113,56 +115,54 @@ export function PublishScreen() {
   );
 }
 
-function PhotoGrid({ onAdd }: { onAdd: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.photoGrid}>
-      <Pressable style={styles.photoSlot} onPress={onAdd}>
-        <AppIcon name="add" size={28} color="#c17a00" />
-        <Text style={styles.photoSlotSmall}>{t('common.photo.upload')}</Text>
-      </Pressable>
-      {Array.from({ length: 8 }).map((_, i) => (
-        <View key={i} style={[styles.photoSlot, styles.photoSlotEmpty]} />
-      ))}
-    </View>
-  );
+function PhotoGrid({
+  imageUrls,
+  onAdd,
+  uploading,
+}: {
+  imageUrls: string[];
+  onAdd: () => void;
+  uploading?: boolean;
+}) {
+  return <PhotoUploadGrid imageUrls={imageUrls} onAdd={onAdd} uploading={uploading} />;
 }
 
 export function UploadProductScreen() {
   const { t } = useTranslation();
   const { toast, nav, region, deliveryMethod, isLoggedIn } = useApp();
   useAuthGuard();
+  const { imageUrls, uploading, addPhotosFromLibrary } = useListingPhotos(isLoggedIn, toast);
   const [title, setTitle] = useState('');
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [price, setPrice] = useState('');
+  const [category, setCategory] = useState('');
+  const [condition, setCondition] = useState('');
+  const [tradeMethod, setTradeMethod] = useState('');
+  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  const handleAddPhoto = async () => {
-    try {
-      const url = await uploadListingImage(undefined, isLoggedIn);
-      setImageUrls((prev) => [...prev, url]);
-      toast(t('toast.photoAdded'));
-    } catch {
-      toast(t('toast.publishFailed'));
-    }
-  };
 
   const handleSubmit = async () => {
     if (submitting) return;
+    if (!imageUrls.length) {
+      toast(t('toast.photoRequired'));
+      return;
+    }
     setSubmitting(true);
     try {
       const listingTitle = title.trim() || t('screens.uploadProduct.unnamed');
+      const listingPrice = Math.max(0, Number.parseFloat(price) || 0);
+      const listingDescription = description.trim() || t('screens.uploadProduct.descSample');
       await publishListing(
         {
           type: 'product',
           title: listingTitle,
-          description: t('screens.uploadProduct.descSample'),
-          price: 89,
+          description: listingDescription,
+          price: listingPrice,
           categoryKey: 'digital',
           conditionKey: 'lightlyUsed',
           tagKey: 'lightlyUsed',
           locationLabel: region.city,
-          imageUrls: imageUrls.length ? imageUrls : [await uploadListingImage(undefined, isLoggedIn)],
-          pickupMethods: [deliveryMethod || t('screens.order.pickup')],
+          imageUrls,
+          pickupMethods: [tradeMethod.trim() || deliveryMethod || t('screens.order.pickup')],
         },
         isLoggedIn,
       );
@@ -181,17 +181,56 @@ export function UploadProductScreen() {
       <View style={styles.uploadMain}>
         <Text style={styles.photoTitle}>{t('screens.uploadProduct.photosTitle')}</Text>
         <Text style={styles.photoSub}>{t('screens.uploadProduct.photosHint')}</Text>
-        <PhotoGrid onAdd={handleAddPhoto} />
+        <PhotoGrid imageUrls={imageUrls} onAdd={addPhotosFromLibrary} uploading={uploading} />
         <Text style={styles.photoTip}>{t('screens.uploadProduct.photoTip')}</Text>
       </View>
       <FormCard>
-        <Text style={styles.formH2}>{t('screens.uploadProduct.previewTitle')}</Text>
-        <FieldRow icon="edit" label={t('common.fields.title')} value={title || t('screens.uploadProduct.titlePlaceholder')} />
-        <FieldRow icon="cash" label={t('common.fields.price')} value="89" suffix={t('common.currencyPrefix')} />
-        <FieldRow icon="grid" label={t('common.fields.category')} value={t('homeCats.digital')} />
-        <FieldRow icon="diamond" label={t('screens.uploadProduct.condition')} value={t('tags.lightlyUsed')} />
-        <FieldRow icon="trade" label={t('common.fields.tradeMethod')} value={t('screens.order.pickup')} />
-        <FieldRow icon="list" label={t('common.fields.description')} value={t('screens.uploadProduct.descSample')} />
+        <Text style={styles.formH2}>{t('screens.uploadProduct.formTitle')}</Text>
+        <FieldInputRow
+          icon="edit"
+          label={t('common.fields.title')}
+          value={title}
+          onChangeText={setTitle}
+          placeholder={t('screens.uploadProduct.titlePlaceholder')}
+        />
+        <FieldInputRow
+          icon="cash"
+          label={t('common.fields.price')}
+          value={price}
+          onChangeText={setPrice}
+          placeholder={t('screens.uploadProduct.pricePlaceholder')}
+          suffix={t('common.currencyPrefix')}
+          keyboardType="decimal-pad"
+        />
+        <FieldInputRow
+          icon="grid"
+          label={t('common.fields.category')}
+          value={category}
+          onChangeText={setCategory}
+          placeholder={t('homeCats.digital')}
+        />
+        <FieldInputRow
+          icon="diamond"
+          label={t('screens.uploadProduct.condition')}
+          value={condition}
+          onChangeText={setCondition}
+          placeholder={t('tags.lightlyUsed')}
+        />
+        <FieldInputRow
+          icon="trade"
+          label={t('common.fields.tradeMethod')}
+          value={tradeMethod}
+          onChangeText={setTradeMethod}
+          placeholder={t('screens.order.pickup')}
+        />
+        <FieldInputRow
+          icon="list"
+          label={t('common.fields.description')}
+          value={description}
+          onChangeText={setDescription}
+          placeholder={t('screens.uploadProduct.descSample')}
+          multiline
+        />
       </FormCard>
       <Notice text={t('screens.publish.notice')} />
       <PillButton
@@ -208,22 +247,30 @@ export function PublishServiceScreen() {
   const { t } = useTranslation();
   const { toast, nav, region, isLoggedIn } = useApp();
   useAuthGuard();
+  const { imageUrls, uploading, addPhotosFromLibrary } = useListingPhotos(isLoggedIn, toast);
+  const [serviceName, setServiceName] = useState('');
+  const [price, setPrice] = useState('');
+  const [area, setArea] = useState('');
+  const [time, setTime] = useState('');
+  const [intro, setIntro] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (submitting) return;
     setSubmitting(true);
     try {
+      const title = serviceName.trim() || t('screens.publishService.unnamed');
+      const listingPrice = Math.max(0, Number.parseFloat(price) || 0);
       await publishServiceListing(
         {
           type: 'service',
-          title: t('services.moving.title'),
-          description: t('services.moving.desc'),
-          price: 60,
+          title,
+          description: intro.trim() || t('screens.publishService.introPlaceholder'),
+          price: listingPrice,
           categoryKey: 'services',
           tagKey: 'localService',
-          locationLabel: `${region.city} / Clayton`,
-          imageUrls: [],
+          locationLabel: area.trim() || region.city,
+          imageUrls,
         },
         isLoggedIn,
       );
@@ -239,13 +286,51 @@ export function PublishServiceScreen() {
   return (
     <ScreenScroll screenId="publishService">
       <TitleBar center={t('screens.publishService.title')} left={<BackButton onPress={() => nav('publish')} />} />
+      <View style={styles.uploadMain}>
+        <Text style={styles.photoTitle}>{t('screens.uploadProduct.photosTitle')}</Text>
+        <Text style={styles.photoSub}>{t('screens.uploadProduct.photosHint')}</Text>
+        <PhotoGrid imageUrls={imageUrls} onAdd={addPhotosFromLibrary} uploading={uploading} />
+      </View>
       <FormCard>
         <Text style={styles.formH2}>{t('screens.publishService.formTitle')}</Text>
-        <FieldRow icon="toolbox" label={t('common.fields.service')} value={t('services.moving.title')} />
-        <FieldRow icon="cash" label={t('common.fields.price')} value="60" suffix={t('common.currencyPrefix')} />
-        <FieldRow icon="mapPin" label={t('common.fields.area')} value="Clayton / Box Hill" />
-        <FieldRow icon="time" label={t('common.fields.time')} value={t('screens.publishService.timeSample')} />
-        <FieldRow icon="list" label={t('common.fields.intro')} value={t('services.moving.desc')} />
+        <FieldInputRow
+          icon="toolbox"
+          label={t('common.fields.service')}
+          value={serviceName}
+          onChangeText={setServiceName}
+          placeholder={t('screens.publishService.servicePlaceholder')}
+        />
+        <FieldInputRow
+          icon="cash"
+          label={t('common.fields.price')}
+          value={price}
+          onChangeText={setPrice}
+          placeholder={t('screens.publishService.pricePlaceholder')}
+          suffix={t('common.currencyPrefix')}
+          keyboardType="decimal-pad"
+        />
+        <FieldInputRow
+          icon="mapPin"
+          label={t('common.fields.area')}
+          value={area}
+          onChangeText={setArea}
+          placeholder={t('screens.publishService.areaPlaceholder')}
+        />
+        <FieldInputRow
+          icon="time"
+          label={t('common.fields.time')}
+          value={time}
+          onChangeText={setTime}
+          placeholder={t('screens.publishService.timePlaceholder')}
+        />
+        <FieldInputRow
+          icon="list"
+          label={t('common.fields.intro')}
+          value={intro}
+          onChangeText={setIntro}
+          placeholder={t('screens.publishService.introPlaceholder')}
+          multiline
+        />
       </FormCard>
       <Notice text={t('screens.publishService.note')} />
       <PillButton label={t('screens.publishService.submit')} variant="brand" full onPress={handleSubmit} />
@@ -490,30 +575,6 @@ const styles = StyleSheet.create({
     color: '#987b45',
     fontSize: 12,
   },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  photoSlot: {
-    width: '31%',
-    height: 82,
-    borderRadius: 16,
-    backgroundColor: '#fff8e5',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: '#f4ca67',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoSlotEmpty: {
-    backgroundColor: '#fff8e5',
-  },
-  photoSlotSmall: {
-    fontSize: 11,
-    color: '#8a8a8a',
-    marginTop: 4,
-  },
   formH2: {
     fontSize: 16,
     fontWeight: fonts.weights.bold,
@@ -603,6 +664,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 14,
     color: colors.text,
+    borderWidth: 0,
   },
   chatSend: {
     borderRadius: radius.pill,

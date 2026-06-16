@@ -20,5 +20,5 @@ if (Test-PortListening $MetroPort) {
   Write-Host "Metro already running on port $MetroPort - connected. Edit code and save to see live updates."
 } else {
   Write-Host "Starting Metro (dev client) on port $MetroPort ..."
-  npx expo start --dev-client --port $MetroPort
+  npx expo start --port $MetroPort
 }

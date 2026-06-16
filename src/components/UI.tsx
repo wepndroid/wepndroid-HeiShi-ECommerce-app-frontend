@@ -220,6 +220,7 @@ export function SearchBar({
   onSubmit,
   readonly,
   showCamera,
+  onCameraPress,
 }: {
   placeholder: string;
   buttonLabel?: string;
@@ -229,6 +230,7 @@ export function SearchBar({
   onSubmit?: () => void;
   readonly?: boolean;
   showCamera?: boolean;
+  onCameraPress?: () => void;
 }) {
   const { t } = useTranslation();
   const btnLabel = buttonLabel ?? t('common.search');
@@ -261,7 +263,17 @@ export function SearchBar({
           />
         </View>
       )}
-      {showCamera ? <AppIcon name="camera" size={18} color="#888888" /> : null}
+      {showCamera ? (
+        <Pressable
+          onPress={onCameraPress}
+          hitSlop={8}
+          disabled={!onCameraPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.a11y.searchByPhoto')}
+        >
+          <AppIcon name="camera" size={18} color="#888888" />
+        </Pressable>
+      ) : null}
       <Pressable style={styles.searchBtn} onPress={onSubmit}>
         <Text style={styles.searchBtnText}>{btnLabel}</Text>
       </Pressable>
@@ -581,9 +593,6 @@ const styles = StyleSheet.create({
     margin: 0,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    ...(Platform.OS === 'web'
-      ? ({ outlineStyle: 'none', outlineWidth: 0 } as object)
-      : null),
   },
   searchPlaceholder: {
     color: '#999999',

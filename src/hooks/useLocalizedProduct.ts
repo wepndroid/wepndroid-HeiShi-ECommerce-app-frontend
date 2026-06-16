@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Product } from '../types';
 
@@ -39,26 +40,30 @@ export function useLocalizedProduct(product: Product): LocalizedProduct {
 export function useLocalizedProducts(products: Product[]): LocalizedProduct[] {
   const { t } = useTranslation();
   const prefix = t('common.currencyPrefix');
-  return products.map((product) => {
-    const sellerFromKey = product.sellerKey
-      ? t(`sellers.${product.sellerKey}`, { defaultValue: '' })
-      : '';
-    return {
-      ...product,
-      title:
-        product.apiTitle ??
-        (product.titleKey ? t(product.titleKey) : t(`products.items.${product.id}.title`)),
-      visual:
-        product.apiVisual ??
-        product.apiTitle ??
-        (product.visualKey ? t(product.visualKey) : t(`products.items.${product.id}.visual`)),
-      cat: t(`categories.${product.catKey}`),
-      tag: t(`tags.${product.tagKey}`),
-      desc:
-        product.apiDesc ??
-        (product.descKey ? t(product.descKey) : t(`products.items.${product.id}.desc`)),
-      pricePrefix: prefix,
-      seller: sellerFromKey || product.seller,
-    };
-  });
+  return useMemo(
+    () =>
+      products.map((product) => {
+        const sellerFromKey = product.sellerKey
+          ? t(`sellers.${product.sellerKey}`, { defaultValue: '' })
+          : '';
+        return {
+          ...product,
+          title:
+            product.apiTitle ??
+            (product.titleKey ? t(product.titleKey) : t(`products.items.${product.id}.title`)),
+          visual:
+            product.apiVisual ??
+            product.apiTitle ??
+            (product.visualKey ? t(product.visualKey) : t(`products.items.${product.id}.visual`)),
+          cat: t(`categories.${product.catKey}`),
+          tag: t(`tags.${product.tagKey}`),
+          desc:
+            product.apiDesc ??
+            (product.descKey ? t(product.descKey) : t(`products.items.${product.id}.desc`)),
+          pricePrefix: prefix,
+          seller: sellerFromKey || product.seller,
+        };
+      }),
+    [prefix, products, t],
+  );
 }

@@ -1,4 +1,4 @@
-import { ViewStyle } from 'react-native';
+import { Platform, TextStyle, ViewStyle } from 'react-native';
 
 export const colors = {
   bg: '#F5F5F5',
@@ -97,3 +97,18 @@ export const filterIconTile: ViewStyle = {
 /** Muted gray-brown for filter icon glyphs and labels. */
 export const filterIconColor = '#5c5349';
 export const filterIconLabelColor = '#444444';
+
+/** Shared TextInput defaults — no focus ring / outline (especially on web). */
+export const plainTextInput: TextStyle = {
+  borderWidth: 0,
+  backgroundColor: 'transparent',
+  padding: 0,
+  margin: 0,
+  ...(Platform.OS === 'web'
+    ? ({
+        outlineStyle: 'none',
+        outlineWidth: 0,
+        outlineColor: 'transparent',
+      } as TextStyle)
+    : null),
+};

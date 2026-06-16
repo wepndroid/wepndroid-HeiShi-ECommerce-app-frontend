@@ -7,7 +7,6 @@ import {
   AuthUser,
   loadSession,
   loginAccount as localLogin,
-  logoutSession as localLogout,
   normalizePhone,
   registerAccount as localRegister,
   saveSession,
@@ -33,7 +32,8 @@ function mapAuthApiError(err: unknown, fallback: AuthErrorKey): AuthErrorKey {
 
 function mapUser(dto: AuthUserDto): AuthUser {
   return {
-    id: dto.heishiId || dto.id,
+    id: dto.id,
+    heishiId: dto.heishiId,
     nickname: dto.nickname,
     phone: dto.phone,
   };
@@ -74,9 +74,11 @@ export async function bootstrapAuth(): Promise<AuthUser | null> {
         await saveSession(null);
       }
     }
+    // Had token but could not validate — do not use local session in API mode
+    if (!API_USE_MOCK_FALLBACK) return null;
   }
 
-  return loadSession();
+  return API_USE_MOCK_FALLBACK ? loadSession() : null;
 }
 
 export async function loginWithAuth(
@@ -130,5 +132,5 @@ export async function logoutWithAuth() {
     // Best-effort server logout; always clear local session.
   }
   await clearAuthTokens();
-  await localLogout();
+  await saveSession(null);
 }
