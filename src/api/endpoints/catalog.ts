@@ -1,7 +1,9 @@
 import { apiRequest } from '../client';
 import type {
   FeedQuery,
+  ImageSearchResponseDto,
   ListingDetailDto,
+  ListingFormOptionsDto,
   ListingSummaryDto,
   LocalServiceDto,
   Paginated,
@@ -9,6 +11,11 @@ import type {
 } from '../types';
 
 export const catalogApi = {
+  /** GET /catalog/form-options */
+  getFormOptions() {
+    return apiRequest<ListingFormOptionsDto>('/catalog/form-options', { auth: false });
+  },
+
   /** GET /catalog/feed */
   getFeed(query: FeedQuery) {
     return apiRequest<Paginated<ListingSummaryDto>>('/catalog/feed', {
@@ -20,6 +27,16 @@ export const catalogApi = {
   search(query: SearchQuery) {
     return apiRequest<Paginated<ListingSummaryDto>>('/catalog/search', {
       query: query as Record<string, string | number | boolean | undefined | null>,
+    });
+  },
+
+  /** POST /catalog/search/image */
+  searchByImage(formData: FormData, query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
+    return apiRequest<ImageSearchResponseDto>('/catalog/search/image', {
+      method: 'POST',
+      body: formData,
+      query: query as Record<string, string | number | boolean | undefined | null>,
+      auth: false,
     });
   },
 

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { ScreenId } from '../types';
@@ -14,13 +14,13 @@ import { usePaymentMethodsSettings, usePayoutMethods } from '../hooks/usePayment
 import { usePrivacySettings } from '../hooks/usePrivacySettings';
 import { useCreditProfile, useReviewSummary, useVerificationStatus } from '../hooks/useTrustProfile';
 import { useUserProfile } from '../hooks/useUserProfile';
-import { pickImagesFromLibrary } from '../services/mediaPicker';
-import { uploadListingImage } from '../services/listingsService';
+import { useAvatarUpload } from '../hooks/useAvatarUpload';
 import type { VerificationStatus } from '../services/userService';
 import {
   Chevron,
   DetailCard,
   FieldRow,
+  FieldSelectRow,
   FormCard,
   ListCard,
   ListIcon,
@@ -29,6 +29,7 @@ import {
   Switch,
   TableNote,
 } from '../components/FormUI';
+import { allCityOptions, normalizeProfileCity } from '../data/region';
 import {
   IconButton,
   Notice,
@@ -380,36 +381,33 @@ export function EditProfileScreen() {
   const { t, i18n } = useTranslation();
   const { toast, user, isLoggedIn, authReady, updateUser } = useApp();
   const { profile, saving, save } = useUserProfile(user, authReady);
+  const { pickAndUpload, uploading } = useAvatarUpload(isLoggedIn);
+  const cityOptions = React.useMemo(() => allCityOptions(), []);
   const [nickname, setNickname] = React.useState('');
   const [bio, setBio] = React.useState('');
-  const [city, setCity] = React.useState('');
+  const [city, setCity] = React.useState(normalizeProfileCity('Melbourne'));
   const [avatarUrl, setAvatarUrl] = React.useState<string | undefined>();
 
   React.useEffect(() => {
     if (!profile) return;
     setNickname(profile.nickname);
     setBio(profile.bio ?? '');
-    setCity(profile.city ?? 'Melbourne');
+    setCity(normalizeProfileCity(profile.city));
     setAvatarUrl(profile.avatarUrl);
   }, [profile]);
 
   const handlePickAvatar = async () => {
     try {
-      const picked = await pickImagesFromLibrary({ max: 1 });
-      if (!picked.length) return;
-      const url = await uploadListingImage(
-        picked[0].uri,
-        isLoggedIn,
-        picked[0].mimeType,
-        picked[0].fileName,
-      );
+      const url = await pickAndUpload();
+      if (!url) return;
       setAvatarUrl(url);
-      toast(t('toast.photoAdded'));
+      await save({ avatarUrl: url });
+      toast(t('toast.profileSaved'));
     } catch (error) {
       if (error instanceof Error && error.message === 'permission_denied') {
         toast(t('toast.mediaPermissionDenied'));
       } else {
-        toast(t('toast.publishFailed'));
+        toast(t('toast.uploadFailed'));
       }
     }
   };
@@ -419,7 +417,7 @@ export function EditProfileScreen() {
       const next = await save({
         nickname: nickname.trim(),
         bio: bio.trim(),
-        city: city.trim(),
+        city,
         language: i18n.language.startsWith('zh') ? 'zh' : 'en',
         avatarUrl,
       });
@@ -435,16 +433,27 @@ export function EditProfileScreen() {
   return (
     <SimplePage screenId="editProfile" title={t('screens.editProfile.title')}>
       <DetailCard>
-        <Pressable style={styles.profileTop} onPress={() => void handlePickAvatar()}>
+        <Pressable
+          style={styles.profileTop}
+          onPress={() => void handlePickAvatar()}
+          disabled={uploading}
+          accessibilityRole="button"
+          accessibilityLabel={t('screens.editProfile.changeAvatar')}
+        >
           <View style={styles.profileAvatar}>
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} style={styles.profileAvatarImage} />
             ) : (
               <Text style={styles.profileAvatarText}>{avatarLetter}</Text>
             )}
+            {uploading ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color={colors.brand} />
+              </View>
+            ) : null}
           </View>
           <View>
-            <Text style={styles.profileName}>{profile?.nickname ?? user?.nickname ?? 'Guest'}</Text>
+            <Text style={styles.profileName}>{profile?.nickname ?? user?.nickname ?? t('common.guest')}</Text>
             <Text style={styles.profileSub}>{t('screens.editProfile.changeAvatar')}</Text>
           </View>
         </Pressable>
@@ -470,16 +479,14 @@ export function EditProfileScreen() {
             placeholderTextColor="#999999"
           />
         </View>
-        <View style={styles.editField}>
-          <Text style={styles.editLabel}>{t('common.fields.city')}</Text>
-          <TextInput
-            style={styles.editInput}
-            value={city}
-            onChangeText={setCity}
-            placeholder="Melbourne"
-            placeholderTextColor="#999999"
-          />
-        </View>
+        <FieldSelectRow
+          stacked
+          label={t('common.fields.city')}
+          options={cityOptions}
+          selectedKey={city}
+          onSelect={setCity}
+          placeholder={t('common.placeholders.selectOption')}
+        />
         <FieldRow
           label={t('common.fields.language')}
           value={i18n.language.startsWith('zh') ? t('common.chinese') : t('common.english')}
@@ -743,6 +750,7 @@ export function PrivacyPolicyScreen() {
 export function HelpScreen() {
   const { t } = useTranslation();
   const { toast } = useApp();
+  const [query, setQuery] = useState('');
 
   const faqs = [
     { titleKey: 'screens.help.q1Title', subKey: 'screens.help.q1Sub' },
@@ -751,11 +759,29 @@ export function HelpScreen() {
     { titleKey: 'screens.help.q4Title', subKey: 'screens.help.q4Sub' },
   ] as const;
 
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filteredFaqs = useMemo(() => {
+    if (!normalizedQuery) return faqs;
+    return faqs.filter((faq) => {
+      const title = t(faq.titleKey).toLowerCase();
+      const sub = t(faq.subKey).toLowerCase();
+      return title.includes(normalizedQuery) || sub.includes(normalizedQuery);
+    });
+  }, [faqs, normalizedQuery, t]);
+
   return (
     <SimplePage screenId="help" title={t('screens.help.title')}>
-      <SearchBar placeholder={t('common.placeholders.searchProblems')} readonly />
+      <SearchBar
+        placeholder={t('common.placeholders.searchProblems')}
+        value={query}
+        onChangeText={setQuery}
+      />
+      {!filteredFaqs.length && normalizedQuery ? (
+        <Text style={styles.emptySearch}>{t('screens.help.noSearchResults')}</Text>
+      ) : null}
       <ListCard>
-        {faqs.map((faq, index) => (
+        {filteredFaqs.map((faq, index) => (
           <ListRow
             key={faq.titleKey}
             left={
@@ -765,7 +791,7 @@ export function HelpScreen() {
               </View>
             }
             right={<Chevron />}
-            border={index < faqs.length - 1}
+            border={index < filteredFaqs.length - 1}
           />
         ))}
       </ListCard>
@@ -908,6 +934,7 @@ export function PaymentSettingsScreen() {
   const { t } = useTranslation();
   const { toast, isLoggedIn, authReady } = useApp();
   const { methods } = usePaymentMethodsSettings(isLoggedIn, authReady);
+  const [applePayOn, setApplePayOn] = React.useState(true);
 
   return (
     <SimplePage screenId="paymentSettings" title={t('screens.paymentSettings.title')}>
@@ -921,7 +948,7 @@ export function PaymentSettingsScreen() {
                 <View>
                   <Text style={styles.rowTitle}>{method.label}</Text>
                   <Text style={styles.rowSub}>
-                    {method.last4 ? `**** ${method.last4}` : method.type === 'apple_pay' ? t('screens.paymentSettings.appleOn') : t('common.notBound')}
+                    {method.last4 ? `**** ${method.last4}` : method.type === 'apple_pay' ? (applePayOn ? t('screens.paymentSettings.appleOn') : t('common.notBound')) : t('common.notBound')}
                   </Text>
                 </View>
               </>
@@ -930,7 +957,7 @@ export function PaymentSettingsScreen() {
               method.isDefault ? (
                 <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
               ) : method.type === 'apple_pay' ? (
-                <Switch on />
+                <Switch on={applePayOn} onToggle={() => setApplePayOn((prev) => !prev)} />
               ) : (
                 <Chevron />
               )
@@ -985,8 +1012,14 @@ export function PayoutSettingsScreen() {
 
 export function TransactionReminderScreen() {
   const { t } = useTranslation();
-
   const rows = ['pay', 'ship', 'receive', 'dispute'] as const;
+  const [enabled, setEnabled] = React.useState<Record<(typeof rows)[number], boolean>>({
+    pay: true,
+    ship: true,
+    receive: true,
+    dispute: true,
+  });
+
   return (
     <SimplePage screenId="transactionReminder" title={t('screens.transactionReminder.title')}>
       <ListCard>
@@ -994,7 +1027,12 @@ export function TransactionReminderScreen() {
           <ListRow
             key={row}
             left={<View><Text style={styles.rowTitle}>{t(`screens.transactionReminder.${row}Title`)}</Text><Text style={styles.rowSub}>{t(`screens.transactionReminder.${row}Sub`)}</Text></View>}
-            right={<Switch on />}
+            right={
+              <Switch
+                on={enabled[row]}
+                onToggle={() => setEnabled((prev) => ({ ...prev, [row]: !prev[row] }))}
+              />
+            }
             border={i < rows.length - 1}
           />
         ))}
@@ -1012,7 +1050,7 @@ export function AboutScreen() {
         <View style={{ alignItems: 'center' }}>
           <Logo size={28} />
           <Text style={[styles.profileSub, { textAlign: 'center', marginTop: 8 }]}>{t('screens.about.tagline')}</Text>
-          <Text style={styles.profileSub}>Version 0.9.1 Demo</Text>
+          <Text style={styles.profileSub}>{t('screens.settings.versionDemo')}</Text>
         </View>
       </DetailCard>
       <ListCard>
@@ -1136,22 +1174,29 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: '#ffefbd',
+    backgroundColor: colors.brand3,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    position: 'relative',
   },
   profileAvatarImage: {
     width: '100%',
     height: '100%',
   },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+  },
   profileAvatarText: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
   profileName: {
-    fontSize: 22,
+    fontSize: 17,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
@@ -1199,5 +1244,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     backgroundColor: '#fafafa',
+  },
+  emptySearch: {
+    marginBottom: 12,
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
   },
 });

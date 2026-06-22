@@ -1,43 +1,49 @@
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { serviceDetailProduct } from '../data/detailProducts';
 import type { LocalService } from '../data/services';
+import { serviceMatchesCategory } from '../data/services';
 import { useCatalogServices } from '../hooks/useCatalogServices';
-import { AppIcon, AppIconName } from '../components/AppIcon';
+import { useFeed } from '../hooks/useFeed';
+import {
+  LOCAL_CATEGORY_SHORTCUTS,
+  HomeCategoryShortcutRow,
+} from '../components/HomeCategoryShortcutRow';
 import {
   ScreenScroll,
   SearchBar,
   SectionHead,
   TitleBar,
 } from '../components/UI';
-import { Banner, ServiceCard } from '../components/ProductUI';
+import { Banner, ProductFeed, ServiceCard } from '../components/ProductUI';
 import { AmazingSurface } from '../components/AmazingSurface';
+import { localPageBannerForLanguage } from '../assets/localBanner';
 import { ProductCatKey } from '../types';
-import { fonts, filterIconColor, filterIconLabelColor, filterIconTile, radius } from '../theme';
-
-const SHORTCUTS: { icon: AppIconName; catKey: ProductCatKey; labelKey: string }[] = [
-  { icon: 'phone', catKey: 'digital', labelKey: 'homeCats.digital' },
-  { icon: 'sofa', catKey: 'home', labelKey: 'homeCats.home' },
-  { icon: 'shirt', catKey: 'fashion', labelKey: 'homeCats.fashion' },
-  { icon: 'sparkles', catKey: 'beauty', labelKey: 'homeCats.beauty' },
-];
+import { fonts, radius } from '../theme';
 
 export function CategoryScreen() {
-  const { t } = useTranslation();
-  const { nav, openDetail, region, products, setHomeCategory, setHomeTabKey } = useApp();
+  const { t, i18n } = useTranslation();
+  const { openSearch, openDetail, region, products } = useApp();
   const { services: visibleServices } = useCatalogServices(region);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCatKey | null>(null);
+  const { items: categoryProducts } = useFeed(region, 'recommended', selectedCategory);
+
+  const filteredServices = useMemo(() => {
+    if (!selectedCategory) return visibleServices;
+    return visibleServices.filter((service) => serviceMatchesCategory(service, selectedCategory));
+  }, [visibleServices, selectedCategory]);
 
   const openServiceDetail = (service: LocalService) => {
-    openDetail(serviceDetailProduct(service, products[0]?.imageUrl ?? ''));
+    openDetail(
+      serviceDetailProduct(service, service.imageUrl ?? products[0]?.imageUrl ?? ''),
+    );
   };
 
-  const filterCat = (catKey: ProductCatKey) => {
-    setHomeTabKey('recommended');
-    setHomeCategory(catKey);
-    nav('home');
+  const selectCategory = (catKey: ProductCatKey) => {
+    setSelectedCategory((current) => (current === catKey ? null : catKey));
   };
 
   return (
@@ -46,33 +52,34 @@ export function CategoryScreen() {
       <SearchBar
         placeholder={t('screens.category.searchPlaceholder')}
         readonly
-        onPress={() => nav('search')}
+        onPress={openSearch}
       />
       <Banner
+        variant="promo"
+        artwork
+        artworkSource={localPageBannerForLanguage(i18n.language)}
         title={t('screens.category.bannerTitle')}
         subtitle={t('screens.category.bannerSubtitle')}
-        icon="mapPin"
       />
       <SectionHead title={t('screens.category.sectionCategories')} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-        {SHORTCUTS.map((item) => (
-          <Pressable
-            key={item.catKey}
-            style={styles.shortcut}
-            onPress={() => filterCat(item.catKey)}
-          >
-            <View style={styles.filterIco}>
-              <AppIcon name={item.icon} size={24} color={filterIconColor} />
-            </View>
-            <Text style={styles.shortcutLabel} numberOfLines={2}>
-              {t(item.labelKey)}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <HomeCategoryShortcutRow
+        categories={LOCAL_CATEGORY_SHORTCUTS}
+        selectedKey={selectedCategory}
+        onSelect={selectCategory}
+        layout="spread"
+        contentStyle={styles.catRowContent}
+      />
+      <SectionHead title={t('screens.category.sectionProducts')} />
+      {categoryProducts.length ? (
+        <ProductFeed data={categoryProducts} onPress={openDetail} />
+      ) : (
+        <AmazingSurface style={styles.empty}>
+          <Text style={styles.emptyText}>{t('screens.category.emptyProducts')}</Text>
+        </AmazingSurface>
+      )}
       <SectionHead title={t('screens.category.sectionServices')} action={t('screens.category.featured')} />
-      {visibleServices.length ? (
-        visibleServices.map((service) => (
+      {filteredServices.length ? (
+        filteredServices.map((service) => (
           <ServiceCard
             key={service.id}
             service={service}
@@ -89,31 +96,9 @@ export function CategoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  filterRow: {
-    flexDirection: 'row',
-    paddingVertical: 6,
-    paddingHorizontal: 2,
-    marginBottom: 8,
-  },
-  shortcut: {
-    minWidth: 56,
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  filterIco: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    marginBottom: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...filterIconTile,
-  },
-  shortcutLabel: {
-    fontSize: 11,
-    fontWeight: fonts.weights.bold,
-    color: filterIconLabelColor,
-    textAlign: 'center',
+  catRowContent: {
+    marginBottom: 0,
+    paddingBottom: 0,
   },
   empty: {
     borderStyle: 'dashed',
@@ -121,6 +106,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: 20,
     alignItems: 'center',
+    marginBottom: 8,
   },
   emptyText: {
     color: '#8a7a54',

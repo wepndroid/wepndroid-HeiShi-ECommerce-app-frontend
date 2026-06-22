@@ -50,7 +50,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Set-Location $ProjectRoot
-Set-MetroPortForward
+Set-MetroPortForward -RequireMetro
 Start-LdPlayerApp
 
 Write-Host ""

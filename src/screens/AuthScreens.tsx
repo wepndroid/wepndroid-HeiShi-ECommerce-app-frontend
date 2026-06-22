@@ -7,6 +7,7 @@ import { AuthErrorKey } from '../data/auth';
 import { DetailCard, FormCard } from '../components/FormUI';
 import { BackButton, Logo, Notice, PillButton, ScreenScroll, TitleBar } from '../components/UI';
 import { colors, fonts, radius } from '../theme';
+import { filterNumericInput, numericKeyboardType, NumericInputKind } from '../utils/numericInput';
 
 function AuthField({
   label,
@@ -16,6 +17,8 @@ function AuthField({
   secureTextEntry,
   keyboardType = 'default',
   autoCapitalize = 'none',
+  numericKind,
+  onInvalidInput,
 }: {
   label: string;
   value: string;
@@ -24,18 +27,34 @@ function AuthField({
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'phone-pad';
   autoCapitalize?: 'none' | 'words';
+  numericKind?: NumericInputKind;
+  onInvalidInput?: () => void;
 }) {
+  const resolvedKeyboardType = numericKind ? numericKeyboardType(numericKind) : keyboardType;
+
+  const handleChangeText = (text: string) => {
+    if (!numericKind) {
+      onChangeText(text);
+      return;
+    }
+    const { value: filtered, rejected } = filterNumericInput(text, numericKind);
+    if (rejected) {
+      onInvalidInput?.();
+    }
+    onChangeText(filtered);
+  };
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         style={styles.input}
         value={value}
-        onChangeText={onChangeText}
+        onChangeText={handleChangeText}
         placeholder={placeholder}
         placeholderTextColor="#999999"
         secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
+        keyboardType={resolvedKeyboardType}
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
       />
@@ -81,7 +100,8 @@ export function LoginScreen() {
           value={phone}
           onChangeText={setPhone}
           placeholder={t('screens.login.phonePlaceholder')}
-          keyboardType="phone-pad"
+          numericKind="phone"
+          onInvalidInput={() => toast(t('toast.numberOnly'))}
         />
         <AuthField
           label={t('screens.login.passwordLabel')}
@@ -147,7 +167,8 @@ export function RegisterScreen() {
           value={phone}
           onChangeText={setPhone}
           placeholder={t('screens.register.phonePlaceholder')}
-          keyboardType="phone-pad"
+          numericKind="phone"
+          onInvalidInput={() => toast(t('toast.numberOnly'))}
         />
         <AuthField
           label={t('screens.register.passwordLabel')}
@@ -185,7 +206,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   heroTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: fonts.weights.bold,
     color: colors.text,
     textAlign: 'center',
@@ -209,10 +230,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radius.md,
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.paper,
     paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 15,
+    paddingVertical: 10,
+    fontSize: 14,
     color: colors.text,
   },
   linkRow: {

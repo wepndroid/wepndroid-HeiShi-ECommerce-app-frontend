@@ -9,6 +9,8 @@ import type {
   PrivacySettingsDto,
   ReviewSummaryDto,
   UserProfileUpdateRequest,
+  PublicUserProfileDto,
+  ListingSummaryDto,
 } from '../types';
 
 export const userApi = {
@@ -61,6 +63,22 @@ export const userApi = {
       identityVerified: boolean;
       businessVerified: boolean;
     }>('/users/me/verification');
+  },
+
+  /** GET /users/:id/profile — public seller profile */
+  getPublicProfile(userId: string) {
+    return apiRequest<PublicUserProfileDto>(`/users/${encodeURIComponent(userId)}/profile`);
+  },
+
+  /** GET /users/:id/listings — public active listings */
+  getPublicListings(userId: string, params?: { page?: number; pageSize?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    const query = qs.toString();
+    return apiRequest<Paginated<ListingSummaryDto>>(
+      `/users/${encodeURIComponent(userId)}/listings${query ? `?${query}` : ''}`,
+    );
   },
 };
 

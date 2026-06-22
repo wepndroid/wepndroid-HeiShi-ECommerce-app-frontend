@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import i18n from '../i18n';
 import type {
   AddressDto,
   AuthUserDto,
@@ -13,26 +14,39 @@ const PROFILE_KEY = 'userProfileExtras';
 const ADDRESSES_KEY = 'userAddresses';
 const VERIFICATION_KEY = 'userVerification';
 
-const DEFAULT_PROFILE: Pick<AuthUserDto, 'bio' | 'city' | 'language'> = {
-  bio: 'Melbourne student · furniture & appliances',
+const DEFAULT_PROFILE: Pick<AuthUserDto, 'bio' | 'city' | 'language' | 'avatarUrl'> = {
+  bio: '',
   city: 'Melbourne',
   language: 'en',
+  avatarUrl: undefined,
 };
 
-const DEFAULT_ADDRESSES: AddressDto[] = [
-  {
-    id: 'addr-default',
-    label: 'Default area',
-    area: 'Melbourne CBD',
-    isDefault: true,
-  },
-  {
-    id: 'addr-meetup',
-    label: 'Meetup spot',
-    area: 'Clayton',
-    meetupSpot: 'Monash Clayton Library',
-  },
-];
+function localizedProfileDefaults(): Pick<AuthUserDto, 'bio' | 'city' | 'language'> {
+  return {
+    bio: i18n.t('profileDefaults.bio'),
+    city: 'Melbourne',
+    language: i18n.language.startsWith('zh') ? 'zh' : 'en',
+  };
+}
+
+function defaultAddresses(): AddressDto[] {
+  return [
+    {
+      id: 'addr-default',
+      label: i18n.t('profileDefaults.addressLabel'),
+      area: 'Melbourne CBD',
+      isDefault: true,
+    },
+    {
+      id: 'addr-meetup',
+      label: i18n.t('profileDefaults.meetupLabel'),
+      area: 'Clayton',
+      meetupSpot: i18n.t('profileDefaults.meetupSpot'),
+    },
+  ];
+}
+
+const DEFAULT_ADDRESSES: AddressDto[] = [];
 
 const DEFAULT_VERIFICATION = {
   phoneVerified: true,
@@ -55,23 +69,25 @@ const DEFAULT_REVIEW: ReviewSummaryDto = {
   pendingCount: 0,
 };
 
-const MOCK_PAYOUT_METHODS: PayoutMethodDto[] = [
-  {
-    id: 'demo-bank',
-    type: 'bank',
-    label: 'Commonwealth Bank',
-    last4: '0918',
-    isDefault: true,
-  },
-];
+function mockPayoutMethodsLocalized(): PayoutMethodDto[] {
+  return [
+    {
+      id: 'demo-bank',
+      type: 'bank',
+      label: i18n.t('profileDefaults.payoutBank'),
+      last4: '0918',
+      isDefault: true,
+    },
+  ];
+}
 
 function profileFromSession(user: AuthUser | null): AuthUserDto {
   return {
     id: user?.id ?? 'guest',
     heishiId: user?.heishiId ?? user?.id ?? 'guest',
-    nickname: user?.nickname ?? 'Guest',
+    nickname: user?.nickname ?? i18n.t('common.guest'),
     phone: user?.phone ?? '',
-    ...DEFAULT_PROFILE,
+    ...localizedProfileDefaults(),
   };
 }
 
@@ -91,7 +107,13 @@ async function writeJson<T>(key: string, value: T) {
 
 export async function loadLocalProfile(user: AuthUser | null): Promise<AuthUserDto> {
   const extras = await readJson(PROFILE_KEY, DEFAULT_PROFILE);
-  return { ...profileFromSession(user), ...extras };
+  const base = profileFromSession(user);
+  return {
+    ...base,
+    ...extras,
+    bio: extras.bio || base.bio,
+    language: extras.language ?? base.language,
+  };
 }
 
 export async function saveLocalProfile(
@@ -103,18 +125,19 @@ export async function saveLocalProfile(
     bio: patch.bio ?? current.bio,
     city: patch.city ?? current.city,
     language: patch.language ?? current.language,
+    avatarUrl: patch.avatarUrl !== undefined ? patch.avatarUrl : current.avatarUrl,
   };
   await writeJson(PROFILE_KEY, extras);
   return {
     ...current,
     nickname: patch.nickname ?? current.nickname,
-    avatarUrl: patch.avatarUrl ?? current.avatarUrl,
     ...extras,
   };
 }
 
 export async function loadLocalAddresses(): Promise<AddressDto[]> {
-  return readJson(ADDRESSES_KEY, DEFAULT_ADDRESSES);
+  const rows = await readJson(ADDRESSES_KEY, DEFAULT_ADDRESSES);
+  return rows.length ? rows : defaultAddresses();
 }
 
 export async function addLocalAddress(body: Omit<AddressDto, 'id'>): Promise<AddressDto> {
@@ -129,7 +152,7 @@ export async function addLocalAddress(body: Omit<AddressDto, 'id'>): Promise<Add
 
 export async function deleteLocalAddress(id: string): Promise<void> {
   const next = (await loadLocalAddresses()).filter((row) => row.id !== id);
-  await writeJson(ADDRESSES_KEY, next.length ? next : DEFAULT_ADDRESSES);
+  await writeJson(ADDRESSES_KEY, next.length ? next : defaultAddresses());
 }
 
 export async function loadLocalVerification(isLoggedIn: boolean) {
@@ -154,5 +177,5 @@ export function mockReviewSummary(): ReviewSummaryDto {
 }
 
 export function mockPayoutMethods(): PayoutMethodDto[] {
-  return MOCK_PAYOUT_METHODS;
+  return mockPayoutMethodsLocalized();
 }

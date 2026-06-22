@@ -13,7 +13,8 @@ import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { ListCard, TableNote } from '../components/FormUI';
 import { AmazingSurface } from '../components/AmazingSurface';
 import { OrderThumb, ProductGrid } from '../components/ProductUI';
-import { PillButton, ScreenScroll, TitleBar } from '../components/UI';
+import { PillButton, followPillStyle, ScreenScroll, TitleBar } from '../components/UI';
+import { SellerAvatar } from '../components/SellerAvatar';
 import { colors, fonts, radius } from '../theme';
 import { OrderFilterKey, OrderStatus, Product } from '../types';
 
@@ -320,28 +321,67 @@ export function HistoryScreen() {
 
 export function FollowingScreen() {
   const { t } = useTranslation();
-  const rows = [
-    { nameKey: 'screens.following.miaName', subKey: 'screens.following.mia' },
-    { nameKey: 'screens.following.shopName', subKey: 'screens.following.shop' },
-  ];
+  const { follows, toggleFollow, products, openSellerProfile } = useApp();
+
+  const rows = useMemo(() => {
+    return [...follows].map((userId) => {
+      const product = products.find(
+        (item) =>
+          item.sellerKey === userId ||
+          (item.sellerKey.length <= 8 ? `seller-${item.sellerKey}` : item.sellerKey) === userId,
+      );
+      return {
+        userId,
+        name: product?.seller ?? userId.replace(/^seller-/, ''),
+        sellerKey: product?.sellerKey ?? userId.replace(/^seller-/, ''),
+        sellerAvatarUrl: product?.sellerAvatarUrl,
+        sub: product ? product.loc : t('screens.following.mia'),
+      };
+    });
+  }, [follows, products, t]);
 
   return (
     <ScreenScroll screenId="following">
       <TitleBar center={t('screens.following.title')} />
-      <ListCard>
-        {rows.map((row, index) => (
-          <View key={row.nameKey} style={[styles.followRow, index < rows.length - 1 && styles.followBorder]}>
-            <View style={styles.followAvatar}>
-              <Text style={styles.followAvatarText}>{t(row.nameKey).slice(0, 1)}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.followName}>{t(row.nameKey)}</Text>
-              <Text style={styles.followSub}>{t(row.subKey)}</Text>
-            </View>
-            <PillButton label={t('screens.following.followingBtn')} variant="light" style={{ paddingVertical: 8, paddingHorizontal: 12 }} />
-          </View>
-        ))}
-      </ListCard>
+      {rows.length ? (
+        <ListCard>
+          {rows.map((row, index) => {
+            const isFollowing = follows.has(row.userId);
+            return (
+              <View
+                key={row.userId}
+                style={[styles.followRow, index < rows.length - 1 && styles.followBorder]}
+              >
+                <Pressable
+                  style={styles.followProfile}
+                  onPress={() => openSellerProfile(row.sellerKey)}
+                >
+                  <SellerAvatar
+                    sellerKey={row.sellerKey}
+                    seller={row.name}
+                    avatarUrl={row.sellerAvatarUrl}
+                    size={48}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.followName}>{row.name}</Text>
+                    <Text style={styles.followSub}>{row.sub}</Text>
+                  </View>
+                </Pressable>
+                <PillButton
+                  label={isFollowing ? t('common.following') : t('common.follow')}
+                  variant={isFollowing ? 'brand' : 'light'}
+                  style={followPillStyle}
+                  onPress={() => void toggleFollow(row.userId)}
+                />
+              </View>
+            );
+          })}
+        </ListCard>
+      ) : (
+        <AmazingSurface style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>{t('screens.following.empty')}</Text>
+        </AmazingSurface>
+      )}
     </ScreenScroll>
   );
 }
@@ -349,26 +389,42 @@ export function FollowingScreen() {
 export function CouponsScreen() {
   const { t } = useTranslation();
   const { toast } = useApp();
+  const [usedCoupons, setUsedCoupons] = useState<Set<string>>(new Set());
   const coupons = [
-    { amount: 'A$6', subKey: 'screens.coupons.c1' },
-    { amount: 'A$3', subKey: 'screens.coupons.c2' },
-    { amount: 'A$10', subKey: 'screens.coupons.c3' },
+    { id: 'c1', amount: 'A$6', subKey: 'screens.coupons.c1' },
+    { id: 'c2', amount: 'A$3', subKey: 'screens.coupons.c2' },
+    { id: 'c3', amount: 'A$10', subKey: 'screens.coupons.c3' },
   ];
+
+  const handleUseCoupon = (couponId: string) => {
+    if (usedCoupons.has(couponId)) return;
+    setUsedCoupons((prev) => new Set(prev).add(couponId));
+    toast(t('toast.couponUsed'));
+  };
 
   return (
     <ScreenScroll screenId="coupons">
       <TitleBar center={t('screens.coupons.title')} />
-      {coupons.map((coupon) => (
-        <AmazingSurface key={coupon.amount} style={styles.coupon}>
-          <View>
-            <Text style={styles.couponAmt}>{coupon.amount}</Text>
-            <Text style={styles.couponSub}>{t(coupon.subKey)}</Text>
-          </View>
-          <Pressable style={styles.couponBtn} onPress={() => toast(t('toast.couponUsed'))}>
-            <Text style={styles.couponBtnText}>{t('screens.coupons.use')}</Text>
-          </Pressable>
-        </AmazingSurface>
-      ))}
+      {coupons.map((coupon) => {
+        const used = usedCoupons.has(coupon.id);
+        return (
+          <AmazingSurface key={coupon.id} style={styles.coupon}>
+            <View>
+              <Text style={styles.couponAmt}>{coupon.amount}</Text>
+              <Text style={styles.couponSub}>{t(coupon.subKey)}</Text>
+            </View>
+            <Pressable
+              style={[styles.couponBtn, used && styles.couponBtnUsed]}
+              onPress={() => handleUseCoupon(coupon.id)}
+              disabled={used}
+            >
+              <Text style={[styles.couponBtnText, used && styles.couponBtnTextUsed]}>
+                {used ? t('screens.coupons.used') : t('screens.coupons.use')}
+              </Text>
+            </Pressable>
+          </AmazingSurface>
+        );
+      })}
     </ScreenScroll>
   );
 }
@@ -433,7 +489,7 @@ const styles = StyleSheet.create({
   },
   price: {
     fontWeight: fonts.weights.bold,
-    color: colors.red,
+    color: colors.text,
     fontSize: 16,
     marginTop: 4,
   },
@@ -480,21 +536,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 12,
   },
+  followProfile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
   followBorder: {
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
-  },
-  followAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fff1c7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  followAvatarText: {
-    fontSize: 18,
-    fontWeight: fonts.weights.bold,
   },
   followName: {
     fontSize: 15,
@@ -516,8 +567,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   couponAmt: {
-    fontSize: 30,
-    color: colors.red,
+    fontSize: 24,
+    color: colors.text,
     fontWeight: fonts.weights.bold,
   },
   couponSub: {
@@ -530,8 +581,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 9,
   },
+  couponBtnUsed: {
+    backgroundColor: '#ececec',
+  },
   couponBtnText: {
     color: '#ffffff',
     fontWeight: fonts.weights.bold,
+  },
+  couponBtnTextUsed: {
+    color: '#999999',
   },
 });

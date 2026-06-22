@@ -1,3 +1,6 @@
+import { productImageUrls } from './productImages';
+import type { ProductCatKey } from '../types';
+
 export interface LocalService {
   id: number;
   titleKey: string;
@@ -8,6 +11,8 @@ export interface LocalService {
   descKey: string;
   area: string;
   icon: 'truck' | 'broom' | 'cameraService';
+  /** Preview photo for the service card and detail hero. */
+  imageUrl?: string;
   /** When set, prefer API strings over i18n keys. */
   apiTitle?: string;
   apiDesc?: string;
@@ -25,6 +30,7 @@ export const localServices: LocalService[] = [
     descKey: 'services.moving.desc',
     area: 'Clayton / Box Hill',
     icon: 'truck',
+    imageUrl: productImageUrls[11],
   },
   {
     id: 2,
@@ -36,6 +42,7 @@ export const localServices: LocalService[] = [
     descKey: 'services.cleaning.desc',
     area: 'CBD / Southbank',
     icon: 'broom',
+    imageUrl: productImageUrls[10],
   },
   {
     id: 3,
@@ -47,6 +54,7 @@ export const localServices: LocalService[] = [
     descKey: 'services.photo.desc',
     area: 'Melbourne',
     icon: 'cameraService',
+    imageUrl: productImageUrls[4],
   },
 ];
 
@@ -56,4 +64,12 @@ export function serviceInRegion(area: string, regionArea: string): boolean {
   if (regionArea === ALL_AREAS) return true;
   if (regionArea === 'Melbourne CBD') return area.includes('CBD') || area.includes('Melbourne');
   return area.includes(regionArea);
+}
+
+/** Match mock/local service cards to a product category shortcut. */
+export function serviceMatchesCategory(service: LocalService, catKey: ProductCatKey): boolean {
+  if (catKey === 'services') return true;
+  if (catKey === 'home') return service.icon === 'truck' || service.icon === 'broom';
+  if (catKey === 'beauty') return service.icon === 'cameraService';
+  return false;
 }

@@ -111,15 +111,21 @@ export function MarqueePlaceholder({
       </View>
 
       {!shouldAnimate ? (
-        <Text style={textStyle} numberOfLines={1} ellipsizeMode="clip">
-          {text}
-        </Text>
+        <View style={styles.clip}>
+          <Text style={textStyle} numberOfLines={1} ellipsizeMode="tail">
+            {text}
+          </Text>
+        </View>
       ) : (
         <View style={styles.clip}>
           <Animated.View style={[styles.track, { transform: [{ translateX }] }]}>
-            <Text style={textStyle}>{text}</Text>
+            <Text style={textStyle} numberOfLines={1}>
+              {text}
+            </Text>
             <View style={styles.gap} />
-            <Text style={textStyle}>{text}</Text>
+            <Text style={textStyle} numberOfLines={1}>
+              {text}
+            </Text>
           </Animated.View>
         </View>
       )}
@@ -133,6 +139,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     overflow: 'hidden',
     justifyContent: 'center',
+    height: 20,
   },
   measureProbe: {
     position: 'absolute',
@@ -146,7 +153,7 @@ const styles = StyleSheet.create({
   },
   marqueeText: {
     flexShrink: 0,
-    lineHeight: 20,
+    lineHeight: 16,
   },
   track: {
     flexDirection: 'row',

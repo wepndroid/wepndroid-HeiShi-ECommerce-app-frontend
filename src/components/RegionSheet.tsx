@@ -25,7 +25,7 @@ import {
 } from '../data/region';
 import { useApp } from '../context/AppContext';
 import { PillButton } from './UI';
-import { colors, fonts, radius, amazingStyle, amazingStyleHighlight } from '../theme';
+import { colors, fonts, radius, amazingStyle } from '../theme';
 
 const SHEET_SLIDE_OFFSET = 420;
 
@@ -104,7 +104,6 @@ export function RegionSheet() {
                   key={group.state}
                   style={[styles.card, activeGroup && styles.cardActive]}
                 >
-                  <View style={amazingStyleHighlight} pointerEvents="none" />
                   <View style={styles.cardTitle}>
                     <Text style={styles.cardTitleStrong}>
                       {formatStateHeading(group.state, group.stateName)}
@@ -346,7 +345,7 @@ const styles = StyleSheet.create({
   },
   cardActive: {
     borderColor: colors.brand,
-    backgroundColor: '#fffdf0',
+    backgroundColor: colors.brand3,
   },
   cardTitle: {
     flexDirection: 'row',
@@ -388,7 +387,7 @@ const styles = StyleSheet.create({
   },
   areaChip: {
     borderRadius: radius.pill,
-    backgroundColor: '#fff7dc',
+    backgroundColor: colors.brand3,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -420,7 +419,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   secondaryChip: {
-    backgroundColor: '#fff3e0',
+    backgroundColor: colors.brand3,
   },
   chipActive: {
     backgroundColor: colors.brand,

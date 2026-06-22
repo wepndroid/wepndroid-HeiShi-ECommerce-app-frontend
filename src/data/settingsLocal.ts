@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import i18n from '../i18n';
 import type { NotificationSettingsDto, PrivacySettingsDto } from '../api/types';
 
 const NOTIFICATION_KEY = 'notificationSettings';
@@ -58,7 +59,7 @@ export async function saveLocalPrivacySettings(
 }
 
 export function formatCacheSize(bytes: number): string {
-  if (bytes <= 0) return '0 MB';
+  if (bytes <= 0) return i18n.t('common.cacheSizeZero');
   const mb = bytes / (1024 * 1024);
-  return mb >= 0.1 ? `${mb.toFixed(1)} MB` : '< 0.1 MB';
+  return mb >= 0.1 ? i18n.t('common.cacheSizeMb', { size: mb.toFixed(1) }) : i18n.t('common.cacheSizeTiny');
 }

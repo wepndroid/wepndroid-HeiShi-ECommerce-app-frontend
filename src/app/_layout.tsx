@@ -42,7 +42,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+        <SafeAreaView style={styles.root} edges={['top']}>
           <AppShell>
             <Stack screenOptions={{ headerShown: false, animation: 'none' }} />
           </AppShell>

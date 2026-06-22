@@ -1,6 +1,7 @@
-import { favoritesApi, historyApi } from '../api';
+import { favoritesApi, followsApi, historyApi } from '../api';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import { loadLocalFavorites, saveLocalFavorites } from '../data/favorites';
+import { loadLocalFollows, resolveSellerUserId, saveLocalFollows } from '../data/follows';
 import { loadLocalHistory, recordLocalView } from '../data/history';
 
 export async function bootstrapFavorites(isLoggedIn: boolean): Promise<Set<number>> {
@@ -65,3 +66,45 @@ export async function fetchHistoryListingIds(isLoggedIn: boolean): Promise<numbe
   }
   return loadLocalHistory();
 }
+
+export async function bootstrapFollows(isLoggedIn: boolean): Promise<Set<string>> {
+  if (isLoggedIn) {
+    try {
+      const result = await followsApi.list({ pageSize: 100 });
+      const ids = new Set(result.items.map((item) => resolveSellerUserId(item.userId)));
+      await saveLocalFollows(ids);
+      return ids;
+    } catch {
+      if (API_USE_MOCK_FALLBACK) return loadLocalFollows();
+      return new Set();
+    }
+  }
+  return loadLocalFollows();
+}
+
+export async function setFollow(
+  sellerKey: string,
+  shouldFollow: boolean,
+  isLoggedIn: boolean,
+): Promise<Set<string>> {
+  const userId = resolveSellerUserId(sellerKey);
+  const current = await loadLocalFollows();
+  const next = new Set(current);
+
+  if (shouldFollow) next.add(userId);
+  else next.delete(userId);
+
+  if (isLoggedIn) {
+    try {
+      if (shouldFollow) await followsApi.follow(userId);
+      else await followsApi.unfollow(userId);
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('follow_sync_failed');
+    }
+  }
+
+  await saveLocalFollows(next);
+  return next;
+}
+
+export { resolveSellerUserId } from '../data/follows';

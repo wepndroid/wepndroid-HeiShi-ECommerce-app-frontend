@@ -8,6 +8,22 @@ const HOME_TAB_CAT: Partial<Record<HomeTabKey, ProductCatKey>> = {
   tickets: 'tickets',
 };
 
+const CATEGORY_HOME_TAB: Partial<Record<ProductCatKey, HomeTabKey>> = {
+  digital: 'digital',
+  services: 'services',
+  tickets: 'tickets',
+};
+
+/** Pick home tab + optional category when a category shortcut is tapped. */
+export function homeFilterForCategory(
+  catKey: ProductCatKey,
+  currentTab: HomeTabKey,
+): { tab: HomeTabKey; category: ProductCatKey | null } {
+  const tab = CATEGORY_HOME_TAB[catKey];
+  if (tab) return { tab, category: null };
+  return { tab: currentTab, category: catKey };
+}
+
 export function categoryProducts(list: Product[], tab: HomeTabKey): Product[] {
   if (tab === 'recommended') return list;
   if (tab === 'newArrivals') return [...list].sort((a, b) => b.id - a.id);

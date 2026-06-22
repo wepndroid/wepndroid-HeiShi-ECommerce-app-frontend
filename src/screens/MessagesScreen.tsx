@@ -1,24 +1,52 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { useConversations } from '../hooks/useConversations';
-import { AppIcon, AppIconName } from '../components/AppIcon';
-import { IconButton, Notice, PillButton, ScreenScroll, SearchBar, SectionHead, TitleBar } from '../components/UI';
+import { useNotificationGroups } from '../hooks/useNotificationGroups';
+import { openMessageGroup } from './MessageGroupScreen';
+import { AppIcon } from '../components/AppIcon';
+import { IconButton, Notice, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
+import { SellerAvatar } from '../components/SellerAvatar';
 import { colors, fonts } from '../theme';
+import { formatMessageTimeLabel } from '../utils/formatMessageTimeLabel';
+
+const GROUP_TITLE_KEYS = {
+  system: 'screens.messages.systemTitle',
+  order: 'screens.messages.orderTitle',
+  follow: 'screens.messages.followTitle',
+} as const;
 
 export function MessagesScreen() {
-  const { t } = useTranslation();
-  const { nav, toast, openChat, isLoggedIn, authReady } = useApp();
+  const { t, i18n } = useTranslation();
+  const { nav, toast, openChat, openSellerProfile, isLoggedIn, authReady } = useApp();
   const { conversations } = useConversations(isLoggedIn, authReady);
+  const { groups } = useNotificationGroups(isLoggedIn, authReady);
+  const [query, setQuery] = useState('');
 
-  const systemRows = [
-    { icon: 'bell' as AppIconName, titleKey: 'screens.messages.systemTitle', msgKey: 'screens.messages.systemMsg', timeKey: 'screens.messages.yesterday', unread: '2', onPress: () => toast(t('toast.systemNotice')) },
-    { icon: 'package' as AppIconName, titleKey: 'screens.messages.orderTitle', msgKey: 'screens.messages.orderMsg', time: '09:24', unread: '1', onPress: () => nav('orders') },
-    { icon: 'star' as AppIconName, titleKey: 'screens.messages.followTitle', msgKey: 'screens.messages.followMsg', timeKey: 'screens.messages.yesterday', onPress: () => toast(t('toast.followNew')) },
-  ];
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filteredGroups = useMemo(() => {
+    if (!normalizedQuery) return groups;
+    return groups.filter((row) => {
+      const title = t(GROUP_TITLE_KEYS[row.category]).toLowerCase();
+      const preview = `${row.previewTitle ?? ''} ${row.previewBody ?? ''}`.toLowerCase();
+      return title.includes(normalizedQuery) || preview.includes(normalizedQuery);
+    });
+  }, [groups, normalizedQuery, t]);
+
+  const filteredConversations = useMemo(() => {
+    if (!normalizedQuery) return conversations;
+    return conversations.filter(
+      (row) =>
+        row.counterpartName.toLowerCase().includes(normalizedQuery) ||
+        row.lastMessage.toLowerCase().includes(normalizedQuery),
+    );
+  }, [conversations, normalizedQuery]);
+
+  const hasResults = filteredGroups.length > 0 || filteredConversations.length > 0;
 
   return (
     <ScreenScroll screenId="messages">
@@ -36,37 +64,56 @@ export function MessagesScreen() {
         action={t('common.enable')}
         onAction={() => toast(t('toast.notificationsEnabled'))}
       />
-      <SearchBar placeholder={t('screens.messages.searchPlaceholder')} readonly />
+      <SearchBar
+        placeholder={t('screens.messages.searchPlaceholder')}
+        value={query}
+        onChangeText={setQuery}
+      />
+      {!hasResults && normalizedQuery ? (
+        <Text style={styles.emptySearch}>{t('screens.messages.noSearchResults')}</Text>
+      ) : null}
+      {filteredGroups.length ? (
       <ListCard>
-        {systemRows.map((row, index) => (
+        {filteredGroups.map((row, index) => (
           <Pressable
-            key={row.titleKey}
-            style={[styles.messageRow, index < systemRows.length - 1 && styles.messageBorder]}
-            onPress={row.onPress}
+            key={row.category}
+            style={[styles.messageRow, index < filteredGroups.length - 1 && styles.messageBorder]}
+            onPress={() => openMessageGroup(row.category)}
           >
             <View style={styles.messageAvatar}>
               <AppIcon name={row.icon} size={22} color="#b87000" />
-              {'unread' in row && row.unread ? (
+              {row.unreadCount > 0 ? (
                 <View style={styles.unread}>
-                  <Text style={styles.unreadText}>{row.unread}</Text>
+                  <Text style={styles.unreadText}>{row.unreadCount}</Text>
                 </View>
               ) : null}
             </View>
             <View style={styles.messageInfo}>
-              <Text style={styles.messageTitle}>{t(row.titleKey)}</Text>
+              <View style={styles.messageHeader}>
+                <Text style={[styles.messageTitle, styles.messageTitleFlex]} numberOfLines={1}>
+                  {t(GROUP_TITLE_KEYS[row.category])}
+                </Text>
+                <Text style={styles.time}>
+                  {formatMessageTimeLabel(row.timeLabel, t, i18n.language)}
+                </Text>
+              </View>
               <Text style={styles.messageMsg} numberOfLines={1}>
-                {t(row.msgKey)}
+                {row.previewBody || row.previewTitle}
               </Text>
             </View>
-            <Text style={styles.time}>{'timeKey' in row && row.timeKey ? t(row.timeKey) : row.time}</Text>
           </Pressable>
         ))}
       </ListCard>
+      ) : null}
+      {filteredConversations.length ? (
       <ListCard>
-        {conversations.map((row, index) => (
+        {filteredConversations.map((row, index) => (
           <Pressable
             key={row.id}
-            style={[styles.messageRow, index < conversations.length - 1 && styles.messageBorder]}
+            style={[
+              styles.messageRow,
+              index < filteredConversations.length - 1 && styles.messageBorder,
+            ]}
             onPress={() =>
               openChat({
                 conversationId: row.id,
@@ -75,27 +122,40 @@ export function MessagesScreen() {
               })
             }
           >
-            <View style={styles.messageAvatar}>
-              <Text style={styles.messageAvatarText}>{row.counterpartName.slice(0, 1)}</Text>
+            <Pressable
+              style={styles.messageAvatar}
+              onPress={() => openSellerProfile(row.counterpartKey)}
+            >
+              <SellerAvatar
+                sellerKey={row.counterpartKey}
+                seller={row.counterpartName}
+                avatarUrl={row.counterpartAvatarUrl}
+                size={44}
+              />
               {row.unreadCount > 0 ? (
                 <View style={styles.unread}>
                   <Text style={styles.unreadText}>{row.unreadCount}</Text>
                 </View>
               ) : null}
-            </View>
+            </Pressable>
             <View style={styles.messageInfo}>
-              <Text style={styles.messageTitle}>
-                {row.counterpartName}
-                {row.verified ? ` ${t('common.verifiedBadge')}` : ''}
-              </Text>
+              <View style={styles.messageHeader}>
+                <Text style={[styles.messageTitle, styles.messageTitleFlex]} numberOfLines={1}>
+                  {row.counterpartName}
+                  {row.verified ? ` ${t('common.verifiedBadge')}` : ''}
+                </Text>
+                <Text style={styles.time}>
+                  {formatMessageTimeLabel(row.timeLabel, t, i18n.language)}
+                </Text>
+              </View>
               <Text style={styles.messageMsg} numberOfLines={1}>
                 {row.lastMessage}
               </Text>
             </View>
-            <Text style={styles.time}>{row.timeLabel}</Text>
           </Pressable>
         ))}
       </ListCard>
+      ) : null}
     </ScreenScroll>
   );
 }
@@ -103,62 +163,73 @@ export function MessagesScreen() {
 const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
   },
   messageBorder: {
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
   messageAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#fff1c7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messageAvatarText: {
-    fontSize: 16,
-    fontWeight: fonts.weights.bold,
-    color: colors.text,
+    width: 44,
+    height: 44,
+    position: 'relative',
   },
   unread: {
     position: 'absolute',
+    top: -2,
     right: -2,
-    top: -3,
-    backgroundColor: colors.brand2,
-    borderRadius: 999,
     minWidth: 18,
     height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.brand,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
   unreadText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: fonts.weights.bold,
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    color: colors.phoneBorder,
   },
   messageInfo: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
+  },
+  messageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   messageTitle: {
-    fontSize: 14,
-    fontWeight: fonts.weights.bold,
+    fontFamily: fonts.medium,
+    fontSize: 15,
     color: colors.text,
   },
-  messageMsg: {
-    marginTop: 5,
-    color: '#888888',
-    fontSize: 12,
+  messageTitleFlex: {
+    flex: 1,
+    minWidth: 0,
   },
   time: {
-    fontSize: 11,
-    color: '#aaaaaa',
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.muted,
     flexShrink: 0,
+  },
+  messageMsg: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  emptySearch: {
+    marginBottom: 12,
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
   },
 });

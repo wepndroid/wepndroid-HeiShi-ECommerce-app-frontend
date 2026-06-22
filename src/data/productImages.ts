@@ -32,3 +32,11 @@ export const productImageUrls = {
 export function productImageUrl(id: number): string {
   return productImageUrls[id as keyof typeof productImageUrls] ?? productImageUrls[1];
 }
+
+/** Demo gallery — primary photo plus distinct alternates for swipe preview. */
+export function productGalleryUrls(id: number): string[] {
+  const primary = productImageUrl(id);
+  const altA = productImageUrl(((id % 12) + 1) || 1);
+  const altB = productImageUrl(((id + 4) % 12) + 1);
+  return [...new Set([primary, altA, altB])];
+}

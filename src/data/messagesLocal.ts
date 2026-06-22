@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import i18n from '../i18n';
+import { personAvatarUrlForKey } from './avatarPhotos';
 import type { UiChatMessage, UiConversation } from '../types';
 
 const CONVERSATIONS_KEY = 'localConversations';
@@ -6,11 +8,14 @@ const MESSAGES_KEY = 'localMessages';
 
 export interface LocalConversationRecord {
   id: string;
-  counterpartName: string;
+  counterpartName?: string;
+  counterpartNameKey?: string;
   listingId?: number;
   listingTitle?: string;
-  lastMessageText: string;
+  lastMessageText?: string;
+  lastMessageKey?: string;
   lastMessageAt: string;
+  lastMessageAtKey?: string;
   unreadCount: number;
   verified?: boolean;
 }
@@ -18,7 +23,8 @@ export interface LocalConversationRecord {
 export interface LocalMessageRecord {
   id: string;
   conversationId: string;
-  text: string;
+  text?: string;
+  textKey?: string;
   side: 'left' | 'right';
   sentAt: string;
 }
@@ -26,25 +32,25 @@ export interface LocalMessageRecord {
 const DEMO_CONVERSATIONS: LocalConversationRecord[] = [
   {
     id: 'demo-1',
-    counterpartName: 'Mia_Melbourne',
-    lastMessageText: 'Hi — is the iPad still available? Any discount?',
-    lastMessageAt: '09:35',
+    counterpartNameKey: 'screens.messages.contacts.mia',
+    lastMessageKey: 'screens.messages.chat1',
+    lastMessageAt: new Date(Date.now() - 18 * 60_000).toISOString(),
     unreadCount: 1,
     verified: true,
   },
   {
     id: 'demo-2',
-    counterpartName: 'Ticket Shop',
-    lastMessageText: 'Sure, I can ship tomorrow noon',
-    lastMessageAt: '09:12',
+    counterpartNameKey: 'screens.messages.contacts.shop',
+    lastMessageKey: 'screens.messages.chat2',
+    lastMessageAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
     unreadCount: 2,
     verified: true,
   },
   {
     id: 'demo-3',
-    counterpartName: 'PTE Tutor',
-    lastMessageText: 'Paid — please ship soon, thanks!',
-    lastMessageAt: 'Yesterday',
+    counterpartNameKey: 'screens.messages.contacts.pte',
+    lastMessageKey: 'screens.messages.chat3',
+    lastMessageAt: new Date(Date.now() - 30 * 60 * 60_000).toISOString(),
     unreadCount: 0,
     verified: true,
   },
@@ -52,11 +58,16 @@ const DEMO_CONVERSATIONS: LocalConversationRecord[] = [
 
 const DEMO_MESSAGES: Record<string, LocalMessageRecord[]> = {
   'demo-1': [
-    { id: 'm1', conversationId: 'demo-1', text: 'Hi — is this still available?', side: 'left', sentAt: '' },
-    { id: 'm2', conversationId: 'demo-1', text: 'Yes, pickup in Clayton works for me.', side: 'right', sentAt: '' },
-    { id: 'm3', conversationId: 'demo-1', text: 'Great, can you hold it until tonight?', side: 'left', sentAt: '' },
+    { id: 'm1', conversationId: 'demo-1', textKey: 'screens.chat.msg1', side: 'left', sentAt: '' },
+    { id: 'm2', conversationId: 'demo-1', textKey: 'screens.chat.msg2', side: 'right', sentAt: '' },
+    { id: 'm3', conversationId: 'demo-1', textKey: 'screens.chat.msg3', side: 'left', sentAt: '' },
   ],
 };
+
+function resolveText(record: { text?: string; textKey?: string }): string {
+  if (record.textKey) return i18n.t(record.textKey);
+  return record.text ?? '';
+}
 
 async function readConversations(): Promise<LocalConversationRecord[]> {
   const raw = await AsyncStorage.getItem(CONVERSATIONS_KEY);
@@ -89,21 +100,30 @@ async function writeMessages(messages: LocalMessageRecord[]) {
 }
 
 export function mapLocalConversationToUi(record: LocalConversationRecord): UiConversation {
+  const counterpartName = record.counterpartNameKey
+    ? i18n.t(record.counterpartNameKey)
+    : (record.counterpartName ?? i18n.t('common.sellerDefault'));
+  const counterpartKey = record.counterpartNameKey?.split('.').pop() ?? counterpartName;
   return {
     id: record.id,
-    counterpartName: record.counterpartName,
-    lastMessage: record.lastMessageText,
+    counterpartName,
+    counterpartKey,
+    counterpartAvatarUrl: personAvatarUrlForKey(counterpartKey, 88),
+    lastMessage: record.lastMessageKey
+      ? i18n.t(record.lastMessageKey)
+      : (record.lastMessageText ?? ''),
     timeLabel: record.lastMessageAt,
     unreadCount: record.unreadCount,
     verified: record.verified,
     listingId: record.listingId,
+    listingTitle: record.listingTitle,
   };
 }
 
 export function mapLocalMessageToUi(record: LocalMessageRecord): UiChatMessage {
   return {
     id: record.id,
-    text: record.text,
+    text: resolveText(record),
     side: record.side,
   };
 }
@@ -130,17 +150,19 @@ export async function openLocalConversation(input: {
   const existing = conversations.find(
     (c) =>
       (input.listingId != null && c.listingId === input.listingId) ||
-      (input.counterpartName && c.counterpartName === input.counterpartName),
+      (input.counterpartName &&
+        (c.counterpartName === input.counterpartName ||
+          (c.counterpartNameKey && i18n.t(c.counterpartNameKey) === input.counterpartName))),
   );
   if (existing) return mapLocalConversationToUi(existing);
 
   const record: LocalConversationRecord = {
     id: `local-${Date.now()}`,
-    counterpartName: input.counterpartName ?? 'Seller',
+    counterpartName: input.counterpartName ?? i18n.t('common.sellerDefault'),
     listingId: input.listingId,
     listingTitle: input.listingTitle,
     lastMessageText: '',
-    lastMessageAt: 'Now',
+    lastMessageAt: new Date().toISOString(),
     unreadCount: 0,
   };
   await writeConversations([record, ...conversations]);
@@ -160,9 +182,16 @@ export async function sendLocalMessage(conversationId: string, text: string): Pr
   await writeMessages([...messages, record]);
 
   const conversations = await readConversations();
+  const sentAt = new Date().toISOString();
   const next = conversations.map((c) =>
     c.id === conversationId
-      ? { ...c, lastMessageText: trimmed, lastMessageAt: 'Now', unreadCount: 0 }
+      ? {
+          ...c,
+          lastMessageText: trimmed,
+          lastMessageKey: undefined,
+          lastMessageAt: sentAt,
+          lastMessageAtKey: undefined,
+        }
       : c,
   );
   await writeConversations(next);

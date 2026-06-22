@@ -4,8 +4,8 @@ import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { ALL_AREAS, formatAreaLabel } from '../data/region';
-import { feedTitleKey } from '../hooks/useProductFilters';
-import { AppIcon, AppIconName } from '../components/AppIcon';
+import { feedTitleKey, homeFilterForCategory } from '../hooks/useProductFilters';
+import { AppIcon } from '../components/AppIcon';
 import {
   IconButton,
   Logo,
@@ -14,9 +14,14 @@ import {
   SectionHead,
 } from '../components/UI';
 import { Banner, ProductFeed } from '../components/ProductUI';
+import {
+  activeHomeCategoryKey,
+  HOME_CATEGORY_SHORTCUTS,
+  HomeCategoryShortcutRow,
+} from '../components/HomeCategoryShortcutRow';
 import { HomeTabKey, ProductCatKey } from '../types';
 import { usePhotoSearch } from '../hooks/usePhotoSearch';
-import { colors, fonts, amazingStyleHighlight, amazingStylePill, filterIconColor, filterIconLabelColor, filterIconTile } from '../theme';
+import { colors, fonts, amazingStylePill } from '../theme';
 
 const HOME_TABS: HomeTabKey[] = [
   'recommended',
@@ -26,29 +31,25 @@ const HOME_TABS: HomeTabKey[] = [
   'tickets',
 ];
 
-const CATS: { icon: AppIconName; catKey: ProductCatKey; labelKey: string }[] = [
-  { icon: 'phone', catKey: 'digital', labelKey: 'homeCats.digital' },
-  { icon: 'sofa', catKey: 'home', labelKey: 'homeCats.home' },
-  { icon: 'shirt', catKey: 'fashion', labelKey: 'homeCats.fashion' },
-  { icon: 'sparkles', catKey: 'beauty', labelKey: 'homeCats.beauty' },
-  { icon: 'headphones', catKey: 'misc', labelKey: 'homeCats.misc' },
-];
+const CATS = HOME_CATEGORY_SHORTCUTS;
 
 export function HomeScreen() {
   const { t } = useTranslation();
   const {
     nav,
+    openSearch,
     openDetail,
     homeFeed,
     homeTabKey,
     setHomeTabKey,
     setHomeCategory,
+    homeCategory,
     region,
     regionLabelText,
     openRegionSheet,
     toast,
   } = useApp();
-  const searchByPhoto = usePhotoSearch(toast);
+  const searchByPhoto = usePhotoSearch();
 
   const titleKey = feedTitleKey(homeTabKey, region);
   const feedTitle = t(
@@ -62,8 +63,9 @@ export function HomeScreen() {
   };
 
   const filterCat = (catKey: ProductCatKey) => {
-    setHomeTabKey('recommended');
-    setHomeCategory(catKey);
+    const { tab, category } = homeFilterForCategory(catKey, homeTabKey);
+    setHomeTabKey(tab);
+    setHomeCategory(category);
   };
 
   return (
@@ -73,6 +75,12 @@ export function HomeScreen() {
           <View style={styles.logoSlot}>
             <Logo />
           </View>
+          <Pressable style={styles.city} onPress={openRegionSheet}>
+            <AppIcon name="mapPin" size={14} color={colors.sub} />
+            <Text style={styles.cityText} numberOfLines={1}>
+              {regionLabelText} ▾
+            </Text>
+          </Pressable>
           <View style={styles.topRight}>
             <IconButton
               icon="messages"
@@ -87,20 +95,13 @@ export function HomeScreen() {
             />
           </View>
         </View>
-        <Pressable style={styles.city} onPress={openRegionSheet}>
-          <View style={amazingStyleHighlight} pointerEvents="none" />
-          <AppIcon name="mapPin" size={14} color={colors.sub} />
-          <Text style={styles.cityText} numberOfLines={1}>
-            {regionLabelText} ▾
-          </Text>
-        </Pressable>
       </View>
 
       <SearchBar
         placeholder={t('home.searchPlaceholder')}
         readonly
         showCamera
-        onPress={() => nav('search')}
+        onPress={openSearch}
         onCameraPress={() => void searchByPhoto()}
       />
 
@@ -115,20 +116,16 @@ export function HomeScreen() {
         ))}
       </ScrollView>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-        {CATS.map((cat) => (
-          <Pressable key={cat.catKey} style={styles.cat} onPress={() => filterCat(cat.catKey)}>
-            <View style={styles.catIco}>
-              <AppIcon name={cat.icon} size={22} color={filterIconColor} />
-            </View>
-            <Text style={styles.catLabel} numberOfLines={2}>
-              {t(cat.labelKey)}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <HomeCategoryShortcutRow
+        categories={CATS}
+        selectedKey={activeHomeCategoryKey(homeTabKey, homeCategory)}
+        onSelect={filterCat}
+        contentStyle={styles.catRowContent}
+      />
 
       <Banner
+        variant="promo"
+        artwork
         title={t('home.bannerTitle')}
         subtitle={t('home.bannerSubtitle')}
       />
@@ -136,7 +133,7 @@ export function HomeScreen() {
       <SectionHead
         title={feedTitle}
         action={t('home.moreRecommend')}
-        onAction={() => nav('search')}
+        onAction={openSearch}
       />
       <ProductFeed
         data={homeFeed}
@@ -151,18 +148,14 @@ const styles = StyleSheet.create({
   top: {
     marginTop: 2,
     marginBottom: 12,
-    gap: 8,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
   },
   logoSlot: {
-    flexShrink: 1,
-    minWidth: 0,
-    marginRight: 8,
+    flexShrink: 0,
   },
   topRight: {
     flexDirection: 'row',
@@ -171,31 +164,33 @@ const styles = StyleSheet.create({
   },
   city: {
     ...amazingStylePill,
-    alignSelf: 'flex-start',
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: '100%',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   cityText: {
+    flex: 1,
     fontSize: 12,
-    fontWeight: fonts.weights.bold,
+    fontWeight: fonts.weights.medium,
     color: colors.text,
   },
   tabs: {
-    paddingVertical: 4,
+    paddingVertical: 2,
     marginBottom: 0,
   },
   tabItem: {
-    marginRight: 20,
-    paddingBottom: 5,
+    marginRight: 16,
+    paddingBottom: 4,
     alignItems: 'center',
   },
   tabText: {
-    fontSize: 15,
-    color: '#676767',
+    fontSize: 14,
+    color: colors.muted,
     fontWeight: fonts.weights.medium,
   },
   tabTextActive: {
@@ -204,34 +199,12 @@ const styles = StyleSheet.create({
   },
   tabIndicator: {
     width: 24,
-    height: 4,
-    borderRadius: 999,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: colors.brand,
-    marginTop: 4,
+    marginTop: 3,
   },
-  catRow: {
-    paddingVertical: 6,
-    paddingHorizontal: 2,
-    marginBottom: 4,
-  },
-  cat: {
-    minWidth: 56,
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  catIco: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    marginBottom: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...filterIconTile,
-  },
-  catLabel: {
-    fontSize: 11,
-    color: filterIconLabelColor,
-    fontWeight: fonts.weights.medium,
-    textAlign: 'center',
+  catRowContent: {
+    marginBottom: 0,
   },
 });

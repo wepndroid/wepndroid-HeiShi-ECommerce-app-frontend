@@ -5,6 +5,7 @@ import {
   AUTH_REFRESH_KEY,
   AUTH_TOKEN_KEY,
 } from './config';
+import { getApiLanguage } from '../i18n';
 import type { ApiErrorBody } from './types';
 
 export class ApiError extends Error {
@@ -50,6 +51,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const { method = 'GET', body, query, auth = true, signal } = options;
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    'Accept-Language': getApiLanguage(),
   };
 
   if (body !== undefined && !(body instanceof FormData)) {

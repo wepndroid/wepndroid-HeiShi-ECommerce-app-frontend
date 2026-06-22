@@ -1,39 +1,77 @@
-import { Platform, TextStyle, ViewStyle } from 'react-native';
+import { Platform, StyleSheet, TextStyle, ViewStyle } from 'react-native';
 
+/** Xianyu-aligned palette */
 export const colors = {
   bg: '#F5F5F5',
-  paper: '#ffffff',
-  card: '#ffffff',
-  text: '#151515',
+  paper: '#FFFFFF',
+  card: '#FFFFFF',
+  text: '#222222',
   sub: '#777777',
-  muted: '#a2a2a2',
-  line: '#eeeeea',
-  brand: '#ffc400',
-  brand2: '#ff7a2f',
-  brand3: '#fff2be',
-  green: '#2abf75',
-  red: '#f04438',
-  blue: '#3a7afe',
-  stage: '#ededed',
+  muted: '#999999',
+  line: '#EEEEEE',
+  /** Primary CTA yellow */
+  brand: '#FFE400',
+  brand2: '#FFAA00',
+  /** Light brand tint for badges, avatars, highlights */
+  brand3: '#FFF9E0',
+  green: '#29AB91',
+  /** Price / alert red */
+  red: '#FF4D4F',
+  /** Buy-now / payment orange */
+  purchase: '#FF5000',
+  blue: '#108EE9',
+  stage: '#EBEEEF',
   phoneBorder: '#111111',
+  searchFill: '#F0F0F0',
+  searchHint: '#9C9C9D',
+  searchIcon: '#B2B2B2',
+  placeholder: '#B3B3B3',
+  loginBar: '#222222',
 };
 
+/** Xianyu-style radii — 12–16dp cards, pills for search/buttons */
 export const radius = {
-  sm: 14,
-  md: 18,
-  lg: 22,
-  xl: 24,
-  amazing: 34,
+  sm: 6,
+  md: 12,
+  lg: 14,
+  xl: 16,
+  amazing: 12,
   pill: 999,
   phone: 38,
 };
 
+/** 16dp gutter; 56dp bottom nav */
 export const spacing = {
-  screenPadding: 14,
-  screenBottomNav: 88,
+  screenPadding: 16,
+  screenBottomNav: 64,
   screenBottomNoNav: 24,
   statusHeight: 34,
-  bottomNavHeight: 78,
+  bottomNavHeight: 56,
+};
+
+/** Standard horizontal inset for full-bleed screens (e.g. chat composer). */
+export const screenHorizontalInset: ViewStyle = {
+  paddingHorizontal: spacing.screenPadding,
+};
+
+/** Product card preview width:height — reference 211×329 (~2:3 portrait). */
+export const CARD_PREVIEW_ASPECT_RATIO = 211 / 329;
+
+/** Feed product card corner radius — subtle rounding. */
+export const PRODUCT_CARD_RADIUS = radius.md;
+
+/** Type scale (sp) */
+export const typography = {
+  nav: 10,
+  badge: 10,
+  meta: 11,
+  bodySm: 12,
+  body: 14,
+  section: 16,
+  title: 17,
+  priceFeed: 16,
+  priceDetail: 24,
+  hero: 20,
 };
 
 export const fonts = {
@@ -49,28 +87,24 @@ export const fonts = {
   },
 };
 
-export const amazingStyleBg = '#f5f5f5';
+export const amazingStyleBg = '#FFFFFF';
 
-/** Layered drop shadow — RN approximation of the design “amazing style”. */
-export const amazingStyleShadow: ViewStyle = {
+/** Soft card elevation */
+export const cardShadow: ViewStyle = {
   shadowColor: '#000000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.08,
-  shadowRadius: 14,
-  elevation: 4,
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 2,
 };
 
-/** Inset top highlight paired with `amazingStyle`. */
+export const amazingStyleShadow: ViewStyle = cardShadow;
+
+/** No inset highlight on flat cards */
 export const amazingStyleHighlight: ViewStyle = {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  height: 3,
-  backgroundColor: '#ffffff',
+  display: 'none',
 };
 
-/** Base amazing style surface — extend with layout, padding, or radius as needed. */
 export const amazingStyle: ViewStyle = {
   backgroundColor: amazingStyleBg,
   borderRadius: radius.amazing,
@@ -78,25 +112,28 @@ export const amazingStyle: ViewStyle = {
   ...amazingStyleShadow,
 };
 
-/** Pill-shaped amazing style (e.g. region selector). */
 export const amazingStylePill: ViewStyle = {
-  ...amazingStyle,
-  borderRadius: 60,
+  backgroundColor: colors.paper,
+  borderRadius: radius.pill,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: colors.line,
+  overflow: 'hidden',
 };
 
-/** White filter-icon chip with a soft drop shadow (home/category category row). */
+/** Category shortcut tile */
 export const filterIconTile: ViewStyle = {
   backgroundColor: colors.paper,
-  shadowColor: '#000000',
-  shadowOffset: { width: 0, height: 5 },
-  shadowOpacity: 0.06,
-  shadowRadius: 12,
-  elevation: 3,
 };
 
-/** Muted gray-brown for filter icon glyphs and labels. */
-export const filterIconColor = '#5c5349';
-export const filterIconLabelColor = '#444444';
+export const filterIconColor = colors.sub;
+export const filterIconLabelColor = colors.text;
+
+/** Search capsule — gray fill, no outline */
+export const searchBarSurface: ViewStyle = {
+  backgroundColor: colors.searchFill,
+  borderWidth: 0,
+  borderRadius: radius.pill,
+};
 
 /** Shared TextInput defaults — no focus ring / outline (especially on web). */
 export const plainTextInput: TextStyle = {

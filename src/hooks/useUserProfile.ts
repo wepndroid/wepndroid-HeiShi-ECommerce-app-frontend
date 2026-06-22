@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFocusEffect } from 'expo-router';
+import i18n from '../i18n';
 import type { AuthUserDto, UserProfileUpdateRequest } from '../api/types';
 import type { AuthUser } from '../data/auth';
 import { fetchUserProfile, updateUserProfile } from '../services/userService';
@@ -16,7 +17,7 @@ export function useUserProfile(user: AuthUser | null, authReady: boolean) {
     fetchUserProfile(user, isLoggedIn)
       .then(setProfile)
       .finally(() => setLoading(false));
-  }, [authReady, isLoggedIn, user]);
+  }, [authReady, isLoggedIn, user, i18n.language]);
 
   React.useEffect(() => {
     refresh();

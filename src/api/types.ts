@@ -53,6 +53,26 @@ export interface ListingDetailDto extends ListingSummaryDto {
   pickupMethods?: string[];
   viewCount?: number;
   favoriteCount?: number;
+  bundleMeta?: BundleMetaDto;
+}
+
+export interface BundleItemDto {
+  id: string;
+  title: string;
+  sharePrice: number;
+  separatePrice?: number;
+  imageUrl?: string;
+  imageUrls?: string[];
+  status: 'available' | 'onHold' | 'sold';
+}
+
+export interface BundleMetaDto {
+  fullPrice: number;
+  pickupDeadline?: string;
+  allowSeparateSale: boolean;
+  pickupWindow?: string;
+  totalItems: number;
+  items: BundleItemDto[];
 }
 
 export interface FeedQuery {
@@ -68,6 +88,16 @@ export interface FeedQuery {
 export interface SearchQuery extends FeedQuery {
   q?: string;
   sort?: 'relevance' | 'priceAsc' | 'priceDesc' | 'newest';
+}
+
+export interface ImageSearchResponseDto {
+  suggestedQuery: string;
+  matchCount: number;
+  items: ListingSummaryDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
 }
 
 export interface AuthUserDto {
@@ -127,7 +157,14 @@ export interface FavoriteDto {
 export interface ConversationDto {
   id: string;
   counterpart: { id: string; nickname: string; avatarUrl?: string };
-  listing?: { id: number; title: string; imageUrl?: string };
+  listing?: {
+    id: number;
+    title: string;
+    imageUrl?: string;
+    price?: number;
+    locationLabel?: string;
+    currency?: 'AUD';
+  };
   lastMessage?: { text: string; sentAt: string };
   unreadCount: number;
 }
@@ -140,12 +177,52 @@ export interface ChatMessageDto {
   sentAt: string;
 }
 
+export type NotificationCategory = 'system' | 'order' | 'follow';
+
+export interface InboxNotificationDto {
+  id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  createdAt: string;
+  unread: boolean;
+  actionType?: string;
+  actionRef?: string;
+}
+
+export interface NotificationGroupDto {
+  category: NotificationCategory;
+  unreadCount: number;
+  previewTitle: string;
+  previewBody: string;
+  lastAt?: string | null;
+}
+
 export interface UserProfileUpdateRequest {
   nickname?: string;
   bio?: string;
   city?: string;
   language?: 'en' | 'zh';
   avatarUrl?: string;
+}
+
+/** Public seller profile — excludes phone, payment, and address data. */
+export interface PublicUserProfileDto {
+  id: string;
+  nickname: string;
+  avatarUrl?: string;
+  bio?: string;
+  city?: string;
+  memberSince: string;
+  rating: number;
+  reviewCount: number;
+  listingCount: number;
+  followerCount: number;
+  phoneVerified: boolean;
+  identityVerified: boolean;
+  businessVerified: boolean;
+  wechatLinked: boolean;
+  alipayLinked: boolean;
 }
 
 export interface AddressDto {
@@ -222,11 +299,12 @@ export interface LocalServiceDto {
   currency: 'AUD';
   area: string;
   icon: 'truck' | 'broom' | 'cameraService';
+  imageUrl?: string;
   seller: { id: string; nickname: string };
 }
 
 export interface CreateListingRequest {
-  type: 'product' | 'service';
+  type: 'product' | 'service' | 'bundle';
   title: string;
   description: string;
   price: number;
@@ -236,9 +314,29 @@ export interface CreateListingRequest {
   locationLabel: string;
   imageUrls: string[];
   pickupMethods?: string[];
+  bundleItems?: { title: string; sharePrice: number; separatePrice?: number; imageUrl?: string; imageUrls?: string[] }[];
+  pickupDeadline?: string;
+  allowSeparateSale?: boolean;
+  pickupWindow?: string;
 }
 
 export interface UploadImageResponse {
   url: string;
   key: string;
+}
+
+export interface FormOptionDto {
+  key: string;
+  labelEn: string;
+  labelZh: string;
+}
+
+export interface ListingFormOptionsDto {
+  categories: FormOptionDto[];
+  conditions: FormOptionDto[];
+  pickupMethods: FormOptionDto[];
+  deliveryMethods: FormOptionDto[];
+  serviceTypes: FormOptionDto[];
+  serviceAreas: FormOptionDto[];
+  serviceTimeSlots: FormOptionDto[];
 }

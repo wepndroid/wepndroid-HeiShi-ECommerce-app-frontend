@@ -30,4 +30,9 @@ export async function setAppLanguage(lang: AppLanguage) {
   await AsyncStorage.setItem(LANGUAGE_KEY, lang);
 }
 
+/** Language code sent to the API (`Accept-Language` header). */
+export function getApiLanguage(): AppLanguage {
+  return i18n.language.startsWith('zh') ? 'zh' : 'en';
+}
+
 export default i18n;

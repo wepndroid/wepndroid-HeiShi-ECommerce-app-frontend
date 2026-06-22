@@ -34,10 +34,17 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "preweb": "powershell -ExecutionPolicy Bypass -File ./scripts/ensure-utf8.ps1 -Fix",
+    "prestart": "powershell -ExecutionPolicy Bypass -File ./scripts/ensure-utf8.ps1 -Fix",
+    "check:encoding": "powershell -ExecutionPolicy Bypass -File ./scripts/ensure-utf8.ps1",
+    "fix:encoding": "powershell -ExecutionPolicy Bypass -File ./scripts/ensure-utf8.ps1 -Fix",
     "install:ldplayer": "powershell -ExecutionPolicy Bypass -File ./scripts/install-debug-ldplayer.ps1",
     "dev:ldplayer": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-ldplayer.ps1",
+    "ldplayer:fix": "powershell -ExecutionPolicy Bypass -File ./scripts/ldplayer-fix.ps1",
+    "ldplayer:watch": "powershell -ExecutionPolicy Bypass -File ./scripts/ldplayer-watch.ps1",
     "build:apk": "powershell -ExecutionPolicy Bypass -File ./scripts/build-apk.ps1",
-    "build:apk:eas": "eas build --platform android --profile preview"
+    "build:apk:eas": "eas build --platform android --profile preview",
+    "verify:i18n-demo": "tsx scripts/i18n-demo-verify.ts"
   },
   "private": true
 }

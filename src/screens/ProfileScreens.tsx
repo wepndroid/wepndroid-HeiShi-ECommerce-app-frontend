@@ -1,28 +1,47 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
+import { useAvatarUpload } from '../hooks/useAvatarUpload';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { regionProducts } from '../hooks/useProductFilters';
-import { AppIcon, AppIconName } from '../components/AppIcon';
-import { IconButton, Logo, Notice, PillButton, ScreenScroll, SearchBar, SectionHead, TitleBar } from '../components/UI';
+import { AppIcon } from '../components/AppIcon';
+import { IconButton, Logo, PillButton, ScreenScroll, SectionHead } from '../components/UI';
 import { Banner } from '../components/ProductUI';
 import { ListCard, ShortcutGrid } from '../components/FormUI';
 import { AmazingSurface } from '../components/AmazingSurface';
-import { colors, fonts } from '../theme';
+import { profilePageBannerForLanguage } from '../assets/profileBanner';
+import { colors, fonts, cardShadow } from '../theme';
 
 export { MessagesScreen } from './MessagesScreen';
 
 export function ProfileScreen() {
-  const { t } = useTranslation();
-  const { nav, favCount, user, isLoggedIn } = useApp();
+  const { t, i18n } = useTranslation();
+  const { nav, user, isLoggedIn, authReady, toast } = useApp();
+  const { profile, save } = useUserProfile(user, authReady);
+  const { pickAndUpload, uploading } = useAvatarUpload(isLoggedIn);
 
-  const stats = [
-    { labelKey: 'screens.profile.favorites', value: String(favCount), screen: 'favorites' as const },
-    { labelKey: 'screens.profile.views', value: '13', screen: 'history' as const },
-    { labelKey: 'screens.profile.following', value: '2', screen: 'following' as const },
-    { labelKey: 'screens.profile.coupons', value: '3', screen: 'coupons' as const },
-  ];
+  const hasCustomAvatar = Boolean(profile?.avatarUrl);
+
+  const handlePickAvatar = async () => {
+    if (!isLoggedIn) {
+      nav('login');
+      return;
+    }
+    try {
+      const url = await pickAndUpload();
+      if (!url) return;
+      await save({ avatarUrl: url });
+      toast(t('toast.profileSaved'));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'permission_denied') {
+        toast(t('toast.mediaPermissionDenied'));
+      } else {
+        toast(t('toast.uploadFailed'));
+      }
+    }
+  };
 
   return (
     <ScreenScroll screenId="profile">
@@ -37,19 +56,39 @@ export function ProfileScreen() {
           </View>
         </View>
       </View>
-      <AmazingSurface style={styles.profileCard}>
+      <AmazingSurface style={styles.profileCard} preserveShadow highlight={false}>
         <View style={styles.profileTop}>
           <View style={styles.profileMain}>
-            <View style={styles.profileAvatar}>
-              <AppIcon name="person" size={34} color={colors.text} />
+            <View style={styles.profileAvatarShell}>
+              <Pressable
+                style={styles.profileAvatar}
+                onPress={() => void handlePickAvatar()}
+                disabled={uploading}
+                accessibilityRole="button"
+                accessibilityLabel={t('screens.editProfile.changeAvatar')}
+              >
+                {isLoggedIn && user && hasCustomAvatar ? (
+                  <Image
+                    source={{ uri: profile!.avatarUrl! }}
+                    style={styles.profileAvatarImage}
+                    resizeMode="cover"
+                  />
+                ) : isLoggedIn && user ? (
+                  <AppIcon name="camera" size={26} color={colors.muted} />
+                ) : (
+                  <AppIcon name="person" size={34} color={colors.text} />
+                )}
+                {isLoggedIn && uploading ? (
+                  <View style={styles.avatarOverlay}>
+                    <ActivityIndicator color={colors.brand} />
+                  </View>
+                ) : null}
+              </Pressable>
             </View>
             <View style={styles.profileInfo}>
               {isLoggedIn && user ? (
                 <>
-                  <Text style={styles.profileName}>
-                    {user.nickname}{' '}
-                    <Text style={styles.profileBadge}>{t('screens.profile.badge')}</Text>
-                  </Text>
+                  <Text style={styles.profileName}>{user.nickname}</Text>
                   <Text style={styles.profileSub}>
                     {t('screens.profile.idLineLoggedIn', { id: user.heishiId })}
                   </Text>
@@ -87,22 +126,6 @@ export function ProfileScreen() {
             </View>
           )}
         </View>
-        <View style={styles.stats}>
-          {stats.map((stat, i) => (
-            <Pressable
-              key={stat.labelKey}
-              style={[styles.stat, i < stats.length - 1 && styles.statBorder]}
-              onPress={() => nav(stat.screen)}
-            >
-              <Text style={styles.statStrong} numberOfLines={1}>
-                {stat.value}
-              </Text>
-              <Text style={styles.statSmall} numberOfLines={2}>
-                {t(stat.labelKey)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
       </AmazingSurface>
       <SectionHead
         title={t('screens.profile.myTrade')}
@@ -118,11 +141,15 @@ export function ProfileScreen() {
           { icon: 'service', label: t('screens.profile.myServices'), onPress: () => nav('myServices') },
         ]}
       />
-      <Banner
-        title={t('screens.profile.bannerTitle')}
-        subtitle={t('screens.profile.bannerSubtitle')}
-        icon="shield"
-      />
+      <View style={styles.tradesBannerSpacer}>
+        <Banner
+          variant="promo"
+          artwork
+          artworkSource={profilePageBannerForLanguage(i18n.language)}
+          title={t('screens.profile.bannerTitle')}
+          subtitle={t('screens.profile.bannerSubtitle')}
+        />
+      </View>
       <SectionHead title={t('screens.profile.tools')} />
       <ShortcutGrid
         compact
@@ -152,7 +179,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#fff1c7',
+    backgroundColor: colors.brand3,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -241,30 +268,40 @@ const styles = StyleSheet.create({
   },
   authActions: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: 8,
   },
   authBtn: {
     flex: 1,
-    paddingVertical: 10,
+  },
+  profileAvatarShell: {
+    borderRadius: 34,
+    backgroundColor: colors.paper,
+    ...cardShadow,
   },
   profileAvatar: {
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: '#ffefbd',
+    backgroundColor: colors.paper,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.72)',
   },
   profileName: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: fonts.weights.bold,
     color: colors.text,
-  },
-  profileBadge: {
-    fontSize: 10,
-    fontWeight: fonts.weights.bold,
-    backgroundColor: '#fff1d6',
-    color: '#b65d00',
   },
   profileSub: {
     marginTop: 4,
@@ -272,37 +309,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-  stats: {
-    flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-    overflow: 'hidden',
-  },
-  stat: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-  },
-  statBorder: {
-    borderRightWidth: 1,
-    borderRightColor: colors.line,
-  },
-  statStrong: {
-    fontSize: 15,
-    fontWeight: fonts.weights.bold,
-    color: colors.text,
-  },
-  statSmall: {
-    marginTop: 3,
-    color: '#777777',
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: fonts.weights.medium,
-    textAlign: 'center',
+  tradesBannerSpacer: {
+    marginTop: 20,
   },
 });

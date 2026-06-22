@@ -1,4 +1,5 @@
 import i18n from '../i18n';
+import type { FormOptionDto } from '../api/types';
 
 /** Internal sentinel values stored in region state (not for display). */
 export const ALL_AREAS = '全部区域';
@@ -134,6 +135,36 @@ export function formatCityLabel(city: RegionCity): string {
   return isZhLanguage() ? city.cn : city.name;
 }
 
+export function allCityOptions(): FormOptionDto[] {
+  const options: FormOptionDto[] = [];
+  for (const group of regionData) {
+    for (const city of group.cities) {
+      options.push({
+        key: city.name,
+        labelEn: city.name,
+        labelZh: city.cn,
+      });
+    }
+  }
+  return options;
+}
+
+export function isKnownCity(value: string): boolean {
+  return allCityOptions().some((option) => option.key === value);
+}
+
+/** Map stored profile city to a supported city key (defaults to Melbourne). */
+export function normalizeProfileCity(value: string | undefined | null): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return DEFAULT_REGION.city;
+  const exact = allCityOptions().find((option) => option.key === trimmed);
+  if (exact) return exact.key;
+  const ci = allCityOptions().find(
+    (option) => option.key.toLowerCase() === trimmed.toLowerCase(),
+  );
+  return ci?.key ?? DEFAULT_REGION.city;
+}
+
 export function formatStateHeading(state: string, stateName: string): string {
   return formatStateName(state, stateName);
 }
@@ -144,6 +175,22 @@ export function formatAreaLabel(area: string): string {
   const key = `region.areaNames.${area}`;
   const translated = i18n.t(key);
   return translated === key ? area : translated;
+}
+
+/** Localize listing location labels (may be single area or "A / B" compound). */
+export function formatLocationLabel(label: string): string {
+  if (!label) return label;
+  if (label === 'Online') return i18n.t('region.online');
+  const compoundKey = `region.areaNames.${label}`;
+  const compound = i18n.t(compoundKey);
+  if (compound !== compoundKey) return compound;
+  if (label.includes('/')) {
+    return label
+      .split('/')
+      .map((part) => formatAreaLabel(part.trim()))
+      .join(' / ');
+  }
+  return formatAreaLabel(label);
 }
 
 export function formatStateName(state: string, fallback: string): string {

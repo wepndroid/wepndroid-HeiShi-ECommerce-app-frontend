@@ -1,5 +1,6 @@
 import React from 'react';
 import type { RegionSelection } from '../data/region';
+import i18n from '../i18n';
 import { fetchFeed } from '../services/catalogService';
 import type { HomeTabKey, Product, ProductCatKey } from '../types';
 
@@ -24,7 +25,7 @@ export function useFeed(
     return () => {
       cancelled = true;
     };
-  }, [region.state, region.city, region.area, tab, categoryKey]);
+  }, [region.state, region.city, region.area, tab, categoryKey, i18n.language]);
 
   return { items, loading };
 }

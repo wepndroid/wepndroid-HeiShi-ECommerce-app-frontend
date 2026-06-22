@@ -1,4 +1,5 @@
 import { ALL_AREAS, RegionSelection } from '../data/region';
+import { resolveDemoSellerKey, sellerKeyFromUserId } from '../data/catalogDemo';
 import type {
   FeedQuery,
   ListingDetailDto,
@@ -7,7 +8,9 @@ import type {
   OrderDto,
   ConversationDto,
   ChatMessageDto,
+  BundleMetaDto,
 } from './types';
+import { parseBundleMeta } from '../data/bundle';
 import type { Product, ProductCatKey, HomeTabKey, UiOrder, UiConversation, UiChatMessage, UiListing } from '../types';
 import type { LocalService } from '../data/services';
 
@@ -23,40 +26,54 @@ export function regionToFeedQuery(
 
 /** Map backend listing DTO → UI Product model used by existing screens. */
 export function mapListingToProduct(dto: ListingSummaryDto): Product {
+  const demoSellerKey =
+    resolveDemoSellerKey(dto.id) ?? sellerKeyFromUserId(dto.seller.id) ?? dto.seller.id;
   return {
     id: dto.id,
     price: dto.price,
     catKey: dto.categoryKey as ProductCatKey,
     tagKey: dto.tagKey,
-    sellerKey: dto.seller.id,
+    sellerKey: demoSellerKey,
     seller: dto.seller.nickname,
+    sellerAvatarUrl: dto.seller.avatarUrl,
     loc: dto.locationLabel,
     height: '',
     imageUrl: dto.imageUrl,
     apiTitle: dto.title,
     apiDesc: dto.description,
     apiVisual: dto.title,
+    listingType: dto.type,
   };
 }
 
+function mapBundleMetaDto(dto?: BundleMetaDto | null) {
+  return parseBundleMeta(dto ?? null);
+}
+
 export function mapDetailDtoToProduct(dto: ListingDetailDto): Product {
+  const images = dto.images?.length ? dto.images : dto.imageUrl ? [dto.imageUrl] : [];
   return {
     ...mapListingToProduct(dto),
-    imageUrl: dto.images[0] ?? dto.imageUrl,
+    imageUrl: images[0] ?? dto.imageUrl,
+    imageUrls: images,
+    favoriteCount: dto.favoriteCount ?? 0,
+    bundleMeta: mapBundleMetaDto(dto.bundleMeta) ?? undefined,
   };
 }
 
 export function mapServiceDtoToLocalService(dto: LocalServiceDto): LocalService {
+  const demoSellerKey = resolveDemoSellerKey(dto.id) ?? sellerKeyFromUserId(dto.seller.id);
   return {
     id: dto.id,
     titleKey: '',
     priceKey: '',
     listPrice: dto.priceFrom,
-    sellerKey: dto.seller.id,
+    sellerKey: demoSellerKey ?? dto.seller.id,
     seller: dto.seller.nickname,
     descKey: '',
     area: dto.area,
     icon: dto.icon,
+    imageUrl: dto.imageUrl,
     apiTitle: dto.title,
     apiDesc: dto.description,
     apiPriceLabel: `A$${dto.priceFrom}`,
@@ -96,10 +113,16 @@ export function mapConversationDtoToUi(dto: ConversationDto): UiConversation {
   return {
     id: dto.id,
     counterpartName: dto.counterpart.nickname,
+    counterpartKey: dto.counterpart.id,
+    counterpartAvatarUrl: dto.counterpart.avatarUrl,
     lastMessage: dto.lastMessage?.text ?? '',
     timeLabel: dto.lastMessage?.sentAt ?? '',
     unreadCount: dto.unreadCount,
     listingId: dto.listing?.id,
+    listingTitle: dto.listing?.title,
+    listingImageUrl: dto.listing?.imageUrl,
+    listingPrice: dto.listing?.price,
+    listingLocation: dto.listing?.locationLabel,
   };
 }
 

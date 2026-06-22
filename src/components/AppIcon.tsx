@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { StyleProp, TextStyle } from 'react-native';
+import { colors } from '../theme';
 
 export type AppIconName =
   | 'search'
@@ -21,6 +22,7 @@ export type AppIconName =
   | 'location'
   | 'shield'
   | 'chat'
+  | 'chatBubble'
   | 'send'
   | 'upload'
   | 'box'
@@ -68,6 +70,7 @@ export type AppIconName =
   | 'check'
   | 'chevronBack'
   | 'chevronForward'
+  | 'trash'
   | 'home'
   | 'compass'
   | 'add'
@@ -106,7 +109,8 @@ const ICONS: Record<AppIconName, IconDef> = {
   location: { set: 'ion', name: 'location-outline' },
   shield: { set: 'ion', name: 'shield-checkmark-outline' },
   chat: { set: 'ion', name: 'chatbubbles-outline' },
-  send: { set: 'ion', name: 'send' },
+  chatBubble: { set: 'ion', name: 'chatbubble-outline' },
+  send: { set: 'ion', name: 'paper-plane' },
   upload: { set: 'ion', name: 'cloud-upload-outline' },
   box: { set: 'ion', name: 'cube-outline' },
   resale: { set: 'ion', name: 'repeat-outline' },
@@ -153,6 +157,7 @@ const ICONS: Record<AppIconName, IconDef> = {
   check: { set: 'ion', name: 'checkmark-circle' },
   chevronBack: { set: 'ion', name: 'chevron-back' },
   chevronForward: { set: 'ion', name: 'chevron-forward' },
+  trash: { set: 'ion', name: 'trash-outline' },
   home: { set: 'ion', name: 'home-outline' },
   compass: { set: 'ion', name: 'compass-outline' },
   add: { set: 'ion', name: 'add' },
@@ -171,7 +176,7 @@ const ICONS: Record<AppIconName, IconDef> = {
 export function AppIcon({
   name,
   size = 20,
-  color = '#151515',
+  color = colors.text,
   style,
 }: {
   name: AppIconName;

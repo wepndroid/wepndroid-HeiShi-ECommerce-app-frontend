@@ -1,14 +1,17 @@
 import { paymentsApi, userApi } from '../api';
+import { mapListingToProduct } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import type {
   AddressDto,
   AuthUserDto,
   CreditProfileDto,
   PayoutMethodDto,
+  PublicUserProfileDto,
   ReviewSummaryDto,
   UserProfileUpdateRequest,
 } from '../api/types';
 import type { AuthUser } from '../data/auth';
+import { mockPublicListingProducts, mockPublicProfile } from '../data/publicProfiles';
 import {
   addLocalAddress,
   deleteLocalAddress,
@@ -153,4 +156,27 @@ export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMeth
     return mockPayoutMethods();
   }
   return [];
+}
+
+export async function fetchPublicUserProfile(userId: string): Promise<PublicUserProfileDto> {
+  try {
+    return await userApi.getPublicProfile(userId);
+  } catch {
+    if (API_USE_MOCK_FALLBACK) {
+      const profile = mockPublicProfile(userId);
+      if (!profile) throw new Error('public_profile_not_found');
+      return profile;
+    }
+    throw new Error('public_profile_failed');
+  }
+}
+
+export async function fetchPublicUserListings(userId: string) {
+  try {
+    const result = await userApi.getPublicListings(userId, { pageSize: 50 });
+    return result.items.map(mapListingToProduct);
+  } catch {
+    if (API_USE_MOCK_FALLBACK) return mockPublicListingProducts(userId);
+    throw new Error('public_listings_failed');
+  }
 }

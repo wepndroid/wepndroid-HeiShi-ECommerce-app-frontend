@@ -1,7 +1,7 @@
 import { ProductCatKey } from '../types';
-import { productImageUrls } from './productImages';
+import { productImageUrls, productGalleryUrls } from './productImages';
 
-export const products = [
+const productsRaw = [
   {
     id: 1,
     price: 89,
@@ -106,8 +106,8 @@ export const products = [
     price: 260,
     catKey: 'beauty' as ProductCatKey,
     tagKey: 'likeNew90',
-    sellerKey: 'chloe',
-    seller: 'Chloe',
+    sellerKey: 'sunny',
+    seller: 'Sunny',
     loc: 'Glen Waverley',
     height: '' as const,
     imageUrl: productImageUrls[10],
@@ -135,6 +135,12 @@ export const products = [
     imageUrl: productImageUrls[12],
   },
 ];
+
+export const products = productsRaw.map((p) => ({
+  ...p,
+  favoriteCount: (p.id % 5) + ((p.id * 7) % 50) + 1,
+  imageUrls: productGalleryUrls(p.id),
+}));
 
 export { NO_NAV_SCREENS } from './productsNav';
 

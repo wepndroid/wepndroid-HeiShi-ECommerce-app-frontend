@@ -2,7 +2,6 @@ import React, { RefObject } from 'react';
 import {
   Animated,
   Image,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,13 +9,12 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Text, TextInput } from './typography';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NO_NAV_SCREENS } from '../data/productsNav';
 import { AmazingSurface } from './AmazingSurface';
 import { MarqueePlaceholder } from './MarqueeText';
-import { colors, fonts, radius, spacing } from '../theme';
+import { colors, fonts, radius, searchBarSurface, spacing, typography } from '../theme';
 import { useApp } from '../context/AppContext';
 import { ScreenId, TabScreenId } from '../types';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -30,45 +28,41 @@ const TAB_ITEMS: { id: TabScreenId; icon: AppIconName; labelKey: string; publish
   { id: 'profile', icon: 'personCircle', labelKey: 'nav.profile' },
 ];
 
-export function BottomNav({ blurTarget }: { blurTarget?: RefObject<View | null> }) {
+export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
   const { nav, requireAuthNav, activeTab } = useApp();
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.bottomWrap}>
-      <BlurView
-        style={styles.bottomBlur}
-        intensity={Platform.OS === 'web' ? 48 : 72}
-        tint="light"
-        blurTarget={blurTarget}
-        blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-        blurReductionFactor={4}
-      >
-        <View style={styles.bottomGlassSheen} pointerEvents="none" />
-      </BlurView>
+    <View
+      style={[
+        styles.bottomWrap,
+        {
+          height: spacing.bottomNavHeight + insets.bottom,
+          paddingBottom: insets.bottom,
+        },
+      ]}
+    >
       <View style={styles.bottomRow}>
         {TAB_ITEMS.map((item) => {
         const active = activeTab === item.id;
         if (item.publish) {
           return (
-            <Pressable key={item.id} style={styles.navItem} onPress={() => requireAuthNav(item.id)}>
-              <LinearGradient
-                colors={[colors.brand, colors.brand2]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.publishCircle}
-              >
-                <AppIcon name={item.icon} size={28} color="#ffffff" />
-              </LinearGradient>
-              <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
-                {t(item.labelKey)}
-              </Text>
+            <Pressable key={item.id} style={styles.navItemPublish} onPress={() => requireAuthNav(item.id)}>
+              <View style={styles.publishCircle}>
+                <View style={styles.publishCircleIconWrap} pointerEvents="none">
+                  <AppIcon name={item.icon} size={20} color={colors.phoneBorder} />
+                </View>
+                <Text style={styles.publishCircleLabel} numberOfLines={1}>
+                  {t(item.labelKey)}
+                </Text>
+              </View>
             </Pressable>
           );
         }
         return (
           <Pressable key={item.id} style={styles.navItem} onPress={() => nav(item.id)}>
-            <AppIcon name={item.icon} size={22} color={active ? colors.text : '#555555'} />
+            <AppIcon name={item.icon} size={22} color={active ? colors.brand2 : colors.text} />
             <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
               {t(item.labelKey)}
             </Text>
@@ -116,18 +110,21 @@ export function ScreenScroll({
   screenId,
   children,
   style,
+  contentBottomInset = 0,
 }: {
   screenId: ScreenId;
   children: React.ReactNode;
   style?: ViewStyle;
+  contentBottomInset?: number;
 }) {
   const noNav = NO_NAV_SCREENS.has(screenId);
+  const baseBottom = noNav ? spacing.screenBottomNoNav : spacing.screenBottomNav;
   return (
     <ScrollView
       style={[styles.screen, style]}
       contentContainerStyle={{
         padding: spacing.screenPadding,
-        paddingBottom: noNav ? spacing.screenBottomNoNav : spacing.screenBottomNav,
+        paddingBottom: contentBottomInset > 0 ? contentBottomInset : baseBottom,
       }}
       showsVerticalScrollIndicator={false}
     >
@@ -160,22 +157,24 @@ export function IconButton({
   label,
   onPress,
   dot,
+  active,
 }: {
   icon?: AppIconName;
   label?: string;
   onPress?: () => void;
   dot?: boolean;
+  active?: boolean;
 }) {
   return (
     <Pressable
-      style={styles.iconbtn}
+      style={[styles.iconbtn, active && styles.iconbtnActive]}
       onPress={onPress}
       accessibilityLabel={label}
     >
       {icon ? (
-        <AppIcon name={icon} size={18} color={colors.text} />
+        <AppIcon name={icon} size={18} color={active ? '#ffffff' : colors.text} />
       ) : (
-        <Text style={styles.iconbtnText}>{label}</Text>
+        <Text style={[styles.iconbtnText, active && styles.iconbtnTextActive]}>{label}</Text>
       )}
       {dot ? <View style={styles.dot} /> : null}
     </Pressable>
@@ -233,11 +232,10 @@ export function SearchBar({
   onCameraPress?: () => void;
 }) {
   const { t } = useTranslation();
-  const btnLabel = buttonLabel ?? t('common.search');
 
   const inner = (
-    <AmazingSurface style={styles.search}>
-      <AppIcon name="search" size={16} color="#777777" />
+    <View style={[searchBarSurface, styles.search]}>
+      <AppIcon name="search" size={16} color={colors.searchIcon} />
       {readonly || !onChangeText ? (
         value ? (
           <Text style={styles.searchInput} numberOfLines={1}>
@@ -256,7 +254,7 @@ export function SearchBar({
           <TextInput
             style={styles.searchInputField}
             placeholder={placeholder}
-            placeholderTextColor="#999999"
+            placeholderTextColor={colors.searchHint}
             value={value}
             onChangeText={onChangeText}
             underlineColorAndroid="transparent"
@@ -271,16 +269,16 @@ export function SearchBar({
           accessibilityRole="button"
           accessibilityLabel={t('common.a11y.searchByPhoto')}
         >
-          <AppIcon name="camera" size={18} color="#888888" />
+          <AppIcon name="camera" size={18} color={colors.searchIcon} />
         </Pressable>
       ) : null}
       <Pressable style={styles.searchBtn} onPress={onSubmit}>
-        <Text style={styles.searchBtnText}>{btnLabel}</Text>
+        <AppIcon name="search" size={16} color="#FFFFFF" />
       </Pressable>
-    </AmazingSurface>
+    </View>
   );
 
-  if (readonly || onPress) {
+  if (onPress) {
     return <Pressable onPress={onPress}>{inner}</Pressable>;
   }
   return inner;
@@ -361,59 +359,72 @@ export function ListRowIcon({ icon }: { icon: AppIconName }) {
   );
 }
 
+/** Fixed footprint so Follow / Following stay the same size when toggled. */
+export const followPillStyle: ViewStyle = {
+  minWidth: 92,
+  paddingVertical: 10,
+  paddingHorizontal: 14,
+};
+
 export function PillButton({
   label,
+  icon,
   onPress,
   variant = 'default',
   style,
   full,
+  flex,
 }: {
   label: string;
+  icon?: AppIconName;
   onPress?: () => void;
-  variant?: 'default' | 'light' | 'brand' | 'teal' | 'warn';
+  variant?: 'default' | 'light' | 'brand' | 'teal' | 'warn' | 'purchase';
   style?: ViewStyle;
   full?: boolean;
+  flex?: boolean;
 }) {
-  if (variant === 'brand') {
-    return (
-      <Pressable style={[full && { width: '100%' }, style]} onPress={onPress}>
-        <LinearGradient
-          colors={[colors.brand, colors.brand2]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.pillbtn, styles.pillbtnBrand, full && { width: '100%' }]}
-        >
-          <Text style={styles.pillbtnBrandText} numberOfLines={1}>
-            {label}
-          </Text>
-        </LinearGradient>
-      </Pressable>
-    );
-  }
+  const layoutStyle = flex ? styles.pillbtnFlex : undefined;
   const variantStyle =
-    variant === 'light'
-      ? styles.pillbtnLight
-      : variant === 'teal'
-        ? styles.pillbtnTeal
-        : variant === 'warn'
-          ? styles.pillbtnWarn
-          : styles.pillbtnDefault;
+    variant === 'brand'
+      ? styles.pillbtnBrand
+      : variant === 'light'
+        ? styles.pillbtnLight
+        : variant === 'teal'
+          ? styles.pillbtnTeal
+          : variant === 'warn'
+            ? styles.pillbtnWarn
+            : variant === 'purchase'
+              ? styles.pillbtnPurchase
+              : styles.pillbtnDefault;
   const textStyle =
-    variant === 'light'
-      ? styles.pillbtnLightText
-      : variant === 'teal'
+    variant === 'purchase'
+      ? styles.pillbtnPurchaseText
+      : variant === 'brand' || variant === 'teal'
         ? styles.pillbtnBrandText
-        : variant === 'warn'
-          ? styles.pillbtnWarnText
-          : styles.pillbtnDefaultText;
+        : variant === 'light'
+          ? styles.pillbtnLightText
+          : variant === 'warn'
+            ? styles.pillbtnWarnText
+            : styles.pillbtnDefaultText;
+  const iconColor =
+    variant === 'teal' ? colors.paper : variant === 'warn' ? colors.text : colors.text;
+
   return (
     <Pressable
-      style={[styles.pillbtn, variantStyle, full && { width: '100%' }, style]}
+      style={[
+        styles.pillbtn,
+        variantStyle,
+        icon && styles.pillbtnWithIcon,
+        layoutStyle,
+        full && { width: '100%' },
+        style,
+      ]}
       onPress={onPress}
     >
-          <Text style={textStyle} numberOfLines={1}>
-            {label}
-          </Text>
+      {icon ? <AppIcon name={icon} size={18} color={iconColor} /> : null}
+      <Text style={textStyle} numberOfLines={1}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -428,58 +439,75 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: spacing.bottomNavHeight,
     zIndex: 10,
-  },
-  bottomBlur: {
-    ...StyleSheet.absoluteFill,
-    overflow: 'hidden',
+    backgroundColor: colors.paper,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255, 255, 255, 0.55)',
+    borderTopColor: colors.line,
+    elevation: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
   },
   bottomRow: {
     flex: 1,
     flexDirection: 'row',
-  },
-  bottomGlassSheen: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255, 255, 255, 0.42)',
+    backgroundColor: colors.paper,
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 7,
-    gap: 4,
+    paddingTop: 6,
+    gap: 2,
+  },
+  navItemPublish: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 2,
+    gap: 2,
   },
   navLabel: {
-    fontSize: 10,
+    fontSize: typography.nav,
     fontWeight: fonts.weights.medium,
-    color: '#555555',
+    color: colors.text,
     textAlign: 'center',
   },
   navLabelActive: {
-    color: colors.text,
+    color: colors.brand2,
+    fontWeight: fonts.weights.bold,
   },
   publishCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.brand,
+    borderWidth: 4,
+    borderColor: colors.paper,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 4,
+    paddingHorizontal: 3,
+    marginTop: -22,
+    marginBottom: 2,
+  },
+  publishCircleIconWrap: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -16,
-    marginBottom: 2,
-    shadowColor: colors.brand2,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 11,
-    elevation: 8,
+  },
+  publishCircleLabel: {
+    fontSize: typography.nav,
+    fontWeight: fonts.weights.bold,
+    color: colors.phoneBorder,
+    textAlign: 'center',
+    zIndex: 1,
   },
   toast: {
     position: 'absolute',
     alignSelf: 'center',
-    bottom: 92,
-    backgroundColor: '#111111',
-    borderRadius: radius.pill,
+    bottom: spacing.screenBottomNav + 8,
+    backgroundColor: '#333333',
+    borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 10,
     maxWidth: '88%',
@@ -487,8 +515,8 @@ const styles = StyleSheet.create({
   },
   toastText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: fonts.weights.bold,
+    fontSize: typography.bodySm,
+    fontWeight: fonts.weights.medium,
   },
   logoWrap: {
     flexShrink: 0,
@@ -500,55 +528,56 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   iconbtn: {
-    width: 36,
-    height: 36,
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    backgroundColor: colors.paper,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 7,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  iconbtnActive: {
+    backgroundColor: colors.red,
+    borderColor: colors.red,
   },
   iconbtnText: {
-    fontSize: 17,
+    fontSize: typography.section,
     color: colors.text,
+  },
+  iconbtnTextActive: {
+    color: '#ffffff',
   },
   dot: {
     position: 'absolute',
-    right: 5,
-    top: 4,
-    width: 8,
-    height: 8,
+    right: 4,
+    top: 3,
+    width: 7,
+    height: 7,
     borderRadius: 4,
-    backgroundColor: colors.brand2,
+    backgroundColor: colors.red,
   },
   back: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#ffffff',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.paper,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 7,
-    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
   titlebar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 2,
-    marginBottom: 14,
-    minHeight: 38,
+    marginBottom: 10,
+    minHeight: 34,
     position: 'relative',
   },
   titlebarH1: {
-    fontSize: 22,
+    fontSize: typography.title,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
@@ -556,38 +585,38 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: '50%',
     transform: [{ translateX: -50 }],
-    fontSize: 20,
+    fontSize: typography.section,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
   search: {
-    height: 42,
-    borderRadius: radius.pill,
+    height: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingLeft: 13,
-    paddingRight: 6,
-    marginBottom: 12,
+    gap: 6,
+    paddingLeft: 12,
+    paddingRight: 4,
+    marginBottom: 10,
   },
   searchInputWrap: {
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.body,
     color: colors.text,
   },
   searchInputText: {
-    fontSize: 14,
+    fontSize: typography.body,
     color: colors.text,
   },
   searchInputField: {
     flex: 1,
     minWidth: 0,
-    fontSize: 14,
+    fontSize: typography.body,
     color: colors.text,
     padding: 0,
     margin: 0,
@@ -595,30 +624,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   searchPlaceholder: {
-    color: '#999999',
+    color: colors.searchHint,
+    fontSize: typography.bodySm,
+    lineHeight: 16,
   },
   searchBtn: {
+    width: 30,
     height: 30,
-    minWidth: 54,
-    borderRadius: radius.pill,
-    backgroundColor: '#111111',
+    borderRadius: 15,
+    backgroundColor: colors.phoneBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
     flexShrink: 0,
-  },
-  searchBtnText: {
-    color: '#ffffff',
-    fontWeight: fonts.weights.bold,
-    fontSize: 13,
   },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 12,
-    marginBottom: 10,
-    marginHorizontal: 2,
+    marginTop: 10,
+    marginBottom: 8,
+    marginHorizontal: 0,
     gap: 8,
   },
   sectionHeadStacked: {
@@ -629,15 +654,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: typography.section,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
   sectionSubtitle: {
-    marginTop: 3,
-    fontSize: 11,
-    lineHeight: 16,
-    color: '#999999',
+    marginTop: 2,
+    fontSize: typography.meta,
+    lineHeight: 15,
+    color: colors.muted,
     fontWeight: fonts.weights.medium,
   },
   sectionActionWrap: {
@@ -645,119 +670,137 @@ const styles = StyleSheet.create({
     maxWidth: '46%',
   },
   sectionAction: {
-    fontSize: 11,
-    color: '#999999',
+    fontSize: typography.meta,
+    color: colors.muted,
     fontWeight: fonts.weights.medium,
     textAlign: 'right',
   },
   badge: {
     alignSelf: 'flex-start',
     borderRadius: radius.pill,
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: '#fff1d6',
+    backgroundColor: '#FFF0F0',
     flexShrink: 0,
   },
   badgeText: {
-    fontSize: 9,
-    fontWeight: fonts.weights.bold,
-    color: '#b65d00',
+    fontSize: typography.badge,
+    fontWeight: fonts.weights.medium,
+    color: colors.red,
   },
   noticeTextFlex: {
     flex: 1,
     minWidth: 0,
   },
   notice: {
-    backgroundColor: '#fff3ce',
+    backgroundColor: colors.brand3,
     borderRadius: radius.md,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 8,
   },
   noticeText: {
-    color: '#7e5700',
-    fontSize: 12,
+    color: colors.text,
+    fontSize: typography.bodySm,
     fontWeight: fonts.weights.medium,
-    lineHeight: 17,
+    lineHeight: 16,
   },
   noticeBtn: {
     backgroundColor: colors.brand,
     borderRadius: radius.pill,
-    paddingHorizontal: 13,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   noticeBtnText: {
     fontWeight: fonts.weights.bold,
-    fontSize: 12,
+    fontSize: typography.bodySm,
     color: colors.text,
   },
   emptyState: {
     borderStyle: 'dashed',
-    borderColor: '#e6dfc8',
+    borderColor: colors.line,
     borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   emptyStateText: {
-    color: '#8a7a54',
-    fontSize: 13,
-    fontWeight: fonts.weights.bold,
+    color: colors.sub,
+    fontSize: typography.body,
+    fontWeight: fonts.weights.medium,
     textAlign: 'center',
   },
   listIco: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    backgroundColor: '#fff0c2',
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    backgroundColor: colors.brand3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pillbtn: {
     borderRadius: radius.pill,
-    paddingVertical: 11,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 0,
   },
   pillbtnDefault: {
-    backgroundColor: '#f4f4f4',
+    backgroundColor: colors.bg,
   },
   pillbtnDefaultText: {
     fontWeight: fonts.weights.bold,
     color: colors.text,
-    fontSize: 12,
+    fontSize: typography.bodySm,
+  },
+  pillbtnFlex: {
+    flex: 1,
+  },
+  pillbtnWithIcon: {
+    flexDirection: 'row',
+    gap: 6,
   },
   pillbtnLight: {
-    backgroundColor: '#ffffff',
-    flex: 1,
+    backgroundColor: colors.paper,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
   pillbtnLightText: {
     fontWeight: fonts.weights.bold,
     color: colors.text,
-    fontSize: 12,
+    fontSize: typography.bodySm,
   },
   pillbtnBrand: {
-    flex: 1.1,
+    backgroundColor: colors.brand,
+    borderWidth: 0,
   },
   pillbtnBrandText: {
     fontWeight: fonts.weights.bold,
-    color: '#ffffff',
-    fontSize: 12,
+    color: colors.text,
+    fontSize: typography.body,
+  },
+  pillbtnPurchase: {
+    backgroundColor: colors.red,
+    borderWidth: 0,
+  },
+  pillbtnPurchaseText: {
+    fontWeight: fonts.weights.bold,
+    color: '#FFFFFF',
+    fontSize: typography.bodySm,
   },
   pillbtnTeal: {
     backgroundColor: colors.green,
   },
   pillbtnWarn: {
-    backgroundColor: '#fff0d3',
+    backgroundColor: colors.brand3,
   },
   pillbtnWarnText: {
-    color: '#b25100',
+    color: colors.text,
     fontWeight: fonts.weights.bold,
   },
 });

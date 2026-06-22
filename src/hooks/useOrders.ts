@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFocusEffect } from 'expo-router';
+import i18n from '../i18n';
 import type { Product, OrderFilterKey, UiOrder } from '../types';
 import {
   listOrders,
@@ -25,7 +26,7 @@ export function useOrders(
     listOrders(filter, isLoggedIn, products, resolveTitle, resolveSeller)
       .then(setOrders)
       .finally(() => setLoading(false));
-  }, [authReady, filter, isLoggedIn, products, resolveTitle, resolveSeller]);
+  }, [authReady, filter, isLoggedIn, products, resolveTitle, resolveSeller, i18n.language]);
 
   React.useEffect(() => {
     refresh();

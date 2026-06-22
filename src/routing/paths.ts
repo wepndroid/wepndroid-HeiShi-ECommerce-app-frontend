@@ -11,11 +11,13 @@ export const ROUTE_PATHS = {
   category: '/category',
   publish: '/publish',
   messages: '/messages',
+  messageGroup: '/messages/group',
   profile: '/profile',
   search: '/search',
   detail: '/detail',
   order: '/order',
   uploadProduct: '/publish/product',
+  publishBundle: '/publish/bundle',
   publishService: '/publish/service',
   resale: '/resale',
   chat: '/chat',
@@ -46,6 +48,7 @@ export const ROUTE_PATHS = {
   history: '/profile/history',
   following: '/profile/following',
   coupons: '/profile/coupons',
+  sellerProfile: '/user',
 } as const satisfies Record<ScreenId, string>;
 
 const TAB_SCREENS = new Set<TabScreenId>([
@@ -60,11 +63,14 @@ const TAB_SCREENS = new Set<TabScreenId>([
 export const NO_NAV_PATH_PREFIXES = [
   '/search',
   '/detail',
+  '/user',
   '/order',
   '/publish/product',
+  '/publish/bundle',
   '/publish/service',
   '/resale',
   '/chat',
+  '/messages/group',
   '/settings',
   '/auth',
   '/login',
@@ -100,9 +106,15 @@ export function normalizePathname(pathname: string): string {
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
 }
 
-export function screenPath(screen: ScreenId, params?: { productId?: number }): string {
+export function screenPath(
+  screen: ScreenId,
+  params?: { productId?: number; sellerUserId?: string },
+): string {
   if (screen === 'detail' && params?.productId != null) {
     return `${ROUTE_PATHS.detail}/${params.productId}`;
+  }
+  if (screen === 'sellerProfile' && params?.sellerUserId) {
+    return `${ROUTE_PATHS.sellerProfile}/${encodeURIComponent(params.sellerUserId)}`;
   }
   return ROUTE_PATHS[screen];
 }
@@ -112,6 +124,14 @@ export function pathnameToScreenId(pathname: string): ScreenId {
 
   if (path.startsWith(`${ROUTE_PATHS.detail}/`)) {
     return 'detail';
+  }
+
+  if (path.startsWith(`${ROUTE_PATHS.sellerProfile}/`)) {
+    return 'sellerProfile';
+  }
+
+  if (path.startsWith(`${ROUTE_PATHS.messageGroup}/`)) {
+    return 'messageGroup';
   }
 
   for (const { path: routePath, screen } of PATH_TO_SCREEN) {
@@ -145,4 +165,17 @@ export function productIdFromPathname(pathname: string): number | null {
   if (!path.startsWith(prefix)) return null;
   const id = Number(path.slice(prefix.length).split('/')[0]);
   return Number.isFinite(id) ? id : null;
+}
+
+export function sellerUserIdFromPathname(pathname: string): string | null {
+  const path = normalizePathname(pathname);
+  const prefix = `${ROUTE_PATHS.sellerProfile}/`;
+  if (!path.startsWith(prefix)) return null;
+  const raw = path.slice(prefix.length).split('/')[0];
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }

@@ -1,13 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CreateListingRequest } from '../api/types';
 import { productImageUrls } from './productImages';
+import type { BundleMeta } from './bundle';
 import type { UiListing } from '../types';
 
 const LISTINGS_KEY = 'localListings';
 
 export interface LocalListingRecord {
   id: number;
-  type: 'product' | 'service';
+  type: 'product' | 'service' | 'bundle';
   title: string;
   description: string;
   price: number;
@@ -17,6 +18,7 @@ export interface LocalListingRecord {
   imageUrl: string;
   status: 'active' | 'draft' | 'inactive';
   sourceListingId?: number;
+  bundleMeta?: BundleMeta;
 }
 
 async function readListings(): Promise<LocalListingRecord[]> {
@@ -58,6 +60,32 @@ export async function createLocalListing(
 ): Promise<UiListing> {
   const listings = await readListings();
   const id = (Date.now() % 900_000) + 2000;
+  const bundleMeta =
+    body.type === 'bundle' && body.bundleItems?.length
+      ? {
+          fullPrice: body.price,
+          pickupDeadline: body.pickupDeadline,
+          allowSeparateSale: body.allowSeparateSale ?? true,
+          pickupWindow: body.pickupWindow,
+          totalItems: body.bundleItems.length,
+          items: body.bundleItems.map((item, index) => {
+            const photos = item.imageUrls?.length
+              ? item.imageUrls
+              : item.imageUrl
+                ? [item.imageUrl]
+                : [];
+            return {
+              id: `local-${id}-${index}`,
+              title: item.title,
+              sharePrice: item.sharePrice,
+              separatePrice: item.separatePrice,
+              imageUrls: photos,
+              imageUrl: photos[0],
+              status: 'available' as const,
+            };
+          }),
+        }
+      : undefined;
   const record: LocalListingRecord = {
     id,
     type: body.type,
@@ -68,7 +96,8 @@ export async function createLocalListing(
     tagKey: body.tagKey ?? 'lightlyUsed',
     locationLabel: body.locationLabel,
     imageUrl: body.imageUrls[0] ?? productImageUrls[1],
-    status,
+    status: body.type === 'bundle' ? 'draft' : status,
+    bundleMeta,
   };
   await writeListings([record, ...listings]);
   return mapLocalListingToUi(record);

@@ -19,24 +19,28 @@ export async function uploadListingImage(
   mimeType = 'image/jpeg',
   fileName = 'photo.jpg',
 ): Promise<string> {
+  const normalizedMime = mimeType === 'image/jpg' ? 'image/jpeg' : mimeType || 'image/jpeg';
+  const safeName = fileName?.match(/\.(jpe?g|png|webp|gif)$/i) ? fileName : `${fileName.replace(/\.\w+$/, '') || 'photo'}.jpg`;
+
   if (isLoggedIn) {
     try {
       const formData = new FormData();
       if (Platform.OS === 'web') {
         const response = await fetch(localUri);
         const blob = await response.blob();
-        formData.append('file', blob, fileName);
+        formData.append('file', blob, safeName);
       } else {
         formData.append('file', {
           uri: localUri,
-          name: fileName,
-          type: mimeType,
+          name: safeName,
+          type: normalizedMime,
         } as unknown as Blob);
       }
       const result = await listingsApi.uploadImage(formData);
       return result.url;
     } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('upload_failed');
+      // Keep the picked photo visible even if the server upload fails (offline / emulator).
+      return localUri;
     }
   }
 
@@ -68,6 +72,13 @@ export async function publishServiceListing(
   isLoggedIn: boolean,
 ): Promise<UiListing> {
   return publishListing({ ...body, type: 'service' }, isLoggedIn);
+}
+
+export async function publishBundleListing(
+  body: CreateListingRequest,
+  isLoggedIn: boolean,
+): Promise<UiListing> {
+  return publishListing({ ...body, type: 'bundle', tagKey: body.tagKey ?? 'bundleSet' }, isLoggedIn);
 }
 
 export async function createResaleDraft(

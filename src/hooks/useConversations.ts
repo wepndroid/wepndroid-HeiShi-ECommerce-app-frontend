@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFocusEffect } from 'expo-router';
+import i18n from '../i18n';
 import { listConversations } from '../services/messagesService';
 import type { UiConversation } from '../types';
 
@@ -13,7 +14,7 @@ export function useConversations(isLoggedIn: boolean, authReady: boolean) {
     listConversations(isLoggedIn)
       .then(setConversations)
       .finally(() => setLoading(false));
-  }, [authReady, isLoggedIn]);
+  }, [authReady, isLoggedIn, i18n.language]);
 
   React.useEffect(() => {
     refresh();

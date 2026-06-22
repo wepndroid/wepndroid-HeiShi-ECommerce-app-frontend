@@ -1,18 +1,23 @@
-import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from './typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { LocalService } from '../data/services';
+import { getDemoListingI18nKeys, shouldUseDemoI18n } from '../data/catalogDemo';
+import { formatLocationLabel } from '../data/region';
+import i18n from '../i18n';
 import { Product } from '../types';
+import type { LocalService } from '../data/services';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
-import { colors, fonts, radius } from '../theme';
+import { splitProductMasonryColumns } from '../utils/masonryColumns';
+import { useApp } from '../context/AppContext';
+import { colors, fonts, radius, cardShadow, CARD_PREVIEW_ASPECT_RATIO, PRODUCT_CARD_RADIUS } from '../theme';
+import { HOME_PROMO_BANNER_ASPECT, homePromoBannerForLanguage } from '../assets/homeBanner';
 import { AppIcon, AppIconName } from './AppIcon';
 import { AmazingSurface } from './AmazingSurface';
 import { Badge } from './UI';
+import { SellerAvatar } from './SellerAvatar';
 
-const CARD_PIC_HEIGHT = 132;
-const CARD_HEIGHT = 238;
 
 export function ProductCard({
   product,
@@ -21,18 +26,34 @@ export function ProductCard({
   product: ReturnType<typeof useLocalizedProducts>[number];
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
+  const { favs, toggleFavoriteById } = useApp();
+  const isFav = favs.has(product.id);
+
   return (
-    <AmazingSurface style={styles.card} onPress={onPress} preserveShadow highlight={false}>
-      <View style={styles.pic}>
-        <Image source={{ uri: product.imageUrl }} style={styles.picImage} resizeMode="cover" />
-        <View style={styles.heart}>
-          <AppIcon name="heartOutline" size={14} color={colors.text} />
-        </View>
-        <View style={styles.loc}>
+    <AmazingSurface style={styles.card} highlight={false} preserveShadow>
+      <View style={[styles.pic, { aspectRatio: CARD_PREVIEW_ASPECT_RATIO }]}>
+        <Pressable style={styles.picPress} onPress={onPress}>
+          <Image source={{ uri: product.imageUrl }} style={styles.picImage} resizeMode="cover" />
+        </Pressable>
+        <Pressable
+          style={[styles.heart, isFav && styles.heartActive]}
+          onPress={() => void toggleFavoriteById(product.id)}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={isFav ? t('common.a11y.unfavorite') : t('common.a11y.favorite')}
+        >
+          <AppIcon
+            name={isFav ? 'heart' : 'heartOutline'}
+            size={14}
+            color={isFav ? '#ffffff' : colors.text}
+          />
+        </Pressable>
+        <View style={styles.loc} pointerEvents="none">
           <Text style={styles.locText}>{product.loc}</Text>
         </View>
       </View>
-      <View style={styles.cardB}>
+      <Pressable style={styles.cardB} onPress={onPress}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {product.title}
         </Text>
@@ -40,17 +61,50 @@ export function ProductCard({
           {product.pricePrefix}
           {product.price}
         </Text>
+        <View style={styles.tagRow}>
+          <Badge text={product.tag} />
+        </View>
         <View style={styles.meta}>
-          <View style={styles.av}>
-            <Text style={styles.avText}>{product.seller.slice(0, 1)}</Text>
-          </View>
+          <SellerAvatar
+            sellerKey={product.sellerKey}
+            seller={product.seller}
+            avatarUrl={product.sellerAvatarUrl}
+            size={20}
+          />
           <Text style={styles.metaText} numberOfLines={1}>
             {product.seller}
           </Text>
-          <Badge text={product.tag} />
         </View>
-      </View>
+      </Pressable>
     </AmazingSurface>
+  );
+}
+
+function ProductMasonry({
+  products,
+  onPress,
+}: {
+  products: ReturnType<typeof useLocalizedProducts>;
+  onPress: (p: Product) => void;
+}) {
+  const { left, right } = useMemo(
+    () => splitProductMasonryColumns(products),
+    [products],
+  );
+
+  return (
+    <View style={styles.feed}>
+      <View style={styles.feedCol}>
+        {left.map((p) => (
+          <ProductCard key={p.id} product={p} onPress={() => onPress(p)} />
+        ))}
+      </View>
+      <View style={styles.feedCol}>
+        {right.map((p) => (
+          <ProductCard key={p.id} product={p} onPress={() => onPress(p)} />
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -71,23 +125,8 @@ export function ProductFeed({
       </AmazingSurface>
     );
   }
-  const left = localized.filter((_, i) => i % 2 === 0);
-  const right = localized.filter((_, i) => i % 2 === 1);
 
-  return (
-    <View style={styles.feed}>
-      <View style={styles.feedCol}>
-        {left.map((p) => (
-          <ProductCard key={p.id} product={p} onPress={() => onPress(p)} />
-        ))}
-      </View>
-      <View style={styles.feedCol}>
-        {right.map((p) => (
-          <ProductCard key={p.id} product={p} onPress={() => onPress(p)} />
-        ))}
-      </View>
-    </View>
-  );
+  return <ProductMasonry products={localized} onPress={onPress} />;
 }
 
 export function ProductGrid({
@@ -98,15 +137,9 @@ export function ProductGrid({
   onPress: (p: Product) => void;
 }) {
   const localized = useLocalizedProducts(data);
-  return (
-    <View style={styles.gridProducts}>
-      {localized.map((p) => (
-        <View key={p.id} style={styles.gridItem}>
-          <ProductCard product={p} onPress={() => onPress(p)} />
-        </View>
-      ))}
-    </View>
-  );
+  if (!localized.length) return null;
+
+  return <ProductMasonry products={localized} onPress={onPress} />;
 }
 
 export function ServiceCard({
@@ -123,21 +156,32 @@ export function ServiceCard({
     cameraService: 'cameraService',
   };
 
+  const demoKeys = shouldUseDemoI18n(i18n.language, service.id) ? getDemoListingI18nKeys(service.id) : null;
+
   return (
     <AmazingSurface style={styles.serviceCard} onPress={onPress}>
       <View style={styles.serviceRow}>
         <View style={styles.serviceImg}>
-          <AppIcon name={iconMap[service.icon]} size={28} color="#b87000" />
+          {service.imageUrl ? (
+            <Image
+              source={{ uri: service.imageUrl }}
+              style={styles.servicePhoto}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <AppIcon name={iconMap[service.icon]} size={28} color="#b87000" />
+          )}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.serviceTitle}>
-            {service.apiTitle ?? (service.titleKey ? t(service.titleKey) : '')}
+            {demoKeys ? t(demoKeys.titleKey) : service.apiTitle ?? (service.titleKey ? t(service.titleKey) : '')}
           </Text>
           <Text style={styles.serviceDesc}>
-            {service.apiDesc ?? (service.descKey ? t(service.descKey) : '')}
+            {demoKeys ? t(demoKeys.descKey) : service.apiDesc ?? (service.descKey ? t(service.descKey) : '')}
           </Text>
           <View style={styles.serviceMeta}>
-            <Text style={styles.serviceArea}>{service.area}</Text>
+            <Text style={styles.serviceArea}>{formatLocationLabel(service.area)}</Text>
             <Badge text={service.apiPriceLabel ?? (service.priceKey ? t(service.priceKey) : '')} />
           </View>
         </View>
@@ -146,29 +190,119 @@ export function ServiceCard({
   );
 }
 
+const PROMO_GRADIENT = ['#FFF59D', '#FFE60F', '#FFB415'] as const;
+
+function splitBannerHighlights(subtitle: string): string[] {
+  return subtitle
+    .split(/\s*[·•/|]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function BannerSunburst() {
+  return (
+    <View style={styles.bannerSunburst} pointerEvents="none">
+      {Array.from({ length: 14 }, (_, i) => (
+        <View
+          key={i}
+          style={[
+            styles.bannerSunRay,
+            { transform: [{ rotate: `${-78 + i * 7}deg` }] },
+          ]}
+        />
+      ))}
+      <View style={styles.bannerGlowOrb} />
+    </View>
+  );
+}
+
+function BannerHighlights({ items }: { items: string[] }) {
+  return (
+    <View style={styles.bannerChips}>
+      {items.map((item) => (
+        <View key={item} style={styles.bannerChip}>
+          <Text style={styles.bannerChipText} numberOfLines={1}>
+            {item}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function Banner({
   title,
   subtitle,
   icon = 'shoppingBags',
+  variant = 'standard',
+  artwork = false,
+  artworkSource,
 }: {
   title: string;
   subtitle: string;
   icon?: AppIconName;
+  variant?: 'standard' | 'promo';
+  artwork?: boolean;
+  /** Custom full-width banner image; defaults to home promo artwork. */
+  artworkSource?: number;
 }) {
+  const { i18n } = useTranslation();
+
+  if (variant === 'promo' && artwork) {
+    const bannerSource = artworkSource ?? homePromoBannerForLanguage(i18n.language);
+    return (
+      <View style={styles.bannerArtworkWrap}>
+        <Image
+          source={bannerSource}
+          style={styles.bannerArtwork}
+          resizeMode="cover"
+          accessibilityRole="image"
+          accessibilityLabel={title}
+        />
+      </View>
+    );
+  }
+
+  const highlights = splitBannerHighlights(subtitle);
+  const isPromo = variant === 'promo';
+
   return (
     <LinearGradient
-      colors={['#ffb347', colors.brand2]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0.5 }}
-      style={styles.banner}
+      colors={[...PROMO_GRADIENT]}
+      start={{ x: 0, y: 0.2 }}
+      end={{ x: 1, y: 0.85 }}
+      style={[styles.banner, isPromo && styles.bannerPromo, isPromo && styles.bannerPromoOverflow]}
     >
-      <View style={styles.bannerText}>
-        <Text style={styles.bannerTitle}>{title}</Text>
-        <Text style={styles.bannerSub}>{subtitle}</Text>
+      <View style={styles.bannerSunburstClip}>
+        <BannerSunburst />
       </View>
-      <View style={styles.mascot}>
-        <AppIcon name={icon} size={36} color={colors.brand2} />
+
+      <View style={[styles.bannerRow, isPromo && styles.bannerRowPromo]}>
+        <View style={styles.bannerText}>
+          <Text
+            style={[styles.bannerTitle, isPromo && styles.bannerTitlePromo]}
+            numberOfLines={2}
+          >
+            {title}
+          </Text>
+          <BannerHighlights items={highlights} />
+        </View>
+
+        <View style={styles.mascot}>
+          <AppIcon name={icon} size={isPromo ? 32 : 36} color="#FF8C00" />
+        </View>
       </View>
+
+      {isPromo ? (
+        <View style={styles.bannerBadge} pointerEvents="none">
+          <View style={styles.bannerBadgeBubble}>
+            <AppIcon name="heart" size={12} color={colors.red} />
+          </View>
+          <View style={styles.bannerBadgeBody}>
+            <AppIcon name="shield" size={22} color="#FFFFFF" />
+          </View>
+        </View>
+      ) : null}
     </LinearGradient>
   );
 }
@@ -184,31 +318,29 @@ export function OrderThumb({ imageUrl, size = 70 }: { imageUrl: string; size?: n
 const styles = StyleSheet.create({
   feed: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'flex-start',
+    gap: 8,
   },
   feedCol: {
     flex: 1,
-    paddingHorizontal: 1,
-  },
-  gridProducts: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  gridItem: {
-    width: '48%',
-    paddingHorizontal: 1,
+    minWidth: 0,
   },
   card: {
-    height: CARD_HEIGHT,
-    borderRadius: radius.md,
-    marginBottom: 10,
+    borderRadius: PRODUCT_CARD_RADIUS,
+    marginBottom: 8,
+    backgroundColor: colors.paper,
   },
   pic: {
-    height: CARD_PIC_HEIGHT,
+    width: '100%',
     position: 'relative',
     backgroundColor: '#f0f0f0',
     overflow: 'hidden',
+    borderTopLeftRadius: PRODUCT_CARD_RADIUS,
+    borderTopRightRadius: PRODUCT_CARD_RADIUS,
+  },
+  picPress: {
+    width: '100%',
+    height: '100%',
   },
   picImage: {
     position: 'absolute',
@@ -229,6 +361,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.86)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
+  },
+  heartActive: {
+    backgroundColor: colors.red,
   },
   loc: {
     position: 'absolute',
@@ -245,77 +381,71 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.medium,
   },
   cardB: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingTop: 9,
-    paddingBottom: 10,
-    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: fonts.weights.bold,
     lineHeight: 18,
-    height: 36,
+    minHeight: 36,
     color: colors.text,
   },
   price: {
     fontWeight: fonts.weights.bold,
     color: colors.red,
-    fontSize: 16,
+    fontSize: 17,
+    marginTop: 4,
+  },
+  tagRow: {
     marginTop: 6,
+    alignSelf: 'flex-start',
   },
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    marginTop: 7,
+    marginTop: 6,
     minWidth: 0,
-  },
-  av: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#f4e1c5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avText: {
-    fontSize: 11,
-    fontWeight: fonts.weights.bold,
-    color: colors.text,
   },
   metaText: {
     flex: 1,
-    color: '#888888',
+    color: colors.sub,
     fontSize: 11,
   },
   serviceCard: {
-    borderRadius: 20,
-    padding: 13,
-    marginBottom: 10,
+    borderRadius: radius.lg,
+    padding: 12,
+    marginBottom: 8,
   },
   serviceRow: {
     flexDirection: 'row',
     gap: 10,
   },
   serviceImg: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: '#fff1d6',
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
+    backgroundColor: colors.brand3,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  servicePhoto: {
+    width: '100%',
+    height: '100%',
   },
   serviceTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
   serviceDesc: {
-    marginTop: 5,
-    color: '#777777',
+    marginTop: 4,
+    color: colors.sub,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
   },
   serviceMeta: {
     flexDirection: 'row',
@@ -324,50 +454,166 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   serviceArea: {
-    color: '#888888',
+    color: colors.sub,
     fontSize: 11,
   },
   banner: {
     borderRadius: radius.lg,
-    padding: 16,
-    marginVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginVertical: 6,
+    overflow: 'hidden',
+    position: 'relative',
+    minHeight: 88,
+  },
+  bannerArtworkWrap: {
+    width: '100%',
+    aspectRatio: HOME_PROMO_BANNER_ASPECT,
+    borderRadius: radius.lg,
+    marginVertical: 6,
+    overflow: 'hidden',
+    backgroundColor: colors.brand,
+    ...cardShadow,
+  },
+  bannerArtwork: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPromo: {
+    minHeight: 128,
+    paddingBottom: 20,
+  },
+  bannerPromoOverflow: {
+    overflow: 'visible',
+  },
+  bannerSunburstClip: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    borderRadius: radius.lg,
+  },
+  bannerSunburst: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  bannerSunRay: {
+    position: 'absolute',
+    right: -24,
+    bottom: -48,
+    width: 220,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  bannerGlowOrb: {
+    position: 'absolute',
+    right: -28,
+    bottom: -36,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  bannerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    overflow: 'hidden',
+    gap: 10,
+    zIndex: 1,
+  },
+  bannerRowPromo: {
+    alignItems: 'flex-start',
   },
   bannerText: {
     flex: 1,
     minWidth: 0,
+    paddingRight: 4,
   },
   bannerTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: fonts.weights.bold,
-    color: colors.text,
-    marginBottom: 4,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    textShadowColor: 'rgba(180, 90, 0, 0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  bannerSub: {
-    fontSize: 12,
-    color: '#5c2a00',
-    lineHeight: 17,
+  bannerTitlePromo: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  bannerChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  bannerChip: {
+    backgroundColor: colors.red,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    maxWidth: '100%',
+  },
+  bannerChipText: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: fonts.weights.bold,
+    color: '#FFFFFF',
+  },
+  bannerBadge: {
+    position: 'absolute',
+    left: 18,
+    bottom: 8,
+    zIndex: 2,
+  },
+  bannerBadgeBubble: {
+    position: 'absolute',
+    top: -10,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  bannerBadgeBody: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 196, 0, 0.92)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#B86A00',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    elevation: 4,
   },
   mascot: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.75)',
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     transform: [{ rotate: '-8deg' }],
-    shadowColor: '#000000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowColor: '#B86A00',
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   orderImg: {
-    borderRadius: 15,
-    backgroundColor: '#fff1d3',
+    borderRadius: radius.md,
+    backgroundColor: colors.brand3,
     overflow: 'hidden',
   },
   orderImgPhoto: {
@@ -381,17 +627,17 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     borderStyle: 'dashed',
-    borderColor: '#e6dfc8',
+    borderColor: colors.line,
     borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   emptyStateText: {
-    color: '#8a7a54',
-    fontSize: 13,
-    fontWeight: fonts.weights.bold,
+    color: colors.sub,
+    fontSize: 14,
+    fontWeight: fonts.weights.medium,
     textAlign: 'center',
   },
 });

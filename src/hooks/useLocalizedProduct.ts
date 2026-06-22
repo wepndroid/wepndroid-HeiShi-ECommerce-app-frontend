@@ -1,5 +1,12 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  getDemoListingI18nKeys,
+  resolveDemoSellerKey,
+  sellerKeyFromUserId,
+  shouldUseDemoI18n,
+} from '../data/catalogDemo';
+import { formatLocationLabel } from '../data/region';
 import { Product } from '../types';
 
 export interface LocalizedProduct extends Product {
@@ -10,60 +17,69 @@ export interface LocalizedProduct extends Product {
   desc: string;
   pricePrefix: string;
   seller: string;
+  loc: string;
 }
 
-export function useLocalizedProduct(product: Product): LocalizedProduct {
-  const { t } = useTranslation();
+function resolveSellerLabel(product: Product, t: (key: string, opts?: { defaultValue?: string }) => string): string {
+  const sellerKey =
+    resolveDemoSellerKey(product.id) ??
+    sellerKeyFromUserId(product.sellerKey) ??
+    product.sellerKey;
+  if (sellerKey && !sellerKey.includes('-')) {
+    const fromKey = t(`sellers.${sellerKey}`, { defaultValue: '' });
+    if (fromKey) return fromKey;
+  }
+  return product.seller;
+}
+
+function localizeProduct(
+  product: Product,
+  t: (key: string, opts?: { defaultValue?: string }) => string,
+  prefix: string,
+  language: string,
+): LocalizedProduct {
   const id = product.id;
-  const sellerFromKey = product.sellerKey
-    ? t(`sellers.${product.sellerKey}`, { defaultValue: '' })
-    : '';
+  const demoKeys = shouldUseDemoI18n(language, id) ? getDemoListingI18nKeys(id) : null;
+
+  const title = demoKeys
+    ? t(demoKeys.titleKey)
+    : product.apiTitle ??
+      (product.titleKey ? t(product.titleKey) : t(`products.items.${id}.title`, { defaultValue: String(id) }));
+
+  const visual = demoKeys
+    ? t(demoKeys.visualKey)
+    : product.apiVisual ??
+      product.apiTitle ??
+      (product.visualKey ? t(product.visualKey) : t(`products.items.${id}.visual`, { defaultValue: title }));
+
+  const desc = demoKeys
+    ? t(demoKeys.descKey)
+    : product.apiDesc ??
+      (product.descKey ? t(product.descKey) : t(`products.items.${id}.desc`, { defaultValue: '' }));
+
   return {
     ...product,
-    title:
-      product.apiTitle ??
-      (product.titleKey ? t(product.titleKey) : t(`products.items.${id}.title`)),
-    visual:
-      product.apiVisual ??
-      product.apiTitle ??
-      (product.visualKey ? t(product.visualKey) : t(`products.items.${id}.visual`)),
+    title,
+    visual,
     cat: t(`categories.${product.catKey}`),
     tag: t(`tags.${product.tagKey}`),
-    desc:
-      product.apiDesc ??
-      (product.descKey ? t(product.descKey) : t(`products.items.${id}.desc`)),
-    pricePrefix: t('common.currencyPrefix'),
-    seller: sellerFromKey || product.seller,
+    desc,
+    pricePrefix: prefix,
+    seller: resolveSellerLabel(product, t),
+    loc: formatLocationLabel(product.loc),
   };
 }
 
+export function useLocalizedProduct(product: Product): LocalizedProduct {
+  const { t, i18n } = useTranslation();
+  return localizeProduct(product, t, t('common.currencyPrefix'), i18n.language);
+}
+
 export function useLocalizedProducts(products: Product[]): LocalizedProduct[] {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const prefix = t('common.currencyPrefix');
   return useMemo(
-    () =>
-      products.map((product) => {
-        const sellerFromKey = product.sellerKey
-          ? t(`sellers.${product.sellerKey}`, { defaultValue: '' })
-          : '';
-        return {
-          ...product,
-          title:
-            product.apiTitle ??
-            (product.titleKey ? t(product.titleKey) : t(`products.items.${product.id}.title`)),
-          visual:
-            product.apiVisual ??
-            product.apiTitle ??
-            (product.visualKey ? t(product.visualKey) : t(`products.items.${product.id}.visual`)),
-          cat: t(`categories.${product.catKey}`),
-          tag: t(`tags.${product.tagKey}`),
-          desc:
-            product.apiDesc ??
-            (product.descKey ? t(product.descKey) : t(`products.items.${product.id}.desc`)),
-          pricePrefix: prefix,
-          seller: sellerFromKey || product.seller,
-        };
-      }),
-    [prefix, products, t],
+    () => products.map((product) => localizeProduct(product, t, prefix, i18n.language)),
+    [i18n.language, prefix, products, t],
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { RegionSelection } from '../data/region';
+import i18n from '../i18n';
 import {
   fetchSearchSuggestions,
   searchCatalog,
@@ -7,10 +8,16 @@ import {
 } from '../services/catalogService';
 import type { Product } from '../types';
 
-export function useSearch(region: RegionSelection, query: string) {
+export function useSearch(
+  region: RegionSelection,
+  query: string,
+  imageResults: Product[] | null,
+  imageLoading: boolean,
+) {
   const [results, setResults] = React.useState<Product[]>([]);
   const [suggestions, setSuggestions] = React.useState<SearchSuggestion[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const isImageMode = imageResults != null || imageLoading;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -24,9 +31,11 @@ export function useSearch(region: RegionSelection, query: string) {
     return () => {
       cancelled = true;
     };
-  }, [region.state, region.city, region.area]);
+  }, [region.state, region.city, region.area, i18n.language]);
 
   React.useEffect(() => {
+    if (isImageMode) return undefined;
+
     let cancelled = false;
     setLoading(true);
     searchCatalog(region, query.trim())
@@ -40,7 +49,12 @@ export function useSearch(region: RegionSelection, query: string) {
     return () => {
       cancelled = true;
     };
-  }, [region.state, region.city, region.area, query]);
+  }, [region.state, region.city, region.area, query, isImageMode, i18n.language]);
 
-  return { results, suggestions, loading };
+  return {
+    results: imageResults ?? results,
+    suggestions,
+    loading: imageLoading || (isImageMode ? false : loading),
+    isImageMode,
+  };
 }

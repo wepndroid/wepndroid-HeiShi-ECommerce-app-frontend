@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import { Text } from './typography';
-import { colors, fonts } from '../theme';
+import { colors, fonts, radius } from '../theme';
 
 export function StatGrid({
   items,
@@ -32,9 +32,9 @@ export function StatGrid({
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    borderWidth: 1,
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
     overflow: 'hidden',
   },
@@ -55,8 +55,8 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   label: {
-    marginTop: 3,
-    color: '#777777',
+    marginTop: 2,
+    color: colors.sub,
     fontSize: 10,
     lineHeight: 13,
     fontWeight: fonts.weights.medium,

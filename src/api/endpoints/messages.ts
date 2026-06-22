@@ -1,5 +1,12 @@
 import { apiRequest } from '../client';
-import type { ChatMessageDto, ConversationDto, Paginated } from '../types';
+import type {
+  ChatMessageDto,
+  ConversationDto,
+  InboxNotificationDto,
+  NotificationCategory,
+  NotificationGroupDto,
+  Paginated,
+} from '../types';
 
 export const messagesApi = {
   /** GET /conversations */
@@ -33,5 +40,27 @@ export const messagesApi = {
       '/notifications/system',
       { query: params },
     );
+  },
+
+  /** GET /notifications/groups */
+  listNotificationGroups() {
+    return apiRequest<NotificationGroupDto[]>('/notifications/groups');
+  },
+
+  /** GET /notifications/groups/:category */
+  listGroupNotifications(category: NotificationCategory, params?: { page?: number; pageSize?: number }) {
+    return apiRequest<Paginated<InboxNotificationDto>>(`/notifications/groups/${category}`, {
+      query: params,
+    });
+  },
+
+  /** POST /notifications/groups/:category/mark-read */
+  markGroupRead(category: NotificationCategory) {
+    return apiRequest<void>(`/notifications/groups/${category}/mark-read`, { method: 'POST' });
+  },
+
+  /** DELETE /notifications/:id */
+  deleteNotification(notificationId: string) {
+    return apiRequest<void>(`/notifications/${notificationId}`, { method: 'DELETE' });
   },
 };
