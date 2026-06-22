@@ -7,10 +7,10 @@ import { useConversations } from '../hooks/useConversations';
 import { useNotificationGroups } from '../hooks/useNotificationGroups';
 import { openMessageGroup } from './MessageGroupScreen';
 import { AppIcon } from '../components/AppIcon';
-import { IconButton, Notice, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
+import { IconButton, EmptyHint, Notice, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
 import { SellerAvatar } from '../components/SellerAvatar';
-import { colors, fonts } from '../theme';
+import { colors, fonts, iconTokens } from '../theme';
 import { formatMessageTimeLabel } from '../utils/formatMessageTimeLabel';
 
 const GROUP_TITLE_KEYS = {
@@ -70,7 +70,7 @@ export function MessagesScreen() {
         onChangeText={setQuery}
       />
       {!hasResults && normalizedQuery ? (
-        <Text style={styles.emptySearch}>{t('screens.messages.noSearchResults')}</Text>
+        <EmptyHint text={t('screens.messages.noSearchResults')} />
       ) : null}
       {filteredGroups.length ? (
       <ListCard>
@@ -81,7 +81,7 @@ export function MessagesScreen() {
             onPress={() => openMessageGroup(row.category)}
           >
             <View style={styles.messageAvatar}>
-              <AppIcon name={row.icon} size={22} color="#b87000" />
+              <AppIcon name={row.icon} size={iconTokens.sizes.lg} color={iconTokens.accent} />
               {row.unreadCount > 0 ? (
                 <View style={styles.unread}>
                   <Text style={styles.unreadText}>{row.unreadCount}</Text>
@@ -225,11 +225,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted,
     marginTop: 2,
-  },
-  emptySearch: {
-    marginBottom: 12,
-    fontSize: 13,
-    color: colors.muted,
-    textAlign: 'center',
   },
 });

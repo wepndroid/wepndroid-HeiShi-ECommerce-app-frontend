@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Text, TextInput } from '../components/typography';
+import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { AuthErrorKey } from '../data/auth';
-import { DetailCard, FormCard } from '../components/FormUI';
+import { DetailCard, FieldInputStacked, FormCard } from '../components/FormUI';
 import { BackButton, Logo, Notice, PillButton, ScreenScroll, TitleBar } from '../components/UI';
-import { colors, fonts, radius } from '../theme';
-import { filterNumericInput, numericKeyboardType, NumericInputKind } from '../utils/numericInput';
+import { colors, fonts } from '../theme';
+import { NumericInputKind } from '../utils/numericInput';
 
 function AuthField({
   label,
@@ -30,35 +30,18 @@ function AuthField({
   numericKind?: NumericInputKind;
   onInvalidInput?: () => void;
 }) {
-  const resolvedKeyboardType = numericKind ? numericKeyboardType(numericKind) : keyboardType;
-
-  const handleChangeText = (text: string) => {
-    if (!numericKind) {
-      onChangeText(text);
-      return;
-    }
-    const { value: filtered, rejected } = filterNumericInput(text, numericKind);
-    if (rejected) {
-      onInvalidInput?.();
-    }
-    onChangeText(filtered);
-  };
-
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={handleChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#999999"
-        secureTextEntry={secureTextEntry}
-        keyboardType={resolvedKeyboardType}
-        autoCapitalize={autoCapitalize}
-        autoCorrect={false}
-      />
-    </View>
+    <FieldInputStacked
+      label={label}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      secureTextEntry={secureTextEntry}
+      keyboardType={keyboardType}
+      autoCapitalize={autoCapitalize}
+      numericKind={numericKind}
+      onInvalidInput={onInvalidInput}
+    />
   );
 }
 
@@ -216,25 +199,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#777777',
     textAlign: 'center',
-  },
-  field: {
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: fonts.weights.medium,
-    color: colors.text,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    backgroundColor: colors.paper,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.text,
   },
   linkRow: {
     alignItems: 'center',

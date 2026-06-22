@@ -11,11 +11,12 @@ import {
   getRemainingBundlePriceFromMeta,
   sumBundleShares,
 } from '../data/bundle';
+import { formControlStyles } from './FormUI';
 import { AmazingSurface } from './AmazingSurface';
 import { AppIcon } from './AppIcon';
 import { PhotoUploadGrid } from './PhotoUploadGrid';
 import { Badge } from './UI';
-import { colors, fonts, radius } from '../theme';
+import { colors, fonts, formControls, radius } from '../theme';
 import { filterNumericInput, numericKeyboardType } from '../utils/numericInput';
 import { FORM_CARD_ITEM_PHOTO_INSET } from '../utils/photoGridSizing';
 
@@ -81,51 +82,55 @@ export function BundleLineItemsEditor({
             horizontalInset={FORM_CARD_ITEM_PHOTO_INSET}
             compact
           />
-          <TextInput
-            style={styles.itemInput}
-            value={item.title}
-            onChangeText={(title) => updateItem(item.id, { title })}
-            placeholder={t('screens.publishBundle.itemTitlePlaceholder')}
-            placeholderTextColor={colors.muted}
-          />
+          <View style={formControlStyles.box}>
+            <TextInput
+              style={formControlStyles.input}
+              value={item.title}
+              onChangeText={(title) => updateItem(item.id, { title })}
+              placeholder={t('screens.publishBundle.itemTitlePlaceholder')}
+              placeholderTextColor={formControls.placeholderColor}
+            />
+          </View>
           <View style={styles.priceRow}>
             <View style={styles.priceField}>
               <Text style={styles.priceLabel}>{t('screens.publishBundle.sharePrice')}</Text>
-              <TextInput
-                style={styles.priceInput}
-                value={item.sharePrice ? String(item.sharePrice) : ''}
-                onChangeText={(raw) => {
-                  const next = filterNumericInput(raw, 'decimal');
-                  if (next === null) {
-                    onInvalidNumber?.();
-                    return;
-                  }
-                  updateItem(item.id, { sharePrice: next ? Number.parseFloat(next) : 0 });
-                }}
-                keyboardType={numericKeyboardType('decimal')}
-                placeholder="0"
-                placeholderTextColor={colors.muted}
-              />
+              <View style={formControlStyles.box}>
+                <TextInput
+                  style={formControlStyles.input}
+                  value={item.sharePrice ? String(item.sharePrice) : ''}
+                  onChangeText={(raw) => {
+                    const { value: filtered, rejected } = filterNumericInput(raw, 'decimal');
+                    if (rejected) {
+                      onInvalidNumber?.();
+                    }
+                    updateItem(item.id, { sharePrice: filtered ? Number.parseFloat(filtered) : 0 });
+                  }}
+                  keyboardType={numericKeyboardType('decimal')}
+                  placeholder="0"
+                  placeholderTextColor={formControls.placeholderColor}
+                />
+              </View>
             </View>
             <View style={styles.priceField}>
               <Text style={styles.priceLabel}>{t('screens.publishBundle.separatePrice')}</Text>
-              <TextInput
-                style={styles.priceInput}
-                value={item.separatePrice != null ? String(item.separatePrice) : ''}
-                onChangeText={(raw) => {
-                  const next = filterNumericInput(raw, 'decimal');
-                  if (next === null) {
-                    onInvalidNumber?.();
-                    return;
-                  }
-                  updateItem(item.id, {
-                    separatePrice: next ? Number.parseFloat(next) : undefined,
-                  });
-                }}
-                keyboardType={numericKeyboardType('decimal')}
-                placeholder={t('screens.publishBundle.separateOptional')}
-                placeholderTextColor={colors.muted}
-              />
+              <View style={formControlStyles.box}>
+                <TextInput
+                  style={formControlStyles.input}
+                  value={item.separatePrice != null ? String(item.separatePrice) : ''}
+                  onChangeText={(raw) => {
+                    const { value: filtered, rejected } = filterNumericInput(raw, 'decimal');
+                    if (rejected) {
+                      onInvalidNumber?.();
+                    }
+                    updateItem(item.id, {
+                      separatePrice: filtered ? Number.parseFloat(filtered) : undefined,
+                    });
+                  }}
+                  keyboardType={numericKeyboardType('decimal')}
+                  placeholder={t('screens.publishBundle.separateOptional')}
+                  placeholderTextColor={formControls.placeholderColor}
+                />
+              </View>
             </View>
           </View>
         </AmazingSurface>
@@ -257,16 +262,6 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontWeight: fonts.weights.medium,
   },
-  itemInput: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.text,
-    backgroundColor: colors.paper,
-  },
   priceRow: {
     flexDirection: 'row',
     gap: 10,
@@ -279,16 +274,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.sub,
     fontWeight: fonts.weights.medium,
-  },
-  priceInput: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.text,
-    backgroundColor: colors.paper,
   },
   addBtn: {
     flexDirection: 'row',

@@ -19,6 +19,7 @@ import type { VerificationStatus } from '../services/userService';
 import {
   Chevron,
   DetailCard,
+  FieldInputStacked,
   FieldRow,
   FieldSelectRow,
   FormCard,
@@ -32,6 +33,7 @@ import {
 import { allCityOptions, normalizeProfileCity } from '../data/region';
 import {
   IconButton,
+  EmptyHint,
   Notice,
   PillButton,
   ScreenScroll,
@@ -459,26 +461,19 @@ export function EditProfileScreen() {
         </Pressable>
       </DetailCard>
       <FormCard>
-        <View style={styles.editField}>
-          <Text style={styles.editLabel}>{t('common.fields.nickname')}</Text>
-          <TextInput
-            style={styles.editInput}
-            value={nickname}
-            onChangeText={setNickname}
-            placeholder={t('common.fields.nickname')}
-            placeholderTextColor="#999999"
-          />
-        </View>
-        <View style={styles.editField}>
-          <Text style={styles.editLabel}>{t('common.fields.bio')}</Text>
-          <TextInput
-            style={styles.editInput}
-            value={bio}
-            onChangeText={setBio}
-            placeholder={t('screens.editProfile.bioSample')}
-            placeholderTextColor="#999999"
-          />
-        </View>
+        <FieldInputStacked
+          label={t('common.fields.nickname')}
+          value={nickname}
+          onChangeText={setNickname}
+          placeholder={t('common.fields.nickname')}
+        />
+        <FieldInputStacked
+          label={t('common.fields.bio')}
+          value={bio}
+          onChangeText={setBio}
+          placeholder={t('screens.editProfile.bioSample')}
+          multiline
+        />
         <FieldSelectRow
           stacked
           label={t('common.fields.city')}
@@ -778,7 +773,7 @@ export function HelpScreen() {
         onChangeText={setQuery}
       />
       {!filteredFaqs.length && normalizedQuery ? (
-        <Text style={styles.emptySearch}>{t('screens.help.noSearchResults')}</Text>
+        <EmptyHint text={t('screens.help.noSearchResults')} />
       ) : null}
       <ListCard>
         {filteredFaqs.map((faq, index) => (
@@ -1225,30 +1220,5 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#777777',
     fontSize: 13,
-  },
-  editField: {
-    marginBottom: 14,
-  },
-  editLabel: {
-    fontWeight: fonts.weights.bold,
-    color: colors.text,
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  editInput: {
-    borderWidth: 1,
-    borderColor: '#ececec',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: colors.text,
-    fontSize: 14,
-    backgroundColor: '#fafafa',
-  },
-  emptySearch: {
-    marginBottom: 12,
-    fontSize: 13,
-    color: colors.muted,
-    textAlign: 'center',
   },
 });

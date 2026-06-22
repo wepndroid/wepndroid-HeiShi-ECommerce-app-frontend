@@ -4,7 +4,7 @@ import { Text, TextInput } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AmazingSurface } from './AmazingSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts, radius, spacing, cardShadow } from '../theme';
+import { colors, fonts, formControls, iconTokens, radius, spacing, cardShadow } from '../theme';
 import { AppIcon, AppIconName } from './AppIcon';
 import type { FormOptionDto } from '../api/types';
 import { formOptionLabel } from '../utils/formOptionLabel';
@@ -29,11 +29,15 @@ export function FieldRow({
     <View style={styles.field}>
       {icon ? (
         <View style={styles.ficonWrap}>
-          <AppIcon name={icon} size={18} color="#f2a400" />
+          <AppIcon name={icon} size={18} color={formControls.iconColor} />
         </View>
       ) : null}
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={[formControlStyles.box, formControlStyles.boxFlex]}>
+        <Text style={styles.controlValue}>{value}</Text>
+      </View>
       {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
     </View>
   );
@@ -80,20 +84,30 @@ export function FieldInputRow({
     <View style={[styles.field, multiline && styles.fieldMultiline]}>
       {icon ? (
         <View style={[styles.ficonWrap, multiline && styles.ficonWrapTop]}>
-          <AppIcon name={icon} size={18} color="#f2a400" />
+          <AppIcon name={icon} size={18} color={formControls.iconColor} />
         </View>
       ) : null}
-      <Text style={[styles.label, multiline && styles.labelMultiline]}>{label}</Text>
-      <TextInput
-        style={[styles.input, multiline && styles.inputMultiline]}
-        value={value}
-        onChangeText={handleChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#999999"
-        multiline={multiline}
-        keyboardType={resolvedKeyboardType}
-        selectionColor={colors.brand2}
-      />
+      <Text style={[styles.label, multiline && styles.labelMultiline]} numberOfLines={1}>
+        {label}
+      </Text>
+      <View
+        style={[
+          formControlStyles.box,
+          formControlStyles.boxFlex,
+          multiline && formControlStyles.boxMultiline,
+        ]}
+      >
+        <TextInput
+          style={[formControlStyles.input, multiline && formControlStyles.inputMultiline]}
+          value={value}
+          onChangeText={handleChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={formControls.placeholderColor}
+          multiline={multiline}
+          keyboardType={resolvedKeyboardType}
+          selectionColor={colors.brand2}
+        />
+      </View>
       {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
     </View>
   );
@@ -163,17 +177,17 @@ export function FieldSelectRow({
         <View style={styles.stackedField}>
           <Text style={styles.stackedLabel}>{label}</Text>
           <Pressable
-            style={styles.stackedSelect}
+            style={[formControlStyles.box, formControlStyles.boxRow]}
             onPress={() => !loading && setOpen(true)}
             accessibilityRole="button"
           >
             <Text
-              style={[styles.stackedSelectText, !selected && styles.selectPlaceholder]}
+              style={[formControlStyles.selectText, !selected && styles.selectPlaceholder]}
               numberOfLines={1}
             >
               {display}
             </Text>
-            <AppIcon name="chevronForward" size={16} color="#bbbbbb" />
+            <AppIcon name="chevronForward" size={16} color={formControls.chevronColor} />
           </Pressable>
         </View>
         {pickerModal}
@@ -186,17 +200,21 @@ export function FieldSelectRow({
       <Pressable style={styles.field} onPress={() => !loading && setOpen(true)}>
         {icon ? (
           <View style={styles.ficonWrap}>
-            <AppIcon name={icon} size={18} color="#f2a400" />
+            <AppIcon name={icon} size={18} color={formControls.iconColor} />
           </View>
         ) : null}
-        <Text style={styles.label}>{label}</Text>
-        <Text
-          style={[styles.selectValue, !selected && styles.selectPlaceholder]}
-          numberOfLines={1}
-        >
-          {display}
-        </Text>
-        <AppIcon name="chevronForward" size={16} color="#bbbbbb" />
+        <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
+        <View style={[formControlStyles.box, formControlStyles.boxFlex, formControlStyles.boxRow]}>
+          <Text
+            style={[formControlStyles.selectText, !selected && styles.selectPlaceholder]}
+            numberOfLines={1}
+          >
+            {display}
+          </Text>
+          <AppIcon name="chevronForward" size={16} color={formControls.chevronColor} />
+        </View>
       </Pressable>
       {pickerModal}
     </>
@@ -231,13 +249,72 @@ export function ListRow({
 export function ListIcon({ name }: { name: AppIconName }) {
   return (
     <View style={styles.ico}>
-      <AppIcon name={name} size={16} color="#b87000" />
+      <AppIcon name={name} size={iconTokens.sizes.sm} color={iconTokens.accent} />
     </View>
   );
 }
 
 export function Chevron() {
-  return <AppIcon name="chevronForward" size={18} color="#bbbbbb" />;
+  return <AppIcon name="chevronForward" size={18} color={formControls.chevronColor} />;
+}
+
+export function FieldInputStacked({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  secureTextEntry,
+  keyboardType,
+  autoCapitalize,
+  numericKind,
+  onInvalidInput,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  secureTextEntry?: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+  numericKind?: NumericInputKind;
+  onInvalidInput?: () => void;
+}) {
+  const resolvedKeyboardType = numericKind ? numericKeyboardType(numericKind) : keyboardType;
+
+  const handleChangeText = (text: string) => {
+    if (!numericKind) {
+      onChangeText(text);
+      return;
+    }
+    const { value: filtered, rejected } = filterNumericInput(text, numericKind);
+    if (rejected) {
+      onInvalidInput?.();
+    }
+    onChangeText(filtered);
+  };
+
+  return (
+    <View style={styles.stackedField}>
+      <Text style={styles.stackedLabel}>{label}</Text>
+      <View style={[formControlStyles.box, multiline && formControlStyles.boxMultiline]}>
+        <TextInput
+          style={[formControlStyles.input, multiline && formControlStyles.inputMultiline]}
+          value={value}
+          onChangeText={handleChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={formControls.placeholderColor}
+          multiline={multiline}
+          secureTextEntry={secureTextEntry}
+          keyboardType={resolvedKeyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          selectionColor={colors.brand2}
+        />
+      </View>
+    </View>
+  );
 }
 
 export function DetailCard({ children }: { children: React.ReactNode }) {
@@ -409,39 +486,167 @@ export function Switch({ on, onToggle }: { on?: boolean; onToggle?: () => void }
   return track;
 }
 
+export function FormSection({
+  title,
+  subtitle,
+  children,
+  first,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  first?: boolean;
+}) {
+  return (
+    <View style={[styles.formSection, !first && styles.formSectionSpaced]}>
+      <Text style={styles.formSectionTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.formSectionSub}>{subtitle}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
+export function FormSwitchRow({
+  title,
+  hint,
+  on,
+  onToggle,
+}: {
+  title: string;
+  hint?: string;
+  on?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <View style={styles.formSwitchRow}>
+      <View style={styles.formSwitchCopy}>
+        <Text style={styles.formSwitchTitle}>{title}</Text>
+        {hint ? <Text style={styles.formSwitchHint}>{hint}</Text> : null}
+      </View>
+      <Switch on={on} onToggle={onToggle} />
+    </View>
+  );
+}
+
 export function SettingSectionTitle({ title }: { title: string }) {
   return <Text style={styles.settingSectionTitle}>{title}</Text>;
 }
 
+/** Shared bordered control shell for inputs and selects (also used in bundle publish). */
+export const formControlStyles = StyleSheet.create({
+  box: {
+    minHeight: formControls.controlMinHeight,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: formControls.borderColor,
+    borderRadius: formControls.radius,
+    backgroundColor: formControls.fill,
+    paddingHorizontal: formControls.controlPaddingH,
+    justifyContent: 'center',
+  },
+  boxFlex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  boxMultiline: {
+    minHeight: 56,
+  },
+  boxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  input: {
+    fontSize: formControls.fontSize,
+    color: colors.text,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+  },
+  inputMultiline: {
+    minHeight: 56,
+    textAlignVertical: 'top',
+  },
+  selectText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: formControls.fontSize,
+    color: colors.text,
+  },
+});
+
 const styles = StyleSheet.create({
   formCard: {
     borderRadius: radius.lg,
-    padding: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     marginBottom: 12,
+  },
+  formSection: {
+    marginBottom: 0,
+  },
+  formSectionSpaced: {
+    marginTop: 18,
+    paddingTop: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
+  formSectionTitle: {
+    fontSize: 15,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  formSectionSub: {
+    fontSize: 12,
+    color: colors.sub,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  formSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: formControls.rowPaddingVertical,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.line,
+  },
+  formSwitchCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  formSwitchTitle: {
+    fontSize: formControls.labelFontSize,
+    fontWeight: fonts.weights.medium,
+    color: colors.text,
+  },
+  formSwitchHint: {
+    fontSize: 11,
+    color: colors.sub,
+    lineHeight: 15,
   },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderBottomWidth: 1,
+    gap: formControls.rowGap,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
-    paddingVertical: 13,
+    paddingVertical: formControls.rowPaddingVertical,
   },
   ficonWrap: {
-    width: 22,
+    width: formControls.iconWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    width: 72,
+    width: formControls.labelWidth,
+    flexShrink: 0,
     fontWeight: fonts.weights.bold,
-    fontSize: 13,
+    fontSize: formControls.labelFontSize,
     color: colors.text,
   },
-  value: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
+  controlValue: {
+    fontSize: formControls.fontSize,
     color: colors.text,
   },
   fieldMultiline: {
@@ -454,33 +659,12 @@ const styles = StyleSheet.create({
   labelMultiline: {
     marginTop: 2,
   },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    color: colors.text,
-    paddingVertical: 0,
-    paddingHorizontal: 8,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-  },
-  inputMultiline: {
-    minHeight: 56,
-    textAlignVertical: 'top',
-    paddingTop: 2,
-  },
   suffix: {
     color: colors.text,
-    fontSize: 14,
-  },
-  selectValue: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    color: colors.text,
+    fontSize: formControls.fontSize,
   },
   selectPlaceholder: {
-    color: colors.placeholder,
+    color: formControls.placeholderColor,
   },
   stackedField: {
     marginBottom: 14,
@@ -488,25 +672,8 @@ const styles = StyleSheet.create({
   stackedLabel: {
     fontWeight: fonts.weights.bold,
     color: colors.text,
-    fontSize: 13,
+    fontSize: formControls.labelFontSize,
     marginBottom: 6,
-  },
-  stackedSelect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ececec',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#fafafa',
-    gap: 8,
-  },
-  stackedSelectText: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 14,
-    color: colors.text,
   },
   sheetBackdrop: {
     flex: 1,
@@ -544,7 +711,7 @@ const styles = StyleSheet.create({
   },
   sheetOptionText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: formControls.fontSize,
     color: colors.text,
   },
   sheetOptionTextActive: {

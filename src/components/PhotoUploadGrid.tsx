@@ -70,7 +70,9 @@ export function PhotoUploadGrid({
             <>
               <AppIcon name="camera" size={compact ? 16 : 18} color={colors.sub} />
               <Text style={[styles.addLabel, compact && styles.addLabelCompact]}>
-                {t('screens.publish.uploadBtn')}
+                {imageUrls.length > 0
+                  ? t('screens.publish.addMorePhotos')
+                  : t('screens.publish.tapToUpload')}
               </Text>
             </>
           )}
@@ -110,18 +112,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtn: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.line,
-    backgroundColor: colors.bg,
+    borderColor: colors.brand2,
+    backgroundColor: colors.brand3,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 4,
   },
   addLabel: {
-    fontSize: 9,
-    color: colors.sub,
-    fontWeight: fonts.weights.medium,
+    fontSize: 10,
+    color: colors.text,
+    fontWeight: fonts.weights.bold,
     textAlign: 'center',
   },
   addLabelCompact: {

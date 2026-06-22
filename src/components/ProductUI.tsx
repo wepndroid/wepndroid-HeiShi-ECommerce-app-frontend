@@ -11,7 +11,7 @@ import type { LocalService } from '../data/services';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { splitProductMasonryColumns } from '../utils/masonryColumns';
 import { useApp } from '../context/AppContext';
-import { colors, fonts, radius, cardShadow, CARD_PREVIEW_ASPECT_RATIO, PRODUCT_CARD_RADIUS } from '../theme';
+import { colors, fonts, productCardTokens, radius, cardShadow, CARD_PREVIEW_ASPECT_RATIO, PRODUCT_CARD_RADIUS } from '../theme';
 import { HOME_PROMO_BANNER_ASPECT, homePromoBannerForLanguage } from '../assets/homeBanner';
 import { AppIcon, AppIconName } from './AppIcon';
 import { AmazingSurface } from './AmazingSurface';
@@ -62,14 +62,14 @@ export function ProductCard({
           {product.price}
         </Text>
         <View style={styles.tagRow}>
-          <Badge text={product.tag} />
+          <Badge text={product.tag} compact />
         </View>
         <View style={styles.meta}>
           <SellerAvatar
             sellerKey={product.sellerKey}
             seller={product.seller}
             avatarUrl={product.sellerAvatarUrl}
-            size={20}
+            size={18}
           />
           <Text style={styles.metaText} numberOfLines={1}>
             {product.seller}
@@ -377,42 +377,42 @@ const styles = StyleSheet.create({
   },
   locText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: productCardTokens.locSize,
     fontWeight: fonts.weights.medium,
   },
   cardB: {
     paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 7,
+    paddingBottom: 7,
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: productCardTokens.titleSize,
     fontWeight: fonts.weights.bold,
-    lineHeight: 18,
-    minHeight: 36,
+    lineHeight: productCardTokens.titleLineHeight,
+    minHeight: productCardTokens.titleLineHeight * 2,
     color: colors.text,
   },
   price: {
     fontWeight: fonts.weights.bold,
     color: colors.red,
-    fontSize: 17,
-    marginTop: 4,
+    fontSize: productCardTokens.priceSize,
+    marginTop: 3,
   },
   tagRow: {
-    marginTop: 6,
+    marginTop: 5,
     alignSelf: 'flex-start',
   },
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
+    gap: 4,
+    marginTop: 5,
     minWidth: 0,
   },
   metaText: {
     flex: 1,
     color: colors.sub,
-    fontSize: 11,
+    fontSize: productCardTokens.metaSize,
   },
   serviceCard: {
     borderRadius: radius.lg,

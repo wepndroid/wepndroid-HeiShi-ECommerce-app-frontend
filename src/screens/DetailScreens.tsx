@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import { ConfirmPaymentButton } from '../components/ConfirmPaymentButton';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +29,7 @@ import { resolveProductImages } from '../utils/productImages';
 import {
   Badge,
   IconButton,
+  LoadingState,
   PillButton,
   followPillStyle,
   ScreenScroll,
@@ -41,7 +42,7 @@ import { usePhotoSearch } from '../hooks/usePhotoSearch';
 import { demoBundleMeta } from '../data/bundle';
 import { BUNDLE_DETAIL_ID } from '../data/detailProducts';
 import { BundleDetailSection } from '../components/BundleUI';
-import { colors, fonts, radius } from '../theme';
+import { colors, fonts, iconTokens, radius } from '../theme';
 
 export function SearchScreen() {
   const { t } = useTranslation();
@@ -126,10 +127,7 @@ export function SearchScreen() {
         action={t('common.tapForDetails')}
       />
       {loading ? (
-        <View style={styles.loadingRow}>
-          <ActivityIndicator color={colors.text} />
-          <Text style={styles.loadingText}>{t('screens.search.searching')}</Text>
-        </View>
+        <LoadingState text={t('screens.search.searching')} />
       ) : (
         <ProductGrid data={results} onPress={openDetail} />
       )}
@@ -371,7 +369,7 @@ export function OrderScreen() {
         <ListRow
           left={
             <View style={styles.listLeft}>
-              <AppIcon name="location" size={16} color="#b87000" />
+              <AppIcon name="location" size={iconTokens.sizes.sm} color={iconTokens.accent} />
               <View>
                 <Text style={styles.listMain}>{t('screens.order.delivery')}</Text>
                 <Text style={styles.listSub}>{deliveryLabel || t('common.placeholders.selectOption')}</Text>
@@ -384,7 +382,7 @@ export function OrderScreen() {
         <ListRow
           left={
             <View style={styles.listLeft}>
-              <AppIcon name="shield" size={16} color="#b87000" />
+              <AppIcon name="shield" size={iconTokens.sizes.sm} color={iconTokens.accent} />
               <View>
                 <Text style={styles.listMain}>{t('screens.order.escrow')}</Text>
                 <Text style={styles.listSub}>{t('screens.order.escrowSub')}</Text>
@@ -396,7 +394,7 @@ export function OrderScreen() {
         <ListRow
           left={
             <View style={styles.listLeft}>
-              <AppIcon name="pay" size={16} color="#b87000" />
+              <AppIcon name="pay" size={iconTokens.sizes.sm} color={iconTokens.accent} />
               <View>
                 <Text style={styles.listMain}>{t('screens.order.payment')}</Text>
                 <Text style={styles.listSub}>{paymentMethod}</Text>
@@ -520,17 +518,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.sub,
     marginTop: 2,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 24,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.sub,
   },
   detailShell: {
     flex: 1,

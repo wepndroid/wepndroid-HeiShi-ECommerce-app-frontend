@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
@@ -8,7 +8,7 @@ import { sellerKeyFromUserId } from '../data/catalogDemo';
 import { DetailCard } from '../components/FormUI';
 import { ProductGrid } from '../components/ProductUI';
 import { AppIcon } from '../components/AppIcon';
-import { Notice, PillButton, ScreenScroll, SectionHead, TitleBar, followPillStyle } from '../components/UI';
+import { Notice, LoadingState, PillButton, ScreenScroll, SectionHead, TitleBar, followPillStyle } from '../components/UI';
 import { SellerAvatar } from '../components/SellerAvatar';
 import { colors, fonts, radius } from '../theme';
 
@@ -51,9 +51,7 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
     return (
       <ScreenScroll screenId="sellerProfile">
         <TitleBar center={t('screens.sellerProfile.title')} />
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.brand2} />
-        </View>
+        <LoadingState />
       </ScreenScroll>
     );
   }
@@ -137,10 +135,6 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    paddingVertical: 48,
-    alignItems: 'center',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -9,11 +9,11 @@ import { useLocalizedProduct, useLocalizedProducts } from '../hooks/useLocalized
 import { resalePrice } from '../hooks/useProductFilters';
 import { publishListing, publishServiceListing, publishBundleListing, createResaleDraft, uploadListingImage } from '../services/listingsService';
 import { pickImagesFromLibrary, MAX_LISTING_PHOTOS } from '../services/mediaPicker';
-import { FieldInputRow, FieldSelectRow, FormCard, Switch, TableNote } from '../components/FormUI';
+import { FieldInputRow, FieldSelectRow, FormCard, FormSection, FormSwitchRow, StickyActions, Switch, TableNote, useStickyActionsBarInset } from '../components/FormUI';
 import { BundleLineItemsEditor } from '../components/BundleUI';
 import { createBundleLineItem, distributeEvenShares, sumBundleShares, bundleItemImageUrls, patchBundleItemImages } from '../data/bundle';
-import { ALL_AREAS } from '../data/region';
-import { PhotoUploadGrid } from '../components/PhotoUploadGrid';
+import { allCityOptions, normalizeProfileCity } from '../data/region';
+import { PublishPhotoUploadSection } from '../components/PublishPhotoUploadSection';
 import { ChatListingBar } from '../components/ChatListingBar';
 import { resolveDetailProduct } from '../data/detailProducts';
 import { chatListingToProduct } from '../services/chatListingService';
@@ -23,7 +23,7 @@ import { BackButton, IconButton, Notice, PillButton, ScreenScroll, SectionHead, 
 import { useListingPhotos } from '../hooks/useListingPhotos';
 import { useFormOptions } from '../hooks/useFormOptions';
 import { findOptionLabel, formOptionLabel } from '../utils/formOptionLabel';
-import { colors, fonts, radius, searchBarSurface, screenHorizontalInset, spacing } from '../theme';
+import { colors, fonts, formControls, radius, searchBarSurface, screenHorizontalInset, spacing } from '../theme';
 import {
   PUBLISH_CLEARANCE_BUNDLE_ART,
   PUBLISH_HUB_ART_SIZE,
@@ -149,33 +149,6 @@ export function PublishScreen() {
   );
 }
 
-function PhotoGrid({
-  imageUrls,
-  onAdd,
-  uploading,
-  maxPhotos = MAX_LISTING_PHOTOS,
-  onRemove,
-  horizontalInset,
-}: {
-  imageUrls: string[];
-  onAdd: () => void;
-  uploading?: boolean;
-  maxPhotos?: number;
-  onRemove?: (url: string) => void;
-  horizontalInset?: number;
-}) {
-  return (
-    <PhotoUploadGrid
-      imageUrls={imageUrls}
-      onAdd={onAdd}
-      onRemove={onRemove}
-      uploading={uploading}
-      maxPhotos={maxPhotos}
-      horizontalInset={horizontalInset}
-    />
-  );
-}
-
 export function UploadProductScreen() {
   const { t, i18n } = useTranslation();
   const { toast, nav, region, isLoggedIn } = useApp();
@@ -188,6 +161,9 @@ export function UploadProductScreen() {
   const [conditionKey, setConditionKey] = useState('');
   const [pickupMethodKey, setPickupMethodKey] = useState('');
   const [description, setDescription] = useState('');
+  const [escrowEnabled, setEscrowEnabled] = useState(true);
+  const [meetInPublic, setMeetInPublic] = useState(true);
+  const [listingCityKey, setListingCityKey] = useState(() => normalizeProfileCity(region.city));
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -222,7 +198,7 @@ export function UploadProductScreen() {
           categoryKey,
           conditionKey,
           tagKey: conditionKey,
-          locationLabel: region.city,
+          locationLabel: listingCityKey,
           imageUrls,
           pickupMethods: [pickupMethodKey],
         },
@@ -238,77 +214,108 @@ export function UploadProductScreen() {
   };
 
   return (
-    <ScreenScroll screenId="uploadProduct">
+    <PublishFormShell
+      screenId="uploadProduct"
+      submitLabel={t('screens.uploadProduct.submit')}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+    >
       <TitleBar center={t('screens.uploadProduct.title')} left={<BackButton onPress={() => nav('publish')} />} />
-      <View style={styles.uploadMain}>
-        <Text style={styles.photoTitle}>{t('screens.uploadProduct.photosTitle')}</Text>
-        <Text style={styles.photoSub}>{t('screens.uploadProduct.photosHint')}</Text>
-        <PhotoGrid imageUrls={imageUrls} onAdd={addPhotosFromLibrary} uploading={uploading} />
-        <Text style={styles.photoTip}>{t('screens.uploadProduct.photoTip')}</Text>
-      </View>
+      <PublishPhotoUploadSection
+        title={t('screens.uploadProduct.photosTitle')}
+        hint={t('screens.uploadProduct.photosHint')}
+        tip={t('screens.uploadProduct.photoTip')}
+        imageUrls={imageUrls}
+        onAdd={addPhotosFromLibrary}
+        uploading={uploading}
+      />
       <FormCard>
-        <Text style={styles.formH2}>{t('screens.uploadProduct.formTitle')}</Text>
-        <FieldInputRow
-          icon="edit"
-          label={t('common.fields.title')}
-          value={title}
-          onChangeText={setTitle}
-          placeholder={t('screens.uploadProduct.titlePlaceholder')}
-        />
-        <FieldInputRow
-          icon="cash"
-          label={t('common.fields.price')}
-          value={price}
-          onChangeText={setPrice}
-          placeholder={t('screens.uploadProduct.pricePlaceholder')}
-          suffix={t('common.currencyPrefix')}
-          numericKind="decimal"
-          onInvalidInput={() => toast(t('toast.numberOnly'))}
-        />
-        <FieldSelectRow
-          icon="grid"
-          label={t('common.fields.category')}
-          options={options.categories}
-          selectedKey={categoryKey}
-          onSelect={setCategoryKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldSelectRow
-          icon="diamond"
-          label={t('screens.uploadProduct.condition')}
-          options={options.conditions}
-          selectedKey={conditionKey}
-          onSelect={setConditionKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldSelectRow
-          icon="trade"
-          label={t('common.fields.tradeMethod')}
-          options={options.pickupMethods}
-          selectedKey={pickupMethodKey}
-          onSelect={setPickupMethodKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldInputRow
-          icon="list"
-          label={t('common.fields.description')}
-          value={description}
-          onChangeText={setDescription}
-          placeholder={t('screens.uploadProduct.descSample')}
-          multiline
-        />
+        <FormSection
+          title={t('screens.publish.sectionProductInfo')}
+          subtitle={t('screens.publish.sectionProductInfoSub')}
+          first
+        >
+          <FieldInputRow
+            icon="edit"
+            label={t('common.fields.title')}
+            value={title}
+            onChangeText={setTitle}
+            placeholder={t('screens.uploadProduct.titlePlaceholder')}
+          />
+          <FieldSelectRow
+            icon="grid"
+            label={t('common.fields.category')}
+            options={options.categories}
+            selectedKey={categoryKey}
+            onSelect={setCategoryKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FieldSelectRow
+            icon="diamond"
+            label={t('screens.uploadProduct.condition')}
+            options={options.conditions}
+            selectedKey={conditionKey}
+            onSelect={setConditionKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FieldInputRow
+            icon="list"
+            label={t('common.fields.description')}
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('screens.uploadProduct.descSample')}
+            multiline
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionTradeInfo')}
+          subtitle={t('screens.publish.sectionTradeInfoSub')}
+        >
+          <FieldInputRow
+            icon="cash"
+            label={t('common.fields.price')}
+            value={price}
+            onChangeText={setPrice}
+            placeholder={t('screens.uploadProduct.pricePlaceholder')}
+            suffix={t('common.currencyPrefix')}
+            numericKind="decimal"
+            onInvalidInput={() => toast(t('toast.numberOnly'))}
+          />
+          <FieldSelectRow
+            icon="trade"
+            label={t('common.fields.tradeMethod')}
+            options={options.pickupMethods}
+            selectedKey={pickupMethodKey}
+            onSelect={setPickupMethodKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionSafetySettings')}
+          subtitle={t('screens.publish.sectionSafetySettingsSub')}
+        >
+          <FormSwitchRow
+            title={t('screens.publish.escrowEnabled')}
+            hint={t('screens.publish.escrowEnabledHint')}
+            on={escrowEnabled}
+            onToggle={() => setEscrowEnabled((v) => !v)}
+          />
+          <FormSwitchRow
+            title={t('screens.publish.meetInPublic')}
+            hint={t('screens.publish.meetInPublicHint')}
+            on={meetInPublic}
+            onToggle={() => setMeetInPublic((v) => !v)}
+          />
+          <PublishListingCityRow listingCityKey={listingCityKey} onSelect={setListingCityKey} />
+        </FormSection>
       </FormCard>
       <Notice text={t('screens.publish.notice')} />
-      <PillButton
-        label={t('screens.uploadProduct.submit')}
-        variant="brand"
-        full
-        onPress={handleSubmit}
-      />
-    </ScreenScroll>
+    </PublishFormShell>
   );
 }
 
@@ -325,6 +332,9 @@ export function PublishBundleScreen() {
   const [pickupMethodKey, setPickupMethodKey] = useState('');
   const [allowSeparateSale, setAllowSeparateSale] = useState(true);
   const [description, setDescription] = useState('');
+  const [escrowEnabled, setEscrowEnabled] = useState(true);
+  const [meetInPublic, setMeetInPublic] = useState(true);
+  const [listingCityKey, setListingCityKey] = useState(() => normalizeProfileCity(region.city));
   const [bundleItems, setBundleItems] = useState(() => [
     createBundleLineItem(),
     createBundleLineItem(),
@@ -444,7 +454,7 @@ export function PublishBundleScreen() {
           price: bundlePrice,
           categoryKey: 'home',
           tagKey: 'bundleSet',
-          locationLabel: region.area === ALL_AREAS ? region.city : region.area,
+          locationLabel: listingCityKey,
           imageUrls: allImageUrls,
           pickupMethods: [pickupMethodKey],
           bundleItems: normalizedItems.map((item) => {
@@ -484,98 +494,123 @@ export function PublishBundleScreen() {
   };
 
   return (
-    <ScreenScroll screenId="publishBundle">
+    <PublishFormShell
+      screenId="publishBundle"
+      submitLabel={t('screens.publishBundle.submit')}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+    >
       <TitleBar center={t('screens.publishBundle.title')} left={<BackButton onPress={() => nav('publish')} />} />
-      <View style={styles.uploadMain}>
-        <Text style={styles.photoTitle}>{t('screens.publishBundle.photosTitle')}</Text>
-        <Text style={styles.photoSub}>{t('screens.publishBundle.photosHint')}</Text>
-        <PhotoGrid
-          imageUrls={imageUrls}
-          onAdd={addPhotosFromLibrary}
-          onRemove={(url) => setImageUrls((prev) => prev.filter((photo) => photo !== url))}
-          uploading={uploading}
-          maxPhotos={1}
-        />
-      </View>
+      <PublishPhotoUploadSection
+        title={t('screens.publishBundle.photosTitle')}
+        hint={t('screens.publishBundle.photosHint')}
+        imageUrls={imageUrls}
+        onAdd={addPhotosFromLibrary}
+        onRemove={(url) => setImageUrls((prev) => prev.filter((photo) => photo !== url))}
+        uploading={uploading}
+        maxPhotos={1}
+      />
       <FormCard>
-        <Text style={styles.formH2}>{t('screens.publishBundle.formTitle')}</Text>
-        <FieldInputRow
-          icon="edit"
-          label={t('common.fields.title')}
-          value={title}
-          onChangeText={setTitle}
-          placeholder={t('products.bundle.title')}
-        />
-        <FieldInputRow
-          icon="cash"
-          label={t('screens.publishBundle.bundlePrice')}
-          value={price}
-          onChangeText={handlePriceChange}
-          placeholder="260"
-          suffix={t('common.currencyPrefix')}
-          numericKind="decimal"
-          onInvalidInput={() => toast(t('toast.numberOnly'))}
-        />
-        <FieldInputRow
-          icon="time"
-          label={t('screens.publishBundle.pickupDeadline')}
-          value={pickupDeadline}
-          onChangeText={setPickupDeadline}
-          placeholder="2026-06-28"
-        />
-        <FieldSelectRow
-          icon="time"
-          label={t('screens.publishBundle.pickupWindow')}
-          options={options.serviceTimeSlots}
-          selectedKey={pickupWindowKey}
-          onSelect={setPickupWindowKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldSelectRow
-          icon="trade"
-          label={t('common.fields.tradeMethod')}
-          options={options.pickupMethods}
-          selectedKey={pickupMethodKey}
-          onSelect={setPickupMethodKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <View style={styles.switchRow}>
-          <View style={styles.switchCopy}>
-            <Text style={styles.switchTitle}>{t('screens.publishBundle.allowSeparate')}</Text>
-            <Text style={styles.switchHint}>{t('screens.publishBundle.allowSeparateHint')}</Text>
-          </View>
-          <Switch on={allowSeparateSale} onToggle={() => setAllowSeparateSale((v) => !v)} />
-        </View>
-        <Text style={styles.itemsHeading}>{t('screens.publishBundle.itemsTitle')}</Text>
-        <BundleLineItemsEditor
-          items={bundleItems}
-          bundlePrice={Math.max(0, Number.parseFloat(price) || 0)}
-          onChange={setBundleItems}
-          onInvalidNumber={() => toast(t('toast.numberOnly'))}
-          uploadingItemId={uploadingItemId}
-          onAddItemPhotos={handleAddItemPhotos}
-          onRemoveItemPhoto={handleRemoveItemPhoto}
-        />
-        <FieldInputRow
-          icon="list"
-          label={t('common.fields.description')}
-          value={description}
-          onChangeText={setDescription}
-          placeholder={t('screens.publishBundle.notesPlaceholder')}
-          multiline
-        />
+        <FormSection
+          title={t('screens.publish.sectionProductInfo')}
+          subtitle={t('screens.publish.sectionProductInfoSub')}
+          first
+        >
+          <FieldInputRow
+            icon="edit"
+            label={t('common.fields.title')}
+            value={title}
+            onChangeText={setTitle}
+            placeholder={t('products.bundle.title')}
+          />
+          <Text style={styles.itemsHeading}>{t('screens.publishBundle.itemsTitle')}</Text>
+          <BundleLineItemsEditor
+            items={bundleItems}
+            bundlePrice={Math.max(0, Number.parseFloat(price) || 0)}
+            onChange={setBundleItems}
+            onInvalidNumber={() => toast(t('toast.numberOnly'))}
+            uploadingItemId={uploadingItemId}
+            onAddItemPhotos={handleAddItemPhotos}
+            onRemoveItemPhoto={handleRemoveItemPhoto}
+          />
+          <FieldInputRow
+            icon="list"
+            label={t('common.fields.description')}
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('screens.publishBundle.notesPlaceholder')}
+            multiline
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionTradeInfo')}
+          subtitle={t('screens.publish.sectionTradeInfoSub')}
+        >
+          <FieldInputRow
+            icon="cash"
+            label={t('screens.publishBundle.bundlePrice')}
+            value={price}
+            onChangeText={handlePriceChange}
+            placeholder="260"
+            suffix={t('common.currencyPrefix')}
+            numericKind="decimal"
+            onInvalidInput={() => toast(t('toast.numberOnly'))}
+          />
+          <FieldInputRow
+            icon="time"
+            label={t('screens.publishBundle.pickupDeadline')}
+            value={pickupDeadline}
+            onChangeText={setPickupDeadline}
+            placeholder="2026-06-28"
+          />
+          <FieldSelectRow
+            icon="time"
+            label={t('screens.publishBundle.pickupWindow')}
+            options={options.serviceTimeSlots}
+            selectedKey={pickupWindowKey}
+            onSelect={setPickupWindowKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FieldSelectRow
+            icon="trade"
+            label={t('common.fields.tradeMethod')}
+            options={options.pickupMethods}
+            selectedKey={pickupMethodKey}
+            onSelect={setPickupMethodKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FormSwitchRow
+            title={t('screens.publishBundle.allowSeparate')}
+            hint={t('screens.publishBundle.allowSeparateHint')}
+            on={allowSeparateSale}
+            onToggle={() => setAllowSeparateSale((v) => !v)}
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionSafetySettings')}
+          subtitle={t('screens.publish.sectionSafetySettingsSub')}
+        >
+          <FormSwitchRow
+            title={t('screens.publish.escrowEnabled')}
+            hint={t('screens.publish.escrowEnabledHint')}
+            on={escrowEnabled}
+            onToggle={() => setEscrowEnabled((v) => !v)}
+          />
+          <FormSwitchRow
+            title={t('screens.publish.meetInPublic')}
+            hint={t('screens.publish.meetInPublicHint')}
+            on={meetInPublic}
+            onToggle={() => setMeetInPublic((v) => !v)}
+          />
+          <PublishListingCityRow listingCityKey={listingCityKey} onSelect={setListingCityKey} />
+        </FormSection>
       </FormCard>
       <Notice text={t('screens.publish.notice')} />
-      <PillButton
-        label={t('screens.publishBundle.submit')}
-        variant="brand"
-        full
-        disabled={submitting}
-        onPress={handleSubmit}
-      />
-    </ScreenScroll>
+    </PublishFormShell>
   );
 }
 
@@ -591,6 +626,9 @@ export function PublishServiceScreen() {
   const [serviceAreaKey, setServiceAreaKey] = useState('');
   const [serviceTimeKey, setServiceTimeKey] = useState('');
   const [intro, setIntro] = useState('');
+  const [escrowEnabled, setEscrowEnabled] = useState(true);
+  const [meetInPublic, setMeetInPublic] = useState(true);
+  const [listingCityKey, setListingCityKey] = useState(() => normalizeProfileCity(region.city));
   const [submitting, setSubmitting] = useState(false);
 
   const handleServiceTypeSelect = (key: string) => {
@@ -633,7 +671,7 @@ export function PublishServiceScreen() {
           price: listingPrice,
           categoryKey: 'services',
           tagKey: 'localService',
-          locationLabel: areaLabel || region.city,
+          locationLabel: areaLabel ? `${listingCityKey} · ${areaLabel}` : listingCityKey,
           imageUrls,
         },
         isLoggedIn,
@@ -648,71 +686,107 @@ export function PublishServiceScreen() {
   };
 
   return (
-    <ScreenScroll screenId="publishService">
+    <PublishFormShell
+      screenId="publishService"
+      submitLabel={t('screens.publishService.submit')}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+    >
       <TitleBar center={t('screens.publishService.title')} left={<BackButton onPress={() => nav('publish')} />} />
-      <View style={styles.uploadMain}>
-        <Text style={styles.photoTitle}>{t('screens.uploadProduct.photosTitle')}</Text>
-        <Text style={styles.photoSub}>{t('screens.uploadProduct.photosHint')}</Text>
-        <PhotoGrid imageUrls={imageUrls} onAdd={addPhotosFromLibrary} uploading={uploading} />
-      </View>
+      <PublishPhotoUploadSection
+        title={t('screens.uploadProduct.photosTitle')}
+        hint={t('screens.uploadProduct.photosHint')}
+        imageUrls={imageUrls}
+        onAdd={addPhotosFromLibrary}
+        uploading={uploading}
+      />
       <FormCard>
-        <Text style={styles.formH2}>{t('screens.publishService.formTitle')}</Text>
-        <FieldInputRow
-          icon="toolbox"
-          label={t('common.fields.service')}
-          value={serviceName}
-          onChangeText={setServiceName}
-          placeholder={t('screens.publishService.servicePlaceholder')}
-        />
-        <FieldSelectRow
-          icon="grid"
-          label={t('common.fields.serviceType')}
-          options={options.serviceTypes}
-          selectedKey={serviceTypeKey}
-          onSelect={handleServiceTypeSelect}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldInputRow
-          icon="cash"
-          label={t('common.fields.price')}
-          value={price}
-          onChangeText={setPrice}
-          placeholder={t('screens.publishService.pricePlaceholder')}
-          suffix={t('common.currencyPrefix')}
-          numericKind="decimal"
-          onInvalidInput={() => toast(t('toast.numberOnly'))}
-        />
-        <FieldSelectRow
-          icon="mapPin"
-          label={t('common.fields.area')}
-          options={options.serviceAreas}
-          selectedKey={serviceAreaKey}
-          onSelect={setServiceAreaKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldSelectRow
-          icon="time"
-          label={t('common.fields.time')}
-          options={options.serviceTimeSlots}
-          selectedKey={serviceTimeKey}
-          onSelect={setServiceTimeKey}
-          placeholder={t('common.placeholders.selectOption')}
-          loading={loading}
-        />
-        <FieldInputRow
-          icon="list"
-          label={t('common.fields.intro')}
-          value={intro}
-          onChangeText={setIntro}
-          placeholder={t('screens.publishService.introPlaceholder')}
-          multiline
-        />
+        <FormSection
+          title={t('screens.publish.sectionProductInfo')}
+          subtitle={t('screens.publish.sectionProductInfoSub')}
+          first
+        >
+          <FieldInputRow
+            icon="toolbox"
+            label={t('common.fields.service')}
+            value={serviceName}
+            onChangeText={setServiceName}
+            placeholder={t('screens.publishService.servicePlaceholder')}
+          />
+          <FieldSelectRow
+            icon="grid"
+            label={t('common.fields.serviceType')}
+            options={options.serviceTypes}
+            selectedKey={serviceTypeKey}
+            onSelect={handleServiceTypeSelect}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FieldInputRow
+            icon="list"
+            label={t('common.fields.intro')}
+            value={intro}
+            onChangeText={setIntro}
+            placeholder={t('screens.publishService.introPlaceholder')}
+            multiline
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionTradeInfo')}
+          subtitle={t('screens.publish.sectionTradeInfoSub')}
+        >
+          <FieldInputRow
+            icon="cash"
+            label={t('common.fields.price')}
+            value={price}
+            onChangeText={setPrice}
+            placeholder={t('screens.publishService.pricePlaceholder')}
+            suffix={t('common.currencyPrefix')}
+            numericKind="decimal"
+            onInvalidInput={() => toast(t('toast.numberOnly'))}
+          />
+          <FieldSelectRow
+            icon="mapPin"
+            label={t('common.fields.area')}
+            options={options.serviceAreas}
+            selectedKey={serviceAreaKey}
+            onSelect={setServiceAreaKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+          <FieldSelectRow
+            icon="time"
+            label={t('common.fields.time')}
+            options={options.serviceTimeSlots}
+            selectedKey={serviceTimeKey}
+            onSelect={setServiceTimeKey}
+            placeholder={t('common.placeholders.selectOption')}
+            loading={loading}
+          />
+        </FormSection>
+
+        <FormSection
+          title={t('screens.publish.sectionSafetySettings')}
+          subtitle={t('screens.publish.sectionSafetySettingsSub')}
+        >
+          <FormSwitchRow
+            title={t('screens.publish.escrowEnabled')}
+            hint={t('screens.publish.escrowEnabledHint')}
+            on={escrowEnabled}
+            onToggle={() => setEscrowEnabled((v) => !v)}
+          />
+          <FormSwitchRow
+            title={t('screens.publish.meetInPublic')}
+            hint={t('screens.publish.meetInPublicHint')}
+            on={meetInPublic}
+            onToggle={() => setMeetInPublic((v) => !v)}
+          />
+          <PublishListingCityRow listingCityKey={listingCityKey} onSelect={setListingCityKey} />
+        </FormSection>
       </FormCard>
       <Notice text={t('screens.publishService.note')} />
-      <PillButton label={t('screens.publishService.submit')} variant="brand" full onPress={handleSubmit} />
-    </ScreenScroll>
+    </PublishFormShell>
   );
 }
 
@@ -853,7 +927,7 @@ export function ChatScreen() {
           placeholder={t('common.placeholders.chatInput')}
           value={input}
           onChangeText={setInput}
-          placeholderTextColor="#999999"
+          placeholderTextColor={formControls.placeholderColor}
         />
         <Pressable
           style={[styles.chatSend, !input.trim() && styles.chatSendDisabled]}
@@ -871,17 +945,72 @@ export function ChatScreen() {
 
 const PUBLISH_HUB_BORDER = '#C4BAB0';
 
+function PublishListingCityRow({
+  listingCityKey,
+  onSelect,
+}: {
+  listingCityKey: string;
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  const cityOptions = useMemo(() => allCityOptions(), []);
+
+  return (
+    <FieldSelectRow
+      icon="mapPin"
+      label={t('screens.publish.listingCity')}
+      options={cityOptions}
+      selectedKey={listingCityKey}
+      onSelect={onSelect}
+      placeholder={t('common.placeholders.selectOption')}
+    />
+  );
+}
+
+function PublishFormShell({
+  screenId,
+  children,
+  submitLabel,
+  onSubmit,
+  submitting,
+}: {
+  screenId: 'uploadProduct' | 'publishBundle' | 'publishService';
+  children: React.ReactNode;
+  submitLabel: string;
+  onSubmit: () => void | Promise<void>;
+  submitting?: boolean;
+}) {
+  const { t } = useTranslation();
+  const stickyBarInset = useStickyActionsBarInset();
+
+  return (
+    <View style={styles.publishShell}>
+      <ScreenScroll screenId={screenId} contentBottomInset={stickyBarInset}>
+        {children}
+      </ScreenScroll>
+      <StickyActions fixed>
+        <PillButton
+          label={submitting ? t('common.loading') : submitLabel}
+          variant="brand"
+          full
+          flex
+          onPress={submitting ? undefined : () => void onSubmit()}
+          style={submitting ? styles.publishSubmitDisabled : undefined}
+        />
+      </StickyActions>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  publishHubCard: {
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: PUBLISH_HUB_BORDER,
-    borderRadius: 26,
-    padding: 18,
-    marginBottom: 14,
-    backgroundColor: colors.paper,
+  publishShell: {
+    flex: 1,
+    backgroundColor: colors.bg,
   },
-  uploadMain: {
+  publishSubmitDisabled: {
+    opacity: 0.55,
+  },
+  publishHubCard: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: PUBLISH_HUB_BORDER,
@@ -998,56 +1127,12 @@ const styles = StyleSheet.create({
     marginTop: 11,
     lineHeight: 18,
   },
-  photoTitle: {
-    fontSize: 16,
-    fontWeight: fonts.weights.bold,
-    marginBottom: 4,
-    color: colors.text,
-  },
-  photoSub: {
-    color: '#777777',
-    fontSize: 13,
-    marginBottom: 14,
-  },
-  photoTip: {
-    marginTop: 14,
-    color: '#987b45',
-    fontSize: 12,
-  },
-  formH2: {
-    fontSize: 16,
-    fontWeight: fonts.weights.bold,
-    marginBottom: 8,
-    color: colors.text,
-  },
   itemsHeading: {
     fontSize: 15,
     fontWeight: fonts.weights.bold,
     marginTop: 4,
     marginBottom: 8,
     color: colors.text,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingVertical: 8,
-  },
-  switchCopy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  switchTitle: {
-    fontSize: 14,
-    fontWeight: fonts.weights.medium,
-    color: colors.text,
-  },
-  switchHint: {
-    fontSize: 11,
-    color: colors.sub,
-    lineHeight: 15,
   },
   resaleItem: {
     backgroundColor: '#ffffff',
@@ -1133,8 +1218,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 14,
-    color: colors.text,
   },
   chatSend: {
     width: 42,

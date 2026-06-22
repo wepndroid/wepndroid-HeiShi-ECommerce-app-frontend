@@ -1,6 +1,7 @@
 import React, { RefObject } from 'react';
 import {
   Animated,
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -14,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NO_NAV_SCREENS } from '../data/productsNav';
 import { AmazingSurface } from './AmazingSurface';
 import { MarqueePlaceholder } from './MarqueeText';
-import { colors, fonts, radius, searchBarSurface, spacing, typography } from '../theme';
+import { colors, fonts, formControls, iconTokens, emptyStateTokens, loadingStateTokens, badgeTokens, radius, searchBarSurface, spacing, typography } from '../theme';
 import { useApp } from '../context/AppContext';
 import { ScreenId, TabScreenId } from '../types';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -314,10 +315,10 @@ export function SectionHead({
   );
 }
 
-export function Badge({ text }: { text: string }) {
+export function Badge({ text, compact }: { text: string; compact?: boolean }) {
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{text}</Text>
+    <View style={[styles.badge, compact && styles.badgeCompact]}>
+      <Text style={[styles.badgeText, compact && styles.badgeTextCompact]}>{text}</Text>
     </View>
   );
 }
@@ -351,10 +352,35 @@ export function EmptyState({ text }: { text: string }) {
   );
 }
 
+/** Inline no-results hint (search, filters) — centered muted copy. */
+export function EmptyHint({ text }: { text: string }) {
+  return <Text style={styles.emptyHint}>{text}</Text>;
+}
+
+/** Standard loading row — spinner + optional label. */
+export function LoadingState({
+  text,
+  compact,
+  spinnerColor = loadingStateTokens.spinnerColor,
+}: {
+  text?: string;
+  compact?: boolean;
+  spinnerColor?: string;
+}) {
+  const { t } = useTranslation();
+  const label = text ?? t('common.loading');
+  return (
+    <View style={[styles.loadingState, compact && styles.loadingStateCompact]}>
+      <ActivityIndicator color={spinnerColor} />
+      <Text style={styles.loadingStateText}>{label}</Text>
+    </View>
+  );
+}
+
 export function ListRowIcon({ icon }: { icon: AppIconName }) {
   return (
     <View style={styles.listIco}>
-      <AppIcon name={icon} size={16} color="#b87000" />
+      <AppIcon name={icon} size={iconTokens.sizes.sm} color={iconTokens.accent} />
     </View>
   );
 }
@@ -606,17 +632,17 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: typography.body,
+    fontSize: formControls.fontSize,
     color: colors.text,
   },
   searchInputText: {
-    fontSize: typography.body,
+    fontSize: formControls.fontSize,
     color: colors.text,
   },
   searchInputField: {
     flex: 1,
     minWidth: 0,
-    fontSize: typography.body,
+    fontSize: formControls.fontSize,
     color: colors.text,
     padding: 0,
     margin: 0,
@@ -625,7 +651,7 @@ const styles = StyleSheet.create({
   },
   searchPlaceholder: {
     color: colors.searchHint,
-    fontSize: typography.bodySm,
+    fontSize: formControls.fontSize,
     lineHeight: 16,
   },
   searchBtn: {
@@ -677,16 +703,23 @@ const styles = StyleSheet.create({
   },
   badge: {
     alignSelf: 'flex-start',
-    borderRadius: radius.pill,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: '#FFF0F0',
+    borderRadius: badgeTokens.radius,
+    paddingHorizontal: badgeTokens.paddingH,
+    paddingVertical: badgeTokens.paddingV,
+    backgroundColor: badgeTokens.fill,
     flexShrink: 0,
   },
   badgeText: {
-    fontSize: typography.badge,
+    fontSize: badgeTokens.fontSize,
     fontWeight: fonts.weights.medium,
-    color: colors.red,
+    color: badgeTokens.text,
+  },
+  badgeCompact: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  badgeTextCompact: {
+    fontSize: typography.nav,
   },
   noticeTextFlex: {
     flex: 1,
@@ -721,18 +754,38 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     borderStyle: 'dashed',
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: 12,
-    paddingVertical: 16,
+    borderColor: emptyStateTokens.borderColor,
+    borderRadius: emptyStateTokens.radius,
+    paddingHorizontal: emptyStateTokens.paddingH,
+    paddingVertical: emptyStateTokens.paddingV,
     alignItems: 'center',
     marginBottom: 8,
   },
   emptyStateText: {
-    color: colors.sub,
-    fontSize: typography.body,
+    color: emptyStateTokens.textColor,
+    fontSize: emptyStateTokens.fontSize,
     fontWeight: fonts.weights.medium,
     textAlign: 'center',
+  },
+  emptyHint: {
+    marginBottom: 12,
+    fontSize: emptyStateTokens.hintFontSize,
+    color: emptyStateTokens.hintColor,
+    textAlign: 'center',
+  },
+  loadingState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: loadingStateTokens.gap,
+    paddingVertical: loadingStateTokens.paddingV,
+  },
+  loadingStateCompact: {
+    paddingVertical: 12,
+  },
+  loadingStateText: {
+    fontSize: loadingStateTokens.fontSize,
+    color: loadingStateTokens.textColor,
   },
   listIco: {
     width: 28,

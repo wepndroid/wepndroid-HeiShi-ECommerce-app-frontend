@@ -205,6 +205,6 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   catRowContent: {
-    marginBottom: 0,
+    marginBottom: 12,
   },
 });
