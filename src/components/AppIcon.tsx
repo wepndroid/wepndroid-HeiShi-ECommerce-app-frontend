@@ -110,7 +110,7 @@ const ICONS: Record<AppIconName, IconDef> = {
   shield: { set: 'ion', name: 'shield-checkmark-outline' },
   chat: { set: 'ion', name: 'chatbubbles-outline' },
   chatBubble: { set: 'ion', name: 'chatbubble-outline' },
-  send: { set: 'ion', name: 'paper-plane' },
+  send: { set: 'mci', name: 'send' },
   upload: { set: 'ion', name: 'cloud-upload-outline' },
   box: { set: 'ion', name: 'cube-outline' },
   resale: { set: 'ion', name: 'repeat-outline' },

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
@@ -921,22 +921,25 @@ export function ChatScreen() {
           </View>
         </ScrollView>
       </View>
-      <View style={[styles.chatInputBar, screenHorizontalInset]}>
-        <TextInput
-          style={[searchBarSurface, styles.chatInputField]}
-          placeholder={t('common.placeholders.chatInput')}
-          value={input}
-          onChangeText={setInput}
-          placeholderTextColor={formControls.placeholderColor}
-        />
+      <View style={styles.chatInputBar}>
+        <View style={[searchBarSurface, styles.chatInputShell]}>
+          <TextInput
+            style={styles.chatInputField}
+            placeholder={t('common.placeholders.chatInput')}
+            placeholderTextColor={colors.searchHint}
+            value={input}
+            onChangeText={setInput}
+          />
+        </View>
         <Pressable
           style={[styles.chatSend, !input.trim() && styles.chatSendDisabled]}
           onPress={handleSend}
           disabled={!input.trim()}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={t('common.send')}
         >
-          <AppIcon name="send" size={22} color={colors.paper} />
+          <AppIcon name="send" size={24} color={colors.brand2} />
         </Pressable>
       </View>
     </View>
@@ -1208,37 +1211,31 @@ const styles = StyleSheet.create({
   chatInputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingTop: 12,
     paddingBottom: spacing.screenBottomNoNav,
+    paddingHorizontal: spacing.screenPadding,
     backgroundColor: colors.bg,
   },
-  chatInputField: {
+  chatInputShell: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    height: 44,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  chatInputField: {
+    width: '100%',
+    fontSize: 14,
+    padding: 0,
   },
   chatSend: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.brand2,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.12,
-        shadowRadius: 3,
-      },
-      android: { elevation: 2 },
-      default: {},
-    }),
+    padding: 4,
   },
   chatSendDisabled: {
-    opacity: 0.45,
+    opacity: 0.35,
   },
 });

@@ -12,7 +12,8 @@ import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { splitProductMasonryColumns } from '../utils/masonryColumns';
 import { useApp } from '../context/AppContext';
 import { colors, fonts, productCardTokens, radius, cardShadow, CARD_PREVIEW_ASPECT_RATIO, PRODUCT_CARD_RADIUS } from '../theme';
-import { HOME_PROMO_BANNER_ASPECT, homePromoBannerForLanguage } from '../assets/homeBanner';
+import { homePromoBannerForLanguage } from '../assets/homeBanner';
+import { bannerArtworkAspectRatio } from '../assets/bannerAspect';
 import { AppIcon, AppIconName } from './AppIcon';
 import { AmazingSurface } from './AmazingSurface';
 import { Badge } from './UI';
@@ -250,12 +251,13 @@ export function Banner({
 
   if (variant === 'promo' && artwork) {
     const bannerSource = artworkSource ?? homePromoBannerForLanguage(i18n.language);
+    const aspectRatio = bannerArtworkAspectRatio(bannerSource);
     return (
-      <View style={styles.bannerArtworkWrap}>
+      <View style={[styles.bannerArtworkWrap, { aspectRatio }]}>
         <Image
           source={bannerSource}
           style={styles.bannerArtwork}
-          resizeMode="cover"
+          resizeMode="contain"
           accessibilityRole="image"
           accessibilityLabel={title}
         />
@@ -468,11 +470,10 @@ const styles = StyleSheet.create({
   },
   bannerArtworkWrap: {
     width: '100%',
-    aspectRatio: HOME_PROMO_BANNER_ASPECT,
     borderRadius: radius.lg,
     marginVertical: 6,
     overflow: 'hidden',
-    backgroundColor: colors.brand,
+    backgroundColor: colors.paper,
     ...cardShadow,
   },
   bannerArtwork: {
