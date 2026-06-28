@@ -2,12 +2,18 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
-import { ALL_AREAS } from '../data/region';
+import {
+  ALL_AREAS,
+  normalizeProfileCity,
+  regionFromCityKey,
+  regionLabel,
+} from '../data/region';
 import { serviceDetailProduct } from '../data/detailProducts';
 import type { LocalService } from '../data/services';
 import { serviceMatchesCategory } from '../data/services';
 import { useCatalogServices } from '../hooks/useCatalogServices';
 import { useFeed } from '../hooks/useFeed';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { ProductCatKey } from '../types';
 import {
   LOCAL_CATEGORY_SHORTCUTS,
@@ -35,17 +41,22 @@ export function CategoryScreen() {
   const {
     openSearch,
     openDetail,
-    region,
-    nav,
     requireAuthNav,
     isLoggedIn,
     authReady,
     products,
+    user,
   } = useApp();
+  const { profile } = useUserProfile(user, authReady);
   const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
-  const localRegion = useMemo(
-    () => ({ ...region, area: ALL_AREAS }),
-    [region.state, region.city, region.area],
+  const localRegion = useMemo(() => {
+    const cityKey = normalizeProfileCity(profile?.city);
+    const { state, city } = regionFromCityKey(cityKey);
+    return { state, city, area: ALL_AREAS };
+  }, [profile?.city]);
+  const localRegionLabel = useMemo(
+    () => regionLabel(localRegion),
+    [localRegion.state, localRegion.city, localRegion.area],
   );
   const {
     services: visibleServices,
@@ -83,7 +94,7 @@ export function CategoryScreen() {
   return (
     <ScreenScroll screenId="category">
       <MarketScreenHeader
-        showRegion={false}
+        regionLabelText={localRegionLabel}
         unreadCount={inboxUnreadCount}
         onMessagesPress={() => requireAuthNav('messages')}
         onSettingsPress={() => requireAuthNav('settings')}
@@ -96,7 +107,7 @@ export function CategoryScreen() {
       <Banner
         variant="local"
         title={t('screens.category.bannerTitle')}
-        subtitle={t('screens.category.bannerSubtitle')}
+        subtitle={t('screens.category.bannerSubtitle', { city: localRegionLabel })}
         badge={t('screens.category.bannerBadge')}
       />
       <SectionHead title={t('screens.category.sectionCategories')} compact />

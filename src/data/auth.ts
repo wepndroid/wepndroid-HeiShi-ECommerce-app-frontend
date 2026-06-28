@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isKnownCity } from './region';
 
 export interface AuthUser {
   id: string;
@@ -38,7 +39,8 @@ export type AuthErrorKey =
   | 'codeExpired'
   | 'codeRateLimit'
   | 'avatarRequired'
-  | 'avatarUploadFailed';
+  | 'avatarUploadFailed'
+  | 'cityRequired';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);
@@ -101,10 +103,13 @@ export function isValidPhone(phone: string) {
 
 export function validateRegisterPhoneStep(input: {
   phone: string;
+  city?: string;
 }): AuthErrorKey | null {
   const phone = normalizePhone(input.phone.trim());
   if (!phone) return 'phoneRequired';
   if (!isValidPhone(phone)) return 'phoneInvalid';
+  if (input.city !== undefined && !input.city.trim()) return 'cityRequired';
+  if (input.city !== undefined && !isKnownCity(input.city)) return 'cityRequired';
   return null;
 }
 
@@ -124,11 +129,12 @@ export function validateRegisterInput(input: {
   confirmPassword: string;
   verificationCode: string;
   avatarUri: string;
+  city: string;
 }): AuthErrorKey | null {
   if (!input.nickname.trim()) return 'nicknameRequired';
   const avatarError = validateRegisterAvatarStep(input.avatarUri);
   if (avatarError) return avatarError;
-  const phoneStep = validateRegisterPhoneStep({ phone: input.phone });
+  const phoneStep = validateRegisterPhoneStep({ phone: input.phone, city: input.city });
   if (phoneStep) return phoneStep;
   const password = input.password;
   const confirmPassword = input.confirmPassword;
@@ -155,6 +161,7 @@ export async function registerAccount(input: {
   confirmPassword: string;
   verificationCode: string;
   avatarUri: string;
+  city: string;
 }): Promise<{ user: AuthUser } | { error: AuthErrorKey }> {
   const validationError = validateRegisterInput(input);
   if (validationError) return { error: validationError };

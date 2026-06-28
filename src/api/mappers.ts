@@ -137,6 +137,7 @@ export function mapOrderDtoToUiOrder(dto: OrderDto): UiOrder {
     title: dto.listingTitle,
     imageUrl: normalizeMediaUrl(dto.listingImageUrl) ?? dto.listingImageUrl,
     sellerName: dto.seller.nickname,
+    buyerId: dto.buyer?.id,
     buyerName: dto.buyer?.nickname,
     amount: dto.amount,
     status: dto.status,

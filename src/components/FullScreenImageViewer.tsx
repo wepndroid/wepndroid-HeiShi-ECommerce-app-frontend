@@ -2,12 +2,12 @@ import React, { useEffect, useRef } from 'react';
 import {
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { DismissibleModal } from './UI';
 
 type Props = {
   visible: boolean;
@@ -34,14 +34,14 @@ export function FullScreenImageViewer({ visible, images, initialIndex = 0, onClo
   if (!images.length) return null;
 
   return (
-    <Modal
+    <DismissibleModal
       visible={visible}
-      transparent
+      onClose={onClose}
       animationType="fade"
-      onRequestClose={onClose}
+      placement="fill"
       statusBarTranslucent
     >
-      <View style={styles.backdrop}>
+      <View style={styles.viewer}>
         <FlatList
           ref={listRef}
           data={images}
@@ -71,12 +71,12 @@ export function FullScreenImageViewer({ visible, images, initialIndex = 0, onClo
           )}
         />
       </View>
-    </Modal>
+    </DismissibleModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  viewer: {
     flex: 1,
     backgroundColor: '#000000',
   },

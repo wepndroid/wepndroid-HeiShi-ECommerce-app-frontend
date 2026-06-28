@@ -230,14 +230,19 @@ export async function openLocalConversation(input: {
     if (byId) return mapLocalConversationToUi(byId);
   }
 
-  const existing = conversations.find(
-    (c) =>
-      (input.listingId != null && c.listingId === input.listingId) ||
-      (input.counterpartName &&
-        (c.counterpartName === input.counterpartName ||
-          (c.counterpartNameKey && i18n.t(c.counterpartNameKey) === input.counterpartName))),
-  );
-  if (existing) return mapLocalConversationToUi(existing);
+  if (input.listingId != null) {
+    const byListing = conversations.find((c) => c.listingId === input.listingId);
+    if (byListing) return mapLocalConversationToUi(byListing);
+  }
+
+  if (input.counterpartName) {
+    const byName = conversations.find(
+      (c) =>
+        c.counterpartName === input.counterpartName ||
+        (c.counterpartNameKey && i18n.t(c.counterpartNameKey) === input.counterpartName),
+    );
+    if (byName) return mapLocalConversationToUi(byName);
+  }
 
   const record: LocalConversationRecord = {
     id: `local-${Date.now()}`,

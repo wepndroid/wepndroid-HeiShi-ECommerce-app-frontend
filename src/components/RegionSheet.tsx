@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,7 +23,7 @@ import {
   regionSummary,
 } from '../data/region';
 import { useApp } from '../context/AppContext';
-import { PillButton } from './UI';
+import { PillButton, DismissibleModal } from './UI';
 import { colors, fonts, radius, amazingStyle } from '../theme';
 
 const SHEET_SLIDE_OFFSET = 420;
@@ -75,17 +74,13 @@ export function RegionSheet() {
   const selectedLabel = regionSummary(region);
 
   return (
-    <Modal
+    <DismissibleModal
       visible={regionSheetVisible}
-      transparent
+      onClose={closeRegionSheet}
       animationType="none"
-      onRequestClose={closeRegionSheet}
+      placement="bottom"
     >
-      <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={closeRegionSheet} />
-        <Animated.View
-          style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}
-        >
+      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.head}>
             <View style={{ flex: 1 }}>
               <Text style={styles.headTitle}>{t('region.title')}</Text>
@@ -277,21 +272,12 @@ export function RegionSheet() {
             })}
           </ScrollView>
           <PillButton label={t('common.done')} variant="brand" full onPress={closeRegionSheet} />
-        </Animated.View>
-      </View>
-    </Modal>
+      </Animated.View>
+    </DismissibleModal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.28)',
-  },
   sheet: {
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,

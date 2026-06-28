@@ -43,12 +43,21 @@ export function MarketScreenHeader({
           <Logo />
         </View>
         {showRegion ? (
-          <Pressable style={styles.city} onPress={onRegionPress}>
-            <AppIcon name="mapPin" size={14} color={colors.sub} />
-            <Text style={styles.cityText} numberOfLines={1}>
-              {regionLabelText} ▾
-            </Text>
-          </Pressable>
+          onRegionPress ? (
+            <Pressable style={styles.city} onPress={onRegionPress}>
+              <AppIcon name="mapPin" size={14} color={colors.sub} />
+              <Text style={styles.cityText} numberOfLines={1}>
+                {regionLabelText} ▾
+              </Text>
+            </Pressable>
+          ) : (
+            <View style={styles.city}>
+              <AppIcon name="mapPin" size={14} color={colors.sub} />
+              <Text style={styles.cityText} numberOfLines={1}>
+                {regionLabelText}
+              </Text>
+            </View>
+          )
         ) : (
           <View style={styles.regionSpacer} />
         )}

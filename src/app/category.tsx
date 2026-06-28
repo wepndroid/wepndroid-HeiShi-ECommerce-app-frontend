@@ -1,1 +1,0 @@
-export { CategoryScreen as default } from '../screens/CategoryScreen';

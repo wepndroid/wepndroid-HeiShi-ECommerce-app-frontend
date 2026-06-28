@@ -13,7 +13,7 @@ import { useHistoryProducts } from '../hooks/useHistory';
 import { useMyListings } from '../hooks/useMyListings';
 import { useSellerOrders } from '../hooks/useSellerOrders';
 import { useOrders } from '../hooks/useOrders';
-import { cancelOrder, fetchOrderReview, releaseSalesOrder, sellerActionForStatus, submitOrderReview } from '../services/ordersService';
+import { fetchOrderReview, releaseSalesOrder, sellerActionForStatus, submitOrderReview } from '../services/ordersService';
 import { regionProducts } from '../hooks/useProductFilters';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { ListCard, TableNote } from '../components/FormUI';
@@ -47,12 +47,19 @@ function uiListingToProduct(listing: UiListing, sellerId?: string, sellerName?: 
   };
 }
 
-const FILTER_LABEL_KEYS: Record<OrderFilterKey, 'screens.orders.all' | 'screens.orders.pendingPay' | 'screens.orders.pendingShip' | 'screens.orders.pendingReceive' | 'screens.orders.pendingReview'> = {
+const FILTER_LABEL_KEYS: Record<
+  OrderFilterKey,
+  | 'screens.orders.all'
+  | 'screens.orders.pendingShip'
+  | 'screens.orders.pendingReceive'
+  | 'screens.orders.pendingReview'
+  | 'common.completed'
+> = {
   all: 'screens.orders.all',
-  pendingPay: 'screens.orders.pendingPay',
   pendingShip: 'screens.orders.pendingShip',
   pendingReceive: 'screens.orders.pendingReceive',
   pendingReview: 'screens.orders.pendingReview',
+  completed: 'common.completed',
 };
 
 function orderDisplay(
@@ -67,15 +74,6 @@ function orderDisplay(
   secondaryIsBrand: boolean;
 } {
   switch (status) {
-    case 'pendingPay':
-      return {
-        statusTitle: t('screens.orders.inProgress'),
-        statusSub: t('screens.orders.waitPay'),
-        statusColor: colors.brand2,
-        secondaryLabel: t('screens.orders.payNow'),
-        secondaryToastKey: 'toast.paySuccess',
-        secondaryIsBrand: true,
-      };
     case 'pendingShip':
       return {
         statusTitle: t('screens.orders.inProgress'),
@@ -106,7 +104,7 @@ function orderDisplay(
     case 'completed':
       return {
         statusTitle: t('common.completed'),
-        statusSub: t('screens.orders.success'),
+        statusSub: t('screens.orders.receiptConfirmed'),
         statusColor: '#999999',
         secondaryLabel: t('screens.orders.viewReview'),
         secondaryToastKey: 'toast.viewReview',
@@ -121,6 +119,15 @@ function orderDisplay(
         secondaryToastKey: 'toast.orderCancelled',
         secondaryIsBrand: false,
       };
+    default:
+      return {
+        statusTitle: t('screens.orders.inProgress'),
+        statusSub: t('screens.orders.waitShip'),
+        statusColor: colors.brand2,
+        secondaryLabel: t('screens.orders.remindShip'),
+        secondaryToastKey: 'toast.reminderSent',
+        secondaryIsBrand: false,
+      };
   }
 }
 
@@ -133,6 +140,7 @@ function sellerOrderDisplay(
   statusColor: string;
   secondaryLabel: string | null;
   secondaryToastKey: string;
+  secondaryIsBrand: boolean;
 } {
   switch (status) {
     case 'pendingShip':
@@ -142,6 +150,7 @@ function sellerOrderDisplay(
         statusColor: colors.brand2,
         secondaryLabel: t('screens.sold.shipNow'),
         secondaryToastKey: 'toast.shipped',
+        secondaryIsBrand: true,
       };
     case 'pendingPay':
       return {
@@ -150,6 +159,7 @@ function sellerOrderDisplay(
         statusColor: colors.brand2,
         secondaryLabel: t('screens.sold.releaseOrder'),
         secondaryToastKey: 'toast.orderReleased',
+        secondaryIsBrand: false,
       };
     case 'cancelled':
       return {
@@ -158,6 +168,7 @@ function sellerOrderDisplay(
         statusColor: '#999999',
         secondaryLabel: null,
         secondaryToastKey: 'toast.orderCancelled',
+        secondaryIsBrand: false,
       };
     case 'pendingReceive':
       return {
@@ -166,6 +177,7 @@ function sellerOrderDisplay(
         statusColor: colors.brand2,
         secondaryLabel: null,
         secondaryToastKey: 'toast.shipped',
+        secondaryIsBrand: false,
       };
     case 'pendingReview':
       return {
@@ -174,6 +186,7 @@ function sellerOrderDisplay(
         statusColor: '#999999',
         secondaryLabel: null,
         secondaryToastKey: 'toast.shipped',
+        secondaryIsBrand: false,
       };
     case 'completed':
       return {
@@ -182,6 +195,7 @@ function sellerOrderDisplay(
         statusColor: '#999999',
         secondaryLabel: null,
         secondaryToastKey: 'toast.shipped',
+        secondaryIsBrand: false,
       };
     default:
       return {
@@ -190,15 +204,87 @@ function sellerOrderDisplay(
         statusColor: colors.brand2,
         secondaryLabel: null,
         secondaryToastKey: 'toast.shipped',
+        secondaryIsBrand: false,
       };
   }
+}
+
+type OrderRowDisplay = ReturnType<typeof orderDisplay>;
+
+function OrderListCard({
+  order,
+  display,
+  counterpartName,
+  contactLabel,
+  onOpenListing,
+  onContact,
+  onSecondary,
+  showContact = true,
+}: {
+  order: UiOrder;
+  display: OrderRowDisplay;
+  counterpartName: string;
+  contactLabel: string;
+  onOpenListing: () => void;
+  onContact: () => void;
+  onSecondary?: () => void;
+  showContact?: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <AmazingSurface style={styles.orderItem}>
+      <View style={styles.orderTop}>
+        <Text style={styles.orderTopStrong}>{display.statusTitle}</Text>
+        <Text style={{ color: display.statusColor, fontWeight: fonts.weights.bold }}>
+          {display.statusSub}
+        </Text>
+      </View>
+      <Pressable onPress={onOpenListing}>
+        <View style={styles.orderMid}>
+          <OrderThumb imageUrl={order.imageUrl} />
+          <View style={styles.orderInfo}>
+            <Text style={styles.orderTitle} numberOfLines={2}>
+              {order.title}
+            </Text>
+            <Text style={styles.orderSub} numberOfLines={1}>
+              {counterpartName}
+            </Text>
+            <Text style={styles.price}>
+              {t('common.currencyPrefix')}
+              {order.amount}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+      <View style={styles.orderActions}>
+        {showContact ? (
+          <Pressable style={styles.orderBtn} onPress={onContact}>
+            <Text style={styles.orderBtnText} numberOfLines={1}>
+              {contactLabel}
+            </Text>
+          </Pressable>
+        ) : null}
+        {display.secondaryLabel && onSecondary ? (
+          <Pressable
+            style={[styles.orderBtn, display.secondaryIsBrand && styles.orderBtnYellow]}
+            onPress={onSecondary}
+          >
+            <Text style={styles.orderBtnText} numberOfLines={1}>
+              {display.secondaryLabel}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </AmazingSurface>
+  );
 }
 
 export function OrdersScreen() {
   const { t } = useTranslation();
   useAuthGuard();
   const params = useLocalSearchParams<{ filter?: string }>();
-  const { products, requireAuthNav, toast, openChat, openDetail, nav, isLoggedIn, authReady, paymentMethods } = useApp();
+  const { products, requireAuthNav, toast, openChat, openDetail, isLoggedIn, authReady, mergeCatalogProducts } = useApp();
   const [activeFilter, setActiveFilter] = useState<OrderFilterKey>(() => {
     const filter = params.filter;
     return filter && ORDER_FILTERS.includes(filter as OrderFilterKey)
@@ -225,15 +311,11 @@ export function OrdersScreen() {
     products,
     resolveTitle,
     resolveSeller,
+    mergeCatalogProducts,
   );
 
-  const openOrderCheckout = useCallback(
+  const openOrderListing = useCallback(
     (order: UiOrder) => {
-      if (!paymentMethods.length) {
-        toast(t('toast.selectPayment'));
-        nav('paymentSettings');
-        return;
-      }
       const fromCatalog = products.find((p) => p.id === order.listingId);
       openDetail(
         fromCatalog ?? {
@@ -247,19 +329,15 @@ export function OrdersScreen() {
           height: '',
           imageUrl: order.imageUrl,
           apiTitle: order.title,
+          listingStatus: 'sold',
         },
       );
-      nav('order');
     },
-    [nav, openDetail, paymentMethods.length, products, t, toast],
+    [openDetail, products],
   );
 
   const handleSecondaryAction = async (order: (typeof visibleOrders)[number]) => {
     const display = orderDisplay(order.status, t);
-    if (order.status === 'pendingPay') {
-      openOrderCheckout(order);
-      return;
-    }
     if (order.status === 'pendingReview') {
       Alert.alert(
         t('screens.orders.reviewTitle'),
@@ -307,16 +385,6 @@ export function OrdersScreen() {
     }
   };
 
-  const handleCancelOrder = async (order: (typeof visibleOrders)[number]) => {
-    try {
-      await cancelOrder(order, isLoggedIn);
-      toast(t('toast.orderCancelled'));
-      refresh();
-    } catch {
-      toast(t('toast.orderActionFailed'));
-    }
-  };
-
   return (
     <ScreenScroll screenId="orders">
       <TitleBar center={t('screens.orders.title')} />
@@ -351,60 +419,24 @@ export function OrdersScreen() {
         visibleOrders.map((order) => {
           const display = orderDisplay(order.status, t);
           return (
-          <AmazingSurface key={order.id} style={styles.orderItem}>
-            <View style={styles.orderTop}>
-              <Text style={styles.orderTopStrong}>{display.statusTitle}</Text>
-              <Text style={{ color: display.statusColor, fontWeight: fonts.weights.bold }}>
-                {display.statusSub}
-              </Text>
-            </View>
-            <View style={styles.orderMid}>
-              <OrderThumb imageUrl={order.imageUrl} />
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderTitle} numberOfLines={2}>
-                  {order.title}
-                </Text>
-                <Text style={styles.orderSub} numberOfLines={1}>
-                  {order.sellerName}
-                </Text>
-                <Text style={styles.price}>
-                  {t('common.currencyPrefix')}
-                  {order.amount}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.orderActions}>
-              <Pressable
-                style={styles.orderBtn}
-                onPress={() =>
-                  openChat({
-                    listingId: order.listingId,
-                    counterpartName: order.sellerName,
-                    listingTitle: order.title,
-                  })
-                }
-              >
-                <Text style={styles.orderBtnText} numberOfLines={1}>
-                  {t('screens.orders.contactSeller')}
-                </Text>
-              </Pressable>
-              {display.secondaryLabel ? (
-              <Pressable
-                style={[styles.orderBtn, display.secondaryIsBrand && styles.orderBtnYellow]}
-                onPress={() => handleSecondaryAction(order)}
-              >
-                <Text style={styles.orderBtnText} numberOfLines={1}>
-                  {display.secondaryLabel}
-                </Text>
-              </Pressable>
-              ) : null}
-            </View>
-            {order.status === 'pendingPay' ? (
-              <Pressable onPress={() => void handleCancelOrder(order)} style={styles.cancelLink}>
-                <Text style={styles.cancelLinkText}>{t('screens.orders.cancelOrder')}</Text>
-              </Pressable>
-            ) : null}
-          </AmazingSurface>
+            <OrderListCard
+              key={order.id}
+              order={order}
+              display={display}
+              counterpartName={order.sellerName}
+              contactLabel={t('screens.orders.contactSeller')}
+              onOpenListing={() => openOrderListing(order)}
+              onContact={() =>
+                openChat({
+                  listingId: order.listingId,
+                  counterpartName: order.sellerName,
+                  listingTitle: order.title,
+                })
+              }
+              onSecondary={
+                display.secondaryLabel ? () => void handleSecondaryAction(order) : undefined
+              }
+            />
           );
         })
       ) : (
@@ -417,8 +449,41 @@ export function OrdersScreen() {
 export function SoldScreen() {
   const { t } = useTranslation();
   useAuthGuard();
-  const { isLoggedIn, authReady, toast } = useApp();
-  const { orders, loading, error, shipOrder, releaseOrder, refresh } = useSellerOrders('all', isLoggedIn, authReady);
+  const params = useLocalSearchParams<{ filter?: string }>();
+  const { isLoggedIn, authReady, toast, openChat, openDetail, products } = useApp();
+  const [activeFilter, setActiveFilter] = useState<OrderFilterKey>(() => {
+    const filter = params.filter;
+    return filter && ORDER_FILTERS.includes(filter as OrderFilterKey)
+      ? (filter as OrderFilterKey)
+      : 'all';
+  });
+  const { orders, loading, error, shipOrder, releaseOrder, refresh } = useSellerOrders(
+    activeFilter,
+    isLoggedIn,
+    authReady,
+  );
+
+  const openSaleListing = useCallback(
+    (order: UiOrder) => {
+      const fromCatalog = products.find((p) => p.id === order.listingId);
+      openDetail(
+        fromCatalog ?? {
+          id: order.listingId,
+          price: order.amount,
+          catKey: 'misc',
+          tagKey: 'lightlyUsed',
+          sellerKey: '',
+          seller: order.sellerName,
+          loc: '',
+          height: '',
+          imageUrl: order.imageUrl,
+          apiTitle: order.title,
+          listingStatus: 'sold',
+        },
+      );
+    },
+    [openDetail, products],
+  );
 
   const handleShip = async (order: UiOrder) => {
     try {
@@ -441,8 +506,28 @@ export function SoldScreen() {
   return (
     <ScreenScroll screenId="sold">
       <TitleBar center={t('screens.sold.title')} />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {ORDER_FILTERS.map((filter) => {
+          const active = activeFilter === filter;
+          return (
+            <Pressable
+              key={filter}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => setActiveFilter(filter)}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                {t(FILTER_LABEL_KEYS[filter])}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
       {loading ? (
-        <LoadingState />
+        <LoadingState compact />
       ) : error ? (
         <>
           <EmptyState text={t('screens.sold.loadFailed')} />
@@ -455,43 +540,32 @@ export function SoldScreen() {
           const actionHandler =
             sellerAction === 'ship' ? handleShip : sellerAction === 'release' ? handleRelease : null;
           return (
-            <AmazingSurface key={order.id} style={styles.orderItem}>
-              <View style={styles.orderTop}>
-                <Text style={[styles.orderTopStrong, { color: display.statusColor }]}>
-                  {display.statusTitle}
-                </Text>
-                <Text style={styles.price}>
-                  {t('common.currencyPrefix')}
-                  {order.amount}
-                </Text>
-              </View>
-              <View style={styles.orderMid}>
-                <OrderThumb imageUrl={order.imageUrl} />
-                <View style={styles.orderInfo}>
-                  <Text style={styles.orderTitle} numberOfLines={2}>
-                    {order.title}
-                  </Text>
-                  {order.buyerName ? (
-                    <Text style={styles.orderSub}>
-                      {t('screens.sold.buyerLine', { name: order.buyerName })}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.orderSub}>{display.statusSub}</Text>
-                </View>
-              </View>
-              {display.secondaryLabel && actionHandler ? (
-                <PillButton
-                  label={display.secondaryLabel}
-                  variant="brand"
-                  full
-                  onPress={() => void actionHandler(order)}
-                />
-              ) : null}
-            </AmazingSurface>
+            <OrderListCard
+              key={order.id}
+              order={order}
+              display={display}
+              counterpartName={order.buyerName ?? ''}
+              contactLabel={t('screens.sold.contactBuyer')}
+              showContact={Boolean(order.buyerId && order.buyerName)}
+              onOpenListing={() => openSaleListing(order)}
+              onContact={() =>
+                openChat({
+                  listingId: order.listingId,
+                  counterpartUserId: order.buyerId,
+                  counterpartName: order.buyerName,
+                  listingTitle: order.title,
+                })
+              }
+              onSecondary={
+                display.secondaryLabel && actionHandler
+                  ? () => void actionHandler(order)
+                  : undefined
+              }
+            />
           );
         })
       ) : (
-        <EmptyState text={t('screens.sold.empty')} />
+        <EmptyState text={t('screens.sold.emptyFilter')} />
       )}
     </ScreenScroll>
   );
@@ -903,47 +977,85 @@ export function FollowingScreen() {
 }
 
 export function CouponsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   useAuthGuard();
-  const { toast, isLoggedIn, authReady } = useApp();
+  const { isLoggedIn, authReady } = useApp();
   const { coupons, loading } = useCoupons(isLoggedIn, authReady);
 
-  const handleUseCoupon = () => {
-    toast(t('screens.coupons.useAtCheckout'));
+  const formatCouponExpiry = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString(i18n.language.startsWith('zh') ? 'zh-CN' : 'en-AU', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const goBrowseListings = () => {
     router.push('/');
   };
 
   return (
     <ScreenScroll screenId="coupons">
       <TitleBar center={t('screens.coupons.title')} />
+      {!loading ? (
+        <View style={styles.couponOnboarding}>
+          <Text style={styles.couponOnboardingTitle}>{t('screens.coupons.howToTitle')}</Text>
+          <Text style={styles.couponOnboardingBody}>{t('screens.coupons.howToBody')}</Text>
+          <Text style={styles.couponOnboardingStep}>{t('screens.coupons.howToStep1')}</Text>
+          <Text style={styles.couponOnboardingStep}>{t('screens.coupons.howToStep2')}</Text>
+          <Text style={styles.couponOnboardingStep}>{t('screens.coupons.howToStep3')}</Text>
+        </View>
+      ) : null}
       {loading ? (
         <LoadingState compact />
       ) : coupons.length ? (
-        coupons.map((coupon) => {
-          const used = coupon.status !== 'available';
-          return (
-            <AmazingSurface key={coupon.id} style={styles.coupon}>
-              <View>
-                <Text style={styles.couponAmt}>
-                  {t('common.currencyPrefix')}
-                  {coupon.amount}
-                </Text>
-                <Text style={styles.couponSub}>{coupon.description}</Text>
-              </View>
-              <Pressable
-                style={[styles.couponBtn, used && styles.couponBtnUsed]}
-                onPress={() => handleUseCoupon()}
-                disabled={used}
-              >
-                <Text style={[styles.couponBtnText, used && styles.couponBtnTextUsed]}>
-                  {used ? t('screens.coupons.used') : t('screens.coupons.use')}
-                </Text>
-              </Pressable>
-            </AmazingSurface>
-          );
-        })
+        <>
+          <Text style={styles.couponWalletHead}>{t('screens.coupons.walletSection')}</Text>
+          {coupons.map((coupon) => {
+            const used = coupon.status === 'used';
+            const expired = coupon.status === 'expired';
+            const inactive = used || expired;
+            const expiryLabel =
+              coupon.expiresAt && !expired
+                ? t('screens.coupons.expiresBy', { date: formatCouponExpiry(coupon.expiresAt) })
+                : expired
+                  ? t('screens.coupons.statusExpired')
+                  : null;
+            return (
+              <AmazingSurface key={coupon.id} style={styles.coupon}>
+                <View style={styles.couponMain}>
+                  <Text style={styles.couponAmt}>
+                    {t('common.currencyPrefix')}
+                    {coupon.amount}
+                  </Text>
+                  <Text style={styles.couponSub}>{coupon.description}</Text>
+                  {expiryLabel ? <Text style={styles.couponExpiry}>{expiryLabel}</Text> : null}
+                  {!inactive ? (
+                    <Text style={styles.couponCardHint}>{t('screens.coupons.cardHint')}</Text>
+                  ) : null}
+                </View>
+                <Pressable
+                  style={[styles.couponBtn, inactive && styles.couponBtnUsed]}
+                  onPress={goBrowseListings}
+                  disabled={inactive}
+                >
+                  <Text style={[styles.couponBtnText, inactive && styles.couponBtnTextUsed]}>
+                    {used ? t('screens.coupons.used') : expired ? t('screens.coupons.statusExpired') : t('screens.coupons.browseItems')}
+                  </Text>
+                </Pressable>
+              </AmazingSurface>
+            );
+          })}
+        </>
       ) : (
-        <EmptyState text={t('screens.coupons.empty')} />
+        <View>
+          <EmptyState text={t('screens.coupons.empty')} />
+          <TableNote>{t('screens.coupons.emptyHint')}</TableNote>
+        </View>
       )}
     </ScreenScroll>
   );
@@ -1115,6 +1227,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  couponMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  couponOnboarding: {
+    backgroundColor: colors.paper,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  couponOnboardingTitle: {
+    fontSize: 15,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    marginBottom: 6,
+  },
+  couponOnboardingBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.sub,
+    marginBottom: 8,
+  },
+  couponOnboardingStep: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.sub,
+    marginTop: 2,
+  },
+  couponWalletHead: {
+    fontSize: 14,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    marginBottom: 10,
   },
   couponAmt: {
     fontSize: 24,
@@ -1124,6 +1273,17 @@ const styles = StyleSheet.create({
   couponSub: {
     color: '#777777',
     fontSize: 12,
+    marginTop: 2,
+  },
+  couponExpiry: {
+    color: '#999999',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  couponCardHint: {
+    color: colors.brand2,
+    fontSize: 11,
+    marginTop: 6,
   },
   couponBtn: {
     borderRadius: radius.pill,

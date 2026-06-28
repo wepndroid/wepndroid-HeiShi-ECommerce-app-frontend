@@ -12,7 +12,8 @@ import {
 import { sendRegisterCode } from '../services/authService';
 import { pickImagesFromLibrary, type PickedMedia } from '../services/mediaPicker';
 import { AppIcon } from '../components/AppIcon';
-import { DetailCard, FieldInputStacked, FormCard } from '../components/FormUI';
+import { DetailCard, FieldInputStacked, FieldSelectRow, FormCard } from '../components/FormUI';
+import { allCityOptions, DEFAULT_REGION } from '../data/region';
 import { BackButton, Logo, Notice, PillButton, ScreenScroll, TitleBar } from '../components/UI';
 import { colors, fonts } from '../theme';
 import { NumericInputKind } from '../utils/numericInput';
@@ -124,6 +125,8 @@ export function RegisterScreen() {
   const [step, setStep] = useState<RegisterStep>('phone');
   const [nickname, setNickname] = useState('');
   const [phone, setPhone] = useState('');
+  const [city, setCity] = useState(DEFAULT_REGION.city);
+  const cityOptions = React.useMemo(() => allCityOptions(), []);
   const [verificationCode, setVerificationCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -164,7 +167,7 @@ export function RegisterScreen() {
 
   const validatePhoneStepFields = (): AuthErrorKey | null => {
     if (!nickname.trim()) return 'nicknameRequired';
-    return validateRegisterPhoneStep({ phone });
+    return validateRegisterPhoneStep({ phone, city });
   };
 
   const requestRegisterCode = async (): Promise<{ ok: true; resendAfter: number; devCode?: string } | { ok: false; error: AuthErrorKey }> => {
@@ -229,6 +232,7 @@ export function RegisterScreen() {
       avatarUri: avatar!.uri,
       avatarMimeType: avatar!.mimeType,
       avatarFileName: avatar!.fileName,
+      city,
     });
     setSubmitting(false);
     if ('error' in result && result.error) {
@@ -312,6 +316,15 @@ export function RegisterScreen() {
               placeholder={t('screens.register.phonePlaceholder')}
               numericKind="phone"
               onInvalidInput={() => toast(t('toast.numberOnly'))}
+            />
+            <FieldSelectRow
+              icon="location"
+              label={t('screens.register.cityLabel')}
+              options={cityOptions}
+              selectedKey={city}
+              onSelect={setCity}
+              placeholder={t('screens.register.cityPlaceholder')}
+              stacked
             />
           </FormCard>
           <Notice text={t('screens.register.notice')} />

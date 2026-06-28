@@ -108,10 +108,12 @@ async function syncProfileAfterAuth(
   nickname: string,
   phone: string,
   avatarUrl: string,
+  city: string,
 ): Promise<AuthUser> {
   const dto = await authApi.syncProfile({
     nickname: nickname.trim(),
     phone: normalizePhone(phone.trim()),
+    city,
     avatarUrl,
   });
   const user = mapUser(dto);
@@ -119,7 +121,8 @@ async function syncProfileAfterAuth(
   return user;
 }
 
-async function tryRefreshSession(): Promise<AuthUser | null> {
+/** Refresh JWT / Supabase session after a 401. Used by settings and other authed reads. */
+export async function refreshAuthSession(): Promise<AuthUser | null> {
   if (isSupabaseAuthConfigured()) {
     const { data, error } = await getSupabaseClient().auth.refreshSession();
     if (!error && data.session?.access_token) {
@@ -158,7 +161,7 @@ export async function bootstrapAuth(): Promise<AuthUser | null> {
         return user;
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          const refreshed = await tryRefreshSession();
+          const refreshed = await refreshAuthSession();
           if (refreshed) return refreshed;
           await getSupabaseClient().auth.signOut();
           await clearStoredSession();
@@ -177,7 +180,7 @@ export async function bootstrapAuth(): Promise<AuthUser | null> {
         return user;
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
-          const refreshed = await tryRefreshSession();
+          const refreshed = await refreshAuthSession();
           if (refreshed) return refreshed;
           await clearStoredSession();
         }
@@ -294,6 +297,7 @@ export async function registerWithAuth(input: {
   avatarUri: string;
   avatarMimeType?: string;
   avatarFileName?: string;
+  city: string;
 }): Promise<{ user: AuthUser } | { error: AuthErrorKey }> {
   const validationError = validateRegisterInput(input);
   if (validationError) return { error: validationError };
@@ -322,7 +326,7 @@ export async function registerWithAuth(input: {
         input.avatarMimeType,
         input.avatarFileName,
       );
-      const user = await syncProfileAfterAuth(input.nickname, normalizedPhone, avatarUrl);
+      const user = await syncProfileAfterAuth(input.nickname, normalizedPhone, avatarUrl, input.city);
       return { user };
     } catch (err) {
       if (err instanceof Error && err.message === 'AVATAR_UPLOAD_FAILED') {
@@ -338,6 +342,7 @@ export async function registerWithAuth(input: {
       phone: normalizedPhone,
       password: input.password,
       verificationCode: input.verificationCode.trim(),
+      city: input.city,
     });
     pendingRegisterCodes.delete(normalizedPhone);
     await applyTokens(tokens);
@@ -346,7 +351,7 @@ export async function registerWithAuth(input: {
       input.avatarMimeType,
       input.avatarFileName,
     );
-    const profile = await userApi.updateProfile({ avatarUrl });
+    const profile = await userApi.updateProfile({ avatarUrl, city: input.city });
     const user = mapUser(profile);
     await saveSession(user);
     return { user };

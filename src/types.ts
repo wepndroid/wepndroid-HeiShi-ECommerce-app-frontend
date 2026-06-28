@@ -190,12 +190,18 @@ export interface UiListing {
 
 export type OrderFilterKey =
   | 'all'
+  | 'pendingShip'
+  | 'pendingReceive'
+  | 'pendingReview'
+  | 'completed';
+
+export type OrderStatus =
   | 'pendingPay'
   | 'pendingShip'
   | 'pendingReceive'
-  | 'pendingReview';
-
-export type OrderStatus = Exclude<OrderFilterKey, 'all'> | 'completed' | 'cancelled';
+  | 'pendingReview'
+  | 'completed'
+  | 'cancelled';
 
 export type DemoOrder = {
   id: number;
@@ -210,6 +216,7 @@ export interface UiOrder {
   title: string;
   imageUrl: string;
   sellerName: string;
+  buyerId?: string;
   buyerName?: string;
   amount: number;
   status: OrderStatus;

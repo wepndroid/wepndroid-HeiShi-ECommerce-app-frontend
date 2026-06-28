@@ -109,15 +109,19 @@ export function useMessageNotifications(
     }
 
     void (async () => {
-      await configureMessageNotifications();
-      const settings = await fetchNotificationSettings(true);
-      chatMessagesEnabledRef.current = settings.chatMessages;
+      try {
+        await configureMessageNotifications();
+        const settings = await fetchNotificationSettings(true);
+        chatMessagesEnabledRef.current = settings.chatMessages;
 
-      const permission = await getNotificationPermissionStatus();
-      if (permission === 'undetermined') {
-        await requestNotificationPermissions();
+        const permission = await getNotificationPermissionStatus();
+        if (permission === 'undetermined') {
+          await requestNotificationPermissions();
+        }
+        await registerDevicePushTokenWithBackend(true);
+      } catch {
+        chatMessagesEnabledRef.current = true;
       }
-      await registerDevicePushTokenWithBackend(true);
     })();
   }, [authReady, isLoggedIn]);
 

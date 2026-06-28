@@ -6,6 +6,7 @@ import { pushTokenApi } from '../api/endpoints/user';
 import i18n from '../i18n';
 
 export const CHAT_CHANNEL_ID = 'chat-messages';
+export const ORDER_CHANNEL_ID = 'order-updates';
 const PUSH_TOKEN_STORAGE_KEY = 'devicePushToken';
 
 export type NotificationPermissionStatus = 'granted' | 'denied' | 'undetermined';
@@ -104,6 +105,15 @@ export async function configureMessageNotifications(): Promise<void> {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync(CHAT_CHANNEL_ID, {
         name: i18n.t('notifications.chatChannelName'),
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#F5C518',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+      await Notifications.setNotificationChannelAsync(ORDER_CHANNEL_ID, {
+        name: i18n.t('notifications.orderChannelName'),
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#F5C518',
@@ -234,31 +244,45 @@ export async function syncAppIconBadgeCount(count: number): Promise<void> {
   }, undefined);
 }
 
-function conversationIdFromResponse(response: NotificationResponse): string | null {
-  const data = response.notification.request.content.data;
-  return data && typeof data.conversationId === 'string' ? data.conversationId : null;
-}
+export type NotificationOpenPayload =
+  | { type: 'chat'; conversationId: string }
+  | { type: 'order'; filter?: string; orderId?: number };
 
 let lastNotificationOpenId: string | null = null;
 let lastNotificationOpenAt = 0;
 
-function openConversationFromNotification(
-  onOpen: (conversationId: string) => void,
+function payloadFromResponse(response: NotificationResponse): NotificationOpenPayload | null {
+  const data = response.notification.request.content.data;
+  if (data && data.type === 'order') {
+    const filter = typeof data.filter === 'string' ? data.filter : 'pendingShip';
+    const orderId = typeof data.orderId === 'number' ? data.orderId : undefined;
+    return { type: 'order', filter, orderId };
+  }
+  const conversationId =
+    data && typeof data.conversationId === 'string' ? data.conversationId : null;
+  if (conversationId) {
+    return { type: 'chat', conversationId };
+  }
+  return null;
+}
+
+function openFromNotification(
+  onOpen: (payload: NotificationOpenPayload) => void,
   response: NotificationResponse,
 ): void {
-  const conversationId = conversationIdFromResponse(response);
-  if (!conversationId) return;
+  const payload = payloadFromResponse(response);
+  if (!payload) return;
   const responseId = response.notification.request.identifier;
   const now = Date.now();
   if (responseId === lastNotificationOpenId && now - lastNotificationOpenAt < 2000) return;
   lastNotificationOpenId = responseId;
   lastNotificationOpenAt = now;
-  onOpen(conversationId);
+  onOpen(payload);
 }
 
 /** Listen for notification taps; no-op when native module is unavailable. */
 export function registerNotificationOpenHandler(
-  onOpen: (conversationId: string) => void,
+  onOpen: (payload: NotificationOpenPayload) => void,
 ): () => void {
   if (Platform.OS === 'web') return () => {};
 
@@ -273,12 +297,12 @@ export function registerNotificationOpenHandler(
     if (cancelled) return;
 
     subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      openConversationFromNotification(onOpen, response);
+      openFromNotification(onOpen, response);
     });
 
     const last = await Notifications.getLastNotificationResponseAsync();
     if (cancelled || !last) return;
-    openConversationFromNotification(onOpen, last);
+    openFromNotification(onOpen, last);
   })();
 
   return () => {

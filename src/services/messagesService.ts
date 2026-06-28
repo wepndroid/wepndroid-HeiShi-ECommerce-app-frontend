@@ -173,7 +173,13 @@ export function triggerInboxPollNow(): void {
 }
 
 export async function openConversation(
-  input: { listingId?: number; counterpartName?: string; listingTitle?: string; conversationId?: string },
+  input: {
+    listingId?: number;
+    counterpartUserId?: string;
+    counterpartName?: string;
+    listingTitle?: string;
+    conversationId?: string;
+  },
   isLoggedIn: boolean,
 ): Promise<UiConversation> {
   if (input.conversationId) {
@@ -208,7 +214,10 @@ export async function openConversation(
 
   if (isLoggedIn && input.listingId != null) {
     try {
-      const dto = await messagesApi.openConversation({ listingId: input.listingId });
+      const dto = await messagesApi.openConversation({
+        listingId: input.listingId,
+        counterpartUserId: input.counterpartUserId,
+      });
       return mapConversationDtoToUi(dto);
     } catch (err) {
       if (err instanceof ApiError) throw err;

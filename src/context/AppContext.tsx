@@ -89,6 +89,7 @@ interface AppContextValue {
   openSellerProfile: (sellerKey: string) => void;
   loadProduct: (id: number) => Promise<LoadProductResult>;
   mergeProductDetail: (product: Product) => void;
+  mergeCatalogProducts: (products: Product[]) => void;
   favs: Set<number>;
   toggleFav: () => void;
   toggleFavoriteById: (listingId: number) => void;
@@ -132,6 +133,7 @@ interface AppContextValue {
   openChat: (params: {
     conversationId?: string;
     listingId?: number;
+    counterpartUserId?: string;
     counterpartName?: string;
     listingTitle?: string;
   }) => Promise<void>;
@@ -165,6 +167,7 @@ interface AppContextValue {
     avatarUri: string;
     avatarMimeType?: string;
     avatarFileName?: string;
+    city: string;
   }) => Promise<{ error?: AuthErrorKey }>;
   logout: () => Promise<void>;
 }
@@ -427,15 +430,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const needsBundleMeta = isBundleListingProduct(cached ?? summaryHint ?? catalogHint ?? {});
 
       if (needsBundleMeta && summaryHint) {
-        setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+        const cachedWithMeta = productsRef.current.find(
+          (p) => p.id === id && p.bundleMeta != null,
+        );
+        if (!cachedWithMeta) {
+          setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+        }
         recordListingView(id, user != null);
         void (async () => {
-          const fetched = await resolveListingDetail(id, user != null);
-          if (seq !== loadProductSeqRef.current) return;
-          if (fetched?.bundleMeta != null) {
-            const enriched = enrichSelfSellerProduct(fetched, user);
-            setCurrentItem(enriched);
-            setProducts((prev) => mergeProducts(prev, [enriched]));
+          try {
+            const fetched = await resolveListingDetail(id, user != null);
+            if (seq !== loadProductSeqRef.current) return;
+            if (fetched?.bundleMeta != null) {
+              const enriched = enrichSelfSellerProduct(fetched, user);
+              setCurrentItem(enriched);
+              setProducts((prev) => mergeProducts(prev, [enriched]));
+              detailSummaryIdRef.current = null;
+              detailSummaryProductRef.current = null;
+            }
+          } catch {
+            // DetailScreen bundle loader surfaces retry UI
           }
         })();
         return 'ok';
@@ -533,6 +547,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setProducts((prev) => mergeProducts(prev, [enriched]));
     },
     [user],
+  );
+
+  const mergeCatalogProducts = useCallback(
+    (items: Product[]) => {
+      if (!items.length) return;
+      setProducts((prev) => applySelfAvatarToProducts(mergeProducts(prev, items)));
+    },
+    [applySelfAvatarToProducts],
   );
 
   const openDetail = useCallback(
@@ -757,6 +779,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (params: {
       conversationId?: string;
       listingId?: number;
+      counterpartUserId?: string;
       counterpartName?: string;
       listingTitle?: string;
     }) => {
@@ -794,12 +817,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (Platform.OS === 'web') return;
-    return registerNotificationOpenHandler((conversationId) => {
-      if (!authReady || !user) {
-        pendingChatConversationIdRef.current = conversationId;
+    return registerNotificationOpenHandler((payload) => {
+      if (payload.type === 'order') {
+        const filter = payload.filter ?? 'pendingShip';
+        router.push(`/profile/sold?filter=${filter}` as Href);
         return;
       }
-      void openChat({ conversationId });
+      if (!authReady || !user) {
+        pendingChatConversationIdRef.current = payload.conversationId;
+        return;
+      }
+      void openChat({ conversationId: payload.conversationId });
     });
   }, [openChat, authReady, user]);
 
@@ -865,6 +893,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       avatarUri: string;
       avatarMimeType?: string;
       avatarFileName?: string;
+      city: string;
     }) => {
       const result = await registerWithAuth(input);
       if ('error' in result) return { error: result.error };
@@ -909,6 +938,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openSellerProfile,
       loadProduct,
       mergeProductDetail,
+      mergeCatalogProducts,
       favs,
       toggleFav,
       toggleFavoriteById,
@@ -989,6 +1019,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openSellerProfile,
       loadProduct,
       mergeProductDetail,
+      mergeCatalogProducts,
       favs,
       toggleFav,
       toggleFavoriteById,

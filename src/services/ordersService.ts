@@ -13,7 +13,7 @@ import { invalidateCatalog } from '../utils/catalogSync';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel';
 
-export type CheckoutResult = { order: UiOrder; paid: boolean; payFailed?: boolean };
+export type CheckoutResult = { order: UiOrder | null; paid: boolean; payFailed?: boolean };
 
 const CHAT_ORDER_STATUSES = new Set([
   'pendingPay',
@@ -22,6 +22,12 @@ const CHAT_ORDER_STATUSES = new Set([
   'pendingReview',
   'completed',
 ]);
+
+const BUYER_HIDDEN_STATUSES = new Set<OrderStatus>(['cancelled', 'pendingPay']);
+
+function visibleBuyerOrders(orders: UiOrder[]): UiOrder[] {
+  return orders.filter((item) => !BUYER_HIDDEN_STATUSES.has(item.status));
+}
 
 async function fetchAllOrders(
   params: Parameters<typeof ordersApi.list>[0],
@@ -38,18 +44,38 @@ async function fetchAllOrders(
   return items;
 }
 
-async function syncPendingPayOrder(
-  orderId: number,
-  deliveryMethod: string,
-  paymentMethodId?: string,
-  couponId?: string | null,
-): Promise<UiOrder> {
-  const dto = await ordersApi.update(orderId, {
-    deliveryMethod,
-    paymentMethodId,
-    ...(couponId !== undefined ? { couponId } : {}),
-  });
-  return mapOrderDtoToUiOrder(dto);
+async function cancelUnpaidOrderSafely(orderId: number): Promise<void> {
+  try {
+    await ordersApi.cancel(orderId);
+    invalidateCatalog();
+  } catch {
+    // Best-effort cleanup; stale-order expiry remains a backend fallback.
+  }
+}
+
+async function findOwnPendingPayOrder(
+  listingId: number,
+  bundleItemId?: string,
+): Promise<UiOrder | null> {
+  const result = await ordersApi.list({ status: 'pendingPay', listingId, page: 1, pageSize: 10 });
+  const existing = result.items.find(
+    (order) =>
+      order.listingId === listingId &&
+      (bundleItemId ? order.bundleItemId === bundleItemId : !order.bundleItemId),
+  );
+  if (!existing) return null;
+  return mapOrderDtoToUiOrder(existing);
+}
+
+/** Release abandoned unpaid checkout so the listing is buyable again. */
+export async function clearStalePendingPayForListing(
+  listingId: number,
+  bundleItemId?: string,
+): Promise<void> {
+  const existing = await findOwnPendingPayOrder(listingId, bundleItemId);
+  if (existing) {
+    await cancelUnpaidOrderSafely(existing.id);
+  }
 }
 
 export async function listOrders(
@@ -64,16 +90,17 @@ export async function listOrders(
       const items = await fetchAllOrders({
         status: filter === 'all' ? undefined : filter,
       });
-      const mapped = items.map(mapOrderDtoToUiOrder);
+      const mapped = visibleBuyerOrders(items.map(mapOrderDtoToUiOrder));
       if (filter === 'all') return mapped;
-      return mapped.filter((item) => item.status !== 'cancelled');
+      return mapped.filter((item) => item.status === filter);
     } catch {
       throw new Error('orders_load_failed');
     }
   }
 
   if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
-    return listLocalOrders(filter, products, resolveTitle, resolveSeller);
+    const local = await listLocalOrders(filter, products, resolveTitle, resolveSeller);
+    return visibleBuyerOrders(local);
   }
   return [];
 }
@@ -91,20 +118,6 @@ export async function listCompletedPurchases(isLoggedIn: boolean): Promise<UiOrd
     }
   }
   return [];
-}
-
-async function resumePendingPayOrder(
-  listingId: number,
-  bundleItemId?: string,
-): Promise<UiOrder | null> {
-  const result = await ordersApi.list({ status: 'pendingPay', listingId, page: 1, pageSize: 10 });
-  const existing = result.items.find(
-    (order) =>
-      order.listingId === listingId &&
-      (bundleItemId ? order.bundleItemId === bundleItemId : !order.bundleItemId),
-  );
-  if (!existing) return null;
-  return mapOrderDtoToUiOrder(existing);
 }
 
 async function fetchAllSalesOrders(
@@ -135,12 +148,22 @@ export async function listSalesOrders(
       if (filter === 'all') {
         return mapped.filter((item) => item.status !== 'cancelled');
       }
-      return mapped.filter((item) => item.status !== 'cancelled');
+      return mapped.filter((item) => item.status === filter);
     } catch {
       throw new Error('sales_orders_load_failed');
     }
   }
   return [];
+}
+
+export async function countSellerPendingShipOrders(isLoggedIn: boolean): Promise<number> {
+  if (!isLoggedIn) return 0;
+  try {
+    const result = await ordersApi.listSales({ status: 'pendingShip', page: 1, pageSize: 1 });
+    return result.total;
+  } catch {
+    return 0;
+  }
 }
 
 export async function shipSalesOrder(order: UiOrder, isLoggedIn: boolean): Promise<OrderStatus> {
@@ -198,13 +221,32 @@ export async function userCanChatOnListing(
   }
 }
 
-export async function findPendingPayOrder(
-  listingId: number,
-  isLoggedIn: boolean,
-  bundleItemId?: string,
-): Promise<UiOrder | null> {
-  if (!isLoggedIn) return null;
-  return resumePendingPayOrder(listingId, bundleItemId);
+async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResult> {
+  await clearStalePendingPayForListing(body.listingId, body.bundleItemId);
+  let created: OrderDto;
+  try {
+    created = await ordersApi.create(body);
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      err.status === 409 &&
+      err.code === 'LISTING_RESERVED'
+    ) {
+      await clearStalePendingPayForListing(body.listingId, body.bundleItemId);
+      created = await ordersApi.create(body);
+    } else {
+      throw err;
+    }
+  }
+  try {
+    const paid = await ordersApi.pay(created.id);
+    invalidateCatalog();
+    return { order: mapOrderDtoToUiOrder(paid), paid: true };
+  } catch {
+    await cancelUnpaidOrderSafely(created.id);
+    invalidateCatalog();
+    return { order: null, paid: false, payFailed: true };
+  }
 }
 
 export async function checkoutOrder(input: {
@@ -227,69 +269,12 @@ export async function checkoutOrder(input: {
   };
 
   if (input.isLoggedIn) {
+    if (!input.paymentMethodId) {
+      throw new Error('checkout_failed');
+    }
     try {
-      const existing = await findPendingPayOrder(input.listingId, true, input.bundleItemId);
-      if (existing) {
-        const synced = await syncPendingPayOrder(
-          existing.id,
-          input.deliveryMethod,
-          input.paymentMethodId,
-          input.couponId ?? null,
-        );
-        if (!input.paymentMethodId) {
-          invalidateCatalog();
-          return { order: synced, paid: false };
-        }
-        try {
-          const paid = await ordersApi.pay(synced.id);
-          invalidateCatalog();
-          return { order: mapOrderDtoToUiOrder(paid), paid: true };
-        } catch {
-          invalidateCatalog();
-          return { order: synced, paid: false, payFailed: true };
-        }
-      }
-      const created = await ordersApi.create(body);
-      if (!input.paymentMethodId) {
-        invalidateCatalog();
-        return { order: mapOrderDtoToUiOrder(created), paid: false };
-      }
-      try {
-        const paid = await ordersApi.pay(created.id);
-        invalidateCatalog();
-        return { order: mapOrderDtoToUiOrder(paid), paid: true };
-      } catch {
-        invalidateCatalog();
-        return { order: mapOrderDtoToUiOrder(created), paid: false, payFailed: true };
-      }
+      return await createAndPayOrder(body);
     } catch (err) {
-      if (
-        err instanceof ApiError &&
-        err.status === 409 &&
-        err.code === 'LISTING_RESERVED'
-      ) {
-        const resumed = await resumePendingPayOrder(input.listingId, input.bundleItemId);
-        if (resumed) {
-          const synced = await syncPendingPayOrder(
-            resumed.id,
-            input.deliveryMethod,
-            input.paymentMethodId,
-            input.couponId ?? null,
-          );
-          if (!input.paymentMethodId) {
-            invalidateCatalog();
-            return { order: synced, paid: false };
-          }
-          try {
-            const paid = await ordersApi.pay(synced.id);
-            invalidateCatalog();
-            return { order: mapOrderDtoToUiOrder(paid), paid: true };
-          } catch {
-            invalidateCatalog();
-            return { order: synced, paid: false, payFailed: true };
-          }
-        }
-      }
       if (!API_USE_MOCK_FALLBACK) {
         if (err instanceof ApiError) throw err;
         throw new Error('checkout_failed');
@@ -393,8 +378,6 @@ export async function fetchOrderReview(orderId: number, isLoggedIn: boolean) {
 
 export function orderActionForStatus(status: OrderStatus): OrderAction | null {
   switch (status) {
-    case 'pendingPay':
-      return 'pay';
     case 'pendingShip':
       return 'remindShip';
     case 'pendingReceive':

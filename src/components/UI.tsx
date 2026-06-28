@@ -3,6 +3,8 @@ import {
   Animated,
   ActivityIndicator,
   Image,
+  Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -65,7 +67,11 @@ export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
           <Pressable
             key={item.id}
             style={styles.navItem}
-            onPress={() => (item.id === 'messages' ? requireAuthNav('messages') : nav(item.id))}
+            onPress={() =>
+              item.id === 'messages' || item.id === 'profile' || item.id === 'category'
+                ? requireAuthNav(item.id)
+                : nav(item.id)
+            }
           >
             <AppIcon name={item.icon} size={22} color={active ? colors.brand2 : colors.text} />
             <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
@@ -424,6 +430,9 @@ export function Notice({
   onPress,
   chevron,
   flush,
+  dismissible,
+  onDismiss,
+  dismissHint,
 }: {
   text: string;
   action?: string;
@@ -435,9 +444,57 @@ export function Notice({
   chevron?: boolean;
   /** Remove default bottom margin (stacked layouts). */
   flush?: boolean;
+  /** Swipe left or right to dismiss (mobile). */
+  dismissible?: boolean;
+  onDismiss?: () => void;
+  dismissHint?: string;
 }) {
+  const translateX = React.useRef(new Animated.Value(0)).current;
+  const opacity = React.useRef(new Animated.Value(1)).current;
+
+  const panResponder = React.useMemo(() => {
+    if (!dismissible || !onDismiss) return null;
+    const isHorizontalSwipe = (dx: number, dy: number) =>
+      Math.abs(dx) > 4 && Math.abs(dx) > Math.abs(dy) * 1.05;
+    return PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+        isHorizontalSwipe(gesture.dx, gesture.dy),
+      onMoveShouldSetPanResponder: (_event, gesture) =>
+        isHorizontalSwipe(gesture.dx, gesture.dy),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderMove: (_event, gesture) => {
+        translateX.setValue(gesture.dx);
+        opacity.setValue(1 - Math.min(Math.abs(gesture.dx) / 180, 0.5));
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        if (Math.abs(gesture.dx) > 8 || Math.abs(gesture.vx) > 0.08) {
+          const offScreen = gesture.dx >= 0 ? 420 : -420;
+          Animated.parallel([
+            Animated.timing(translateX, { toValue: offScreen, duration: 180, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+          ]).start(() => {
+            translateX.setValue(0);
+            opacity.setValue(1);
+            onDismiss();
+          });
+          return;
+        }
+        Animated.parallel([
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 0 }),
+          Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        ]).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.parallel([
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 0 }),
+          Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        ]).start();
+      },
+    });
+  }, [dismissible, onDismiss, opacity, translateX]);
+
   const body = (
-    <View style={[styles.notice, flush && styles.noticeFlush]}>
+    <View style={[styles.notice, (flush || dismissible) && styles.noticeFlush]}>
       <Text style={[styles.noticeText, styles.noticeTextFlex]} numberOfLines={3}>
         {text}
       </Text>
@@ -449,14 +506,98 @@ export function Notice({
       {chevron ? <Text style={styles.noticeChevron}>›</Text> : null}
     </View>
   );
+  let content: React.ReactNode = body;
   if (onPress) {
-    return (
+    content = (
       <Pressable onPress={onPress} accessibilityRole="button">
         {body}
       </Pressable>
     );
   }
-  return body;
+  if (dismissible && onDismiss && panResponder) {
+    return (
+      <Animated.View
+        style={[styles.noticeDismissWrap, { transform: [{ translateX }], opacity }]}
+        accessibilityHint={dismissHint}
+        {...panResponder.panHandlers}
+      >
+        {content}
+      </Animated.View>
+    );
+  }
+  return content;
+}
+
+export type DismissibleModalPlacement = 'bottom' | 'center' | 'fill';
+
+/** Modal with a tappable backdrop — closes when the user presses outside `children`. */
+export function DismissibleModal({
+  visible,
+  onClose,
+  children,
+  animationType = 'fade',
+  placement = 'bottom',
+  contentStyle,
+  statusBarTranslucent,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  animationType?: 'none' | 'slide' | 'fade';
+  placement?: DismissibleModalPlacement;
+  contentStyle?: ViewStyle;
+  statusBarTranslucent?: boolean;
+}) {
+  const { t } = useTranslation();
+
+  if (placement === 'fill') {
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType={animationType}
+        onRequestClose={onClose}
+        statusBarTranslucent={statusBarTranslucent}
+      >
+        <View style={styles.dismissModalFillRoot} pointerEvents="box-none">
+          <Pressable
+            style={styles.dismissModalFillBackdrop}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.closeModal')}
+          />
+          <View style={[styles.dismissModalFillContent, contentStyle]} pointerEvents="box-none">
+            {children}
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType={animationType}
+      onRequestClose={onClose}
+      statusBarTranslucent={statusBarTranslucent}
+    >
+      <Pressable
+        style={[
+          styles.dismissModalBackdropPress,
+          placement === 'bottom' && styles.dismissModalBackdropBottom,
+          placement === 'center' && styles.dismissModalBackdropCenter,
+        ]}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.closeModal')}
+      >
+        <Pressable style={[styles.dismissModalCardStop, contentStyle]} onPress={() => undefined}>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }
 
 export function EmptyState({ text }: { text: string }) {
@@ -894,6 +1035,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  noticeDismissWrap: {
+    marginBottom: 8,
+  },
   notice: {
     backgroundColor: colors.trustSoft,
     borderWidth: StyleSheet.hairlineWidth,
@@ -939,6 +1083,30 @@ const styles = StyleSheet.create({
     color: colors.trustText,
     fontWeight: fonts.weights.bold,
     paddingLeft: 4,
+  },
+  dismissModalBackdropPress: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  dismissModalBackdropBottom: {
+    justifyContent: 'flex-end',
+  },
+  dismissModalBackdropCenter: {
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  dismissModalCardStop: {
+    width: '100%',
+  },
+  dismissModalFillRoot: {
+    flex: 1,
+  },
+  dismissModalFillBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  dismissModalFillContent: {
+    flex: 1,
   },
   emptyState: {
     borderStyle: 'dashed',

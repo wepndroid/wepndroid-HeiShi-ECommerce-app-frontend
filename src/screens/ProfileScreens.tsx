@@ -8,10 +8,11 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { useSessionAvatarUrl } from '../hooks/useCurrentUserAvatar';
 import { normalizeAvatarUrl } from '../utils/sellerAvatar';
 import { ApiError } from '../api/client';
-import { useFeed } from '../hooks/useFeed';
+import { useSellerPendingShipCount } from '../hooks/useSellerPendingShipCount';
 import { useFavoriteProducts } from '../hooks/useFavoriteProducts';
 import { useHistoryProducts } from '../hooks/useHistory';
 import { useCoupons } from '../hooks/useCoupons';
+import { useFeed } from '../hooks/useFeed';
 import { feedTitleKey } from '../hooks/useProductFilters';
 import { ALL_AREAS, formatAreaLabel } from '../data/region';
 import { AppIcon } from '../components/AppIcon';
@@ -26,12 +27,6 @@ import { colors, fonts, profileScreenTokens, radius } from '../theme';
 export { MessagesScreen } from './MessagesScreen';
 
 const PROFILE_RECOMMEND_LIMIT = 6;
-const DEMO_PROFILE_STATS = {
-  favorites: 4,
-  history: 13,
-  following: 2,
-  coupons: 3,
-} as const;
 
 export function ProfileScreen() {
   const { t, i18n } = useTranslation();
@@ -39,7 +34,6 @@ export function ProfileScreen() {
     nav,
     requireAuthNav,
     user,
-    isLoggedIn,
     authReady,
     toast,
     region,
@@ -49,18 +43,19 @@ export function ProfileScreen() {
     updateUser,
     favs,
   } = useApp();
-  const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
+  const inboxUnreadCount = useInboxUnreadCount(true, authReady);
   const { profile, save } = useUserProfile(user, authReady);
-  const { pickAndUpload, uploading } = useAvatarUpload(isLoggedIn);
+  const { pickAndUpload, uploading } = useAvatarUpload(true);
   const sessionAvatarUrl = useSessionAvatarUrl();
-  const { items: favoriteItems } = useFavoriteProducts(isLoggedIn, favs);
-  const { items: historyItems } = useHistoryProducts(region, isLoggedIn);
-  const { coupons } = useCoupons(isLoggedIn, authReady);
+  const { items: favoriteItems } = useFavoriteProducts(true, favs);
+  const { items: historyItems } = useHistoryProducts(region, true);
+  const { coupons } = useCoupons(true, authReady);
   const availableCouponCount = useMemo(
     () => coupons.filter((c) => c.status === 'available').length,
     [coupons],
   );
   const { items: recommendedFeed } = useFeed(region, 'recommended', null);
+  const salesToShipCount = useSellerPendingShipCount(true, authReady);
   const recommendedProducts = useMemo(
     () => recommendedFeed.slice(0, PROFILE_RECOMMEND_LIMIT),
     [recommendedFeed],
@@ -79,41 +74,37 @@ export function ProfileScreen() {
     () => [
       {
         key: 'favorites',
-        value: isLoggedIn ? favoriteItems.length : DEMO_PROFILE_STATS.favorites,
+        value: favoriteItems.length,
         label: t('screens.profile.favorites'),
         screen: 'favorites' as const,
       },
       {
         key: 'history',
-        value: isLoggedIn ? historyItems.length : DEMO_PROFILE_STATS.history,
+        value: historyItems.length,
         label: t('screens.profile.views'),
         screen: 'history' as const,
       },
       {
         key: 'following',
-        value: isLoggedIn ? followCount : DEMO_PROFILE_STATS.following,
+        value: followCount,
         label: t('screens.profile.following'),
         screen: 'following' as const,
       },
       {
         key: 'coupons',
-        value: isLoggedIn ? availableCouponCount : DEMO_PROFILE_STATS.coupons,
+        value: availableCouponCount,
         label: t('screens.profile.coupons'),
         screen: 'coupons' as const,
       },
     ],
-    [availableCouponCount, followCount, favoriteItems.length, historyItems.length, isLoggedIn, t],
+    [availableCouponCount, followCount, favoriteItems.length, historyItems.length, t],
   );
 
-  const profileSubline = isLoggedIn && user
+  const profileSubline = user
     ? t('screens.profile.idLineLoggedIn', { id: user.heishiId })
     : t('screens.profile.idLine');
 
   const handlePickAvatar = async () => {
-    if (!isLoggedIn) {
-      nav('login');
-      return;
-    }
     try {
       const url = await pickAndUpload();
       if (!url) return;
@@ -151,26 +142,26 @@ export function ProfileScreen() {
             accessibilityRole="button"
             accessibilityLabel={t('screens.editProfile.changeAvatar')}
           >
-            {isLoggedIn && user && hasCustomAvatar ? (
+            {user && hasCustomAvatar ? (
               <Image
                 key={displayAvatarUrl}
                 source={{ uri: displayAvatarUrl! }}
                 style={styles.profileAvatarImage}
                 resizeMode="cover"
               />
-            ) : isLoggedIn && user ? (
+            ) : user ? (
               <AppIcon name="person" size={22} color={colors.text} />
             ) : (
               <AppIcon name="person" size={22} color={colors.text} />
             )}
-            {isLoggedIn && uploading ? (
+            {uploading ? (
               <View style={styles.avatarOverlay}>
                 <ActivityIndicator color={colors.brand} />
               </View>
             ) : null}
           </Pressable>
           <View style={styles.profileInfo}>
-            {isLoggedIn && user ? (
+            {user ? (
               <>
                 <View style={styles.nameRow}>
                   <Text style={styles.profileName} numberOfLines={1}>
@@ -182,23 +173,14 @@ export function ProfileScreen() {
                   {profileSubline}
                 </Text>
               </>
-            ) : (
-              <>
-                <Text style={styles.profileName}>{t('screens.profile.guestTitle')}</Text>
-                <Text style={styles.profileSub} numberOfLines={1}>
-                  {t('screens.profile.guestSub')}
-                </Text>
-              </>
-            )}
+            ) : null}
           </View>
-          {isLoggedIn ? (
-            <PillButton
-              label={t('common.edit')}
-              variant="light"
-              onPress={() => nav('editProfile')}
-              style={styles.profileEditBtn}
-            />
-          ) : null}
+          <PillButton
+            label={t('common.edit')}
+            variant="light"
+            onPress={() => nav('editProfile')}
+            style={styles.profileEditBtn}
+          />
         </View>
         <View style={styles.stats}>
           {profileStats.map((stat, index) => (
@@ -212,22 +194,6 @@ export function ProfileScreen() {
             </Pressable>
           ))}
         </View>
-        {!isLoggedIn ? (
-          <View style={styles.authActions}>
-            <PillButton
-              label={t('screens.login.submit')}
-              variant="brand"
-              onPress={() => nav('login')}
-              style={styles.authBtn}
-            />
-            <PillButton
-              label={t('screens.register.submit')}
-              variant="light"
-              onPress={() => nav('register')}
-              style={styles.authBtn}
-            />
-          </View>
-        ) : null}
       </AmazingSurface>
       <SectionHead
         title={t('screens.profile.myTrade')}
@@ -239,7 +205,7 @@ export function ProfileScreen() {
         compact
         items={[
           { icon: 'upload', label: t('screens.profile.myListings'), onPress: () => nav('myListings') },
-          { icon: 'sold', label: t('screens.profile.sold'), onPress: () => nav('sold') },
+          { icon: 'sold', label: t('screens.profile.sold'), badge: salesToShipCount, onPress: () => nav('sold') },
           { icon: 'orders', label: t('screens.profile.orders'), onPress: () => nav('orders') },
           { icon: 'service', label: t('screens.profile.myServices'), onPress: () => nav('myServices') },
         ]}

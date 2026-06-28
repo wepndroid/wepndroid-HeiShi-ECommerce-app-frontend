@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -21,10 +21,10 @@ import {
   setConversationMarkedUnread,
 } from '../services/messagesService';
 import { AppIcon } from '../components/AppIcon';
-import { IconButton, EmptyHint, LoadingState, Notice, PillButton, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
+import { IconButton, EmptyHint, LoadingState, Notice, PillButton, SearchBar, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
 import { SellerAvatar } from '../components/SellerAvatar';
-import { colors, fonts, iconTokens, messagesScreenTokens } from '../theme';
+import { colors, fonts, iconTokens, messagesScreenTokens, spacing } from '../theme';
 import { formatMessageTimeLabel } from '../utils/formatMessageTimeLabel';
 
 const GROUP_TITLE_KEYS = {
@@ -40,6 +40,8 @@ export function MessagesScreen() {
   const { conversations, loading: conversationsLoading, loadError: conversationsLoadError, refresh: refreshConversations } = useConversations(isLoggedIn, authReady);
   const { groups, loading: groupsLoading } = useNotificationGroups(isLoggedIn, authReady);
   const [query, setQuery] = useState('');
+  const [rebuildNoticeDismissed, setRebuildNoticeDismissed] = useState(false);
+  const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermissionStatus>('undetermined');
   const notificationsSupported = areChatNotificationsSupported();
@@ -107,31 +109,50 @@ export function MessagesScreen() {
   const hasResults = filteredGroups.length > 0 || filteredConversations.length > 0;
   const inboxLoading = authReady && (conversationsLoading || groupsLoading);
 
-  return (
-    <ScreenScroll screenId="messages">
-      <TitleBar
-        title={t('screens.messages.title')}
-        right={
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <IconButton
-              icon="bell"
-              badgeCount={headerUnreadCount}
-              onPress={() => void enableNotifications()}
-            />
-            <IconButton icon="settings" onPress={() => requireAuthNav('settings')} />
-          </View>
-        }
+  const notificationNotice =
+    !notificationsSupported && !rebuildNoticeDismissed ? (
+      <Notice
+        text={t('screens.messages.noticeRebuild')}
+        dismissible
+        dismissHint={t('screens.messages.dismissNoticeHint')}
+        onDismiss={() => setRebuildNoticeDismissed(true)}
       />
-      {!notificationsSupported ? (
-        <Notice text={t('screens.messages.noticeRebuild')} />
-      ) : notificationPermission !== 'granted' ? (
-        <Notice
-          text={t('screens.messages.notice')}
-          action={t('common.enable')}
-          onAction={() => void enableNotifications()}
-          whiteAction
+    ) : notificationPermission !== 'granted' && !permissionNoticeDismissed ? (
+      <Notice
+        text={t('screens.messages.notice')}
+        action={t('common.enable')}
+        onAction={() => void enableNotifications()}
+        whiteAction
+        dismissible
+        dismissHint={t('screens.messages.dismissNoticeHint')}
+        onDismiss={() => setPermissionNoticeDismissed(true)}
+      />
+    ) : null;
+
+  return (
+    <View style={styles.screenRoot}>
+      <View style={styles.screenHeader}>
+        <TitleBar
+          title={t('screens.messages.title')}
+          right={
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <IconButton
+                icon="bell"
+                badgeCount={headerUnreadCount}
+                onPress={() => void enableNotifications()}
+              />
+              <IconButton icon="settings" onPress={() => requireAuthNav('settings')} />
+            </View>
+          }
         />
-      ) : null}
+        {notificationNotice}
+      </View>
+      <ScrollView
+        style={styles.screenScroll}
+        contentContainerStyle={styles.screenScrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       <SearchBar
         placeholder={t('screens.messages.searchPlaceholder')}
         value={query}
@@ -246,11 +267,27 @@ export function MessagesScreen() {
         ))}
       </ListCard>
       ) : null}
-    </ScreenScroll>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  screenHeader: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.screenPadding,
+  },
+  screenScroll: {
+    flex: 1,
+  },
+  screenScrollContent: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.screenBottomNav,
+  },
   messageRow: {
     flexDirection: 'row',
     alignItems: 'center',

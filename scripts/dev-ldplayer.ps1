@@ -7,6 +7,8 @@ param(
 
 Set-Location $ProjectRoot
 
+& powershell -ExecutionPolicy Bypass -File "$PSScriptRoot\ensure-utf8.ps1" -Fix | Out-Null
+
 $ApiPort = Ensure-DevBackend
 Set-DevApiEnv -ApiPort $ApiPort | Out-Null
 

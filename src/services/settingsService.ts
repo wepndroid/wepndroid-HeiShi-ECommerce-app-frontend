@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform, Share } from 'react-native';
-import { settingsApi } from '../api';
+import { ApiError, settingsApi } from '../api';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
+import { refreshAuthSession } from './authService';
 import type { DataExportDto, NotificationSettingsDto, PrivacySettingsDto, TransactionReminderSettingsDto } from '../api/types';
 import { BROWSE_HISTORY_KEY, clearLocalBrowseHistory } from '../data/history';
 import { clearLocalInboxCache } from '../data/notificationsLocal';
@@ -100,15 +101,70 @@ async function clearLocalAppCache(): Promise<number> {
   return Math.max(0, before - after);
 }
 
+async function fetchAuthedSettings<T>(
+  request: () => Promise<T>,
+  loadLocal: () => Promise<T>,
+  saveLocal: (value: T) => Promise<T>,
+): Promise<T> {
+  const loadCached = () => loadLocal();
+
+  try {
+    const remote = await request();
+    await saveLocal(remote);
+    return remote;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) {
+        try {
+          const remote = await request();
+          await saveLocal(remote);
+          return remote;
+        } catch {
+          // fall through to cached local settings
+        }
+      }
+    }
+    return loadCached();
+  }
+}
+
+async function patchAuthedSettings<T>(
+  request: () => Promise<T>,
+  saveLocal: (value: T) => Promise<T>,
+  localFallback: () => Promise<T>,
+): Promise<T> {
+  try {
+    const remote = await request();
+    await saveLocal(remote);
+    return remote;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      const refreshed = await refreshAuthSession();
+      if (refreshed) {
+        try {
+          const remote = await request();
+          await saveLocal(remote);
+          return remote;
+        } catch {
+          // fall through
+        }
+      }
+    }
+    if (!API_USE_MOCK_FALLBACK) throw new Error('settings_update_failed');
+    return localFallback();
+  }
+}
+
 export async function fetchNotificationSettings(
   isLoggedIn: boolean,
 ): Promise<NotificationSettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.getNotificationSettings();
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_load_failed');
-    }
+    return fetchAuthedSettings(
+      () => settingsApi.getNotificationSettings(),
+      loadLocalNotificationSettings,
+      saveLocalNotificationSettings,
+    );
   }
   return loadLocalNotificationSettings();
 }
@@ -118,22 +174,22 @@ export async function patchNotificationSettings(
   patch: Partial<NotificationSettingsDto>,
 ): Promise<NotificationSettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.updateNotificationSettings(patch);
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_update_failed');
-    }
+    return patchAuthedSettings(
+      () => settingsApi.updateNotificationSettings(patch),
+      saveLocalNotificationSettings,
+      () => saveLocalNotificationSettings(patch),
+    );
   }
   return saveLocalNotificationSettings(patch);
 }
 
 export async function fetchPrivacySettings(isLoggedIn: boolean): Promise<PrivacySettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.getPrivacySettings();
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_load_failed');
-    }
+    return fetchAuthedSettings(
+      () => settingsApi.getPrivacySettings(),
+      loadLocalPrivacySettings,
+      saveLocalPrivacySettings,
+    );
   }
   return loadLocalPrivacySettings();
 }
@@ -143,11 +199,11 @@ export async function patchPrivacySettings(
   patch: Partial<PrivacySettingsDto>,
 ): Promise<PrivacySettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.updatePrivacySettings(patch);
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_update_failed');
-    }
+    return patchAuthedSettings(
+      () => settingsApi.updatePrivacySettings(patch),
+      saveLocalPrivacySettings,
+      () => saveLocalPrivacySettings(patch),
+    );
   }
   return saveLocalPrivacySettings(patch);
 }
@@ -156,11 +212,11 @@ export async function fetchTransactionReminderSettings(
   isLoggedIn: boolean,
 ): Promise<TransactionReminderSettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.getTransactionReminderSettings();
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_load_failed');
-    }
+    return fetchAuthedSettings(
+      () => settingsApi.getTransactionReminderSettings(),
+      loadLocalTransactionReminderSettings,
+      saveLocalTransactionReminderSettings,
+    );
   }
   return loadLocalTransactionReminderSettings();
 }
@@ -170,11 +226,11 @@ export async function patchTransactionReminderSettings(
   patch: Partial<TransactionReminderSettingsDto>,
 ): Promise<TransactionReminderSettingsDto> {
   if (isLoggedIn) {
-    try {
-      return await settingsApi.updateTransactionReminderSettings(patch);
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('settings_update_failed');
-    }
+    return patchAuthedSettings(
+      () => settingsApi.updateTransactionReminderSettings(patch),
+      saveLocalTransactionReminderSettings,
+      () => saveLocalTransactionReminderSettings(patch),
+    );
   }
   return saveLocalTransactionReminderSettings(patch);
 }

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import {
 import { Text, TextInput } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AmazingSurface } from './AmazingSurface';
+import { DismissibleModal } from './UI';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, formControls, iconTokens, messagesScreenTokens, multilineInitialHeight, publishScreenTokens, radius, spacing, shadows } from '../theme';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -280,33 +280,31 @@ export function FieldSelectRow({
       : placeholder ?? t('common.placeholders.selectOption');
 
   const pickerModal = (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-      <Pressable style={styles.sheetBackdrop} onPress={() => setOpen(false)}>
-        <Pressable style={styles.sheetCard} onPress={(event) => event.stopPropagation()}>
-          <Text style={styles.sheetTitle}>{label}</Text>
-          <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
-            {options.map((option) => {
-              const active = option.key === selectedKey;
-              return (
-                <Pressable
-                  key={option.key}
-                  style={[styles.sheetOption, active && styles.sheetOptionActive]}
-                  onPress={() => {
-                    onSelect(option.key);
-                    setOpen(false);
-                  }}
-                >
-                  <Text style={[styles.sheetOptionText, active && styles.sheetOptionTextActive]}>
-                    {formOptionLabel(option, i18n.language)}
-                  </Text>
-                  {active ? <AppIcon name="check" size={16} color={colors.text} /> : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <DismissibleModal visible={open} onClose={() => setOpen(false)} animationType="slide" placement="bottom">
+      <View style={styles.sheetCard}>
+        <Text style={styles.sheetTitle}>{label}</Text>
+        <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+          {options.map((option) => {
+            const active = option.key === selectedKey;
+            return (
+              <Pressable
+                key={option.key}
+                style={[styles.sheetOption, active && styles.sheetOptionActive]}
+                onPress={() => {
+                  onSelect(option.key);
+                  setOpen(false);
+                }}
+              >
+                <Text style={[styles.sheetOptionText, active && styles.sheetOptionTextActive]}>
+                  {formOptionLabel(option, i18n.language)}
+                </Text>
+                {active ? <AppIcon name="check" size={16} color={colors.text} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </DismissibleModal>
   );
 
   if (stacked) {
@@ -398,33 +396,31 @@ export function FieldDateRow({
     : placeholder ?? t('common.placeholders.selectDate');
 
   const pickerModal = (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-      <Pressable style={styles.sheetBackdrop} onPress={() => setOpen(false)}>
-        <Pressable style={styles.sheetCard} onPress={(event) => event.stopPropagation()}>
-          <Text style={styles.sheetTitle}>{label}</Text>
-          <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
-            {dateOptions.map((iso) => {
-              const active = iso === value;
-              return (
-                <Pressable
-                  key={iso}
-                  style={[styles.sheetOption, active && styles.sheetOptionActive]}
-                  onPress={() => {
-                    onChange(iso);
-                    setOpen(false);
-                  }}
-                >
-                  <Text style={[styles.sheetOptionText, active && styles.sheetOptionTextActive]}>
-                    {formatPickupDateLabel(iso, i18n.language)}
-                  </Text>
-                  {active ? <AppIcon name="check" size={16} color={colors.text} /> : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <DismissibleModal visible={open} onClose={() => setOpen(false)} animationType="slide" placement="bottom">
+      <View style={styles.sheetCard}>
+        <Text style={styles.sheetTitle}>{label}</Text>
+        <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+          {dateOptions.map((iso) => {
+            const active = iso === value;
+            return (
+              <Pressable
+                key={iso}
+                style={[styles.sheetOption, active && styles.sheetOptionActive]}
+                onPress={() => {
+                  onChange(iso);
+                  setOpen(false);
+                }}
+              >
+                <Text style={[styles.sheetOptionText, active && styles.sheetOptionTextActive]}>
+                  {formatPickupDateLabel(iso, i18n.language)}
+                </Text>
+                {active ? <AppIcon name="check" size={16} color={colors.text} /> : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </DismissibleModal>
   );
 
   return (
@@ -716,7 +712,7 @@ export function ShortcutGrid({
   items,
   compact,
 }: {
-  items: { icon: AppIconName; label: string; onPress: () => void }[];
+  items: { icon: AppIconName; label: string; onPress: () => void; badge?: number }[];
   compact?: boolean;
 }) {
   const iconSize = compact ? 18 : 20;
@@ -735,7 +731,16 @@ export function ShortcutGrid({
             onPress={item.onPress}
             accessibilityRole="button"
           >
-            <AppIcon name={item.icon} size={iconSize} color={colors.text} />
+            <View style={styles.shortcutIconWrap}>
+              <AppIcon name={item.icon} size={iconSize} color={colors.text} />
+              {item.badge != null && item.badge > 0 ? (
+                <View style={styles.shortcutBadge}>
+                  <Text style={styles.shortcutBadgeText}>
+                    {item.badge > 99 ? '99+' : String(item.badge)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text
               style={[styles.shortcutLabel, compact && styles.shortcutLabelCompact]}
               numberOfLines={2}
@@ -1000,11 +1005,6 @@ const styles = StyleSheet.create({
     fontSize: formControls.labelFontSize,
     marginBottom: 6,
   },
-  sheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-  },
   sheetCard: {
     backgroundColor: colors.paper,
     borderTopLeftRadius: radius.lg,
@@ -1243,6 +1243,27 @@ const styles = StyleSheet.create({
   },
   shortcutUnifiedItemPressed: {
     opacity: 0.72,
+  },
+  shortcutIconWrap: {
+    position: 'relative',
+  },
+  shortcutBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.brand2,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutBadgeText: {
+    fontSize: 9,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    lineHeight: 12,
   },
   shortcutUnifiedDivider: {
     width: StyleSheet.hairlineWidth,

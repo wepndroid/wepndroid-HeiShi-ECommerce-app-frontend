@@ -135,12 +135,14 @@ export interface RegisterRequest {
   phone: string;
   password: string;
   verificationCode: string;
+  city: string;
   avatarUrl?: string;
 }
 
 export interface SyncProfileRequest {
   nickname: string;
   phone?: string;
+  city: string;
   avatarUrl: string;
 }
 

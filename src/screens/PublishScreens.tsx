@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
@@ -75,7 +75,7 @@ import { blockUser, submitReport } from '../services/safetyService';
 import { chatListingToProduct, buildChatListingFromId, chatListingFromConversation } from '../services/chatListingService';
 import { OrderThumb } from '../components/ProductUI';
 import { AppIcon, AppIconName } from '../components/AppIcon';
-import { BackButton, EmptyState, IconButton, LoadingState, Notice, PillButton, ScreenScroll, SectionHead, TitleBar } from '../components/UI';
+import { BackButton, DismissibleModal, EmptyState, IconButton, LoadingState, Notice, PillButton, ScreenScroll, SectionHead, TitleBar } from '../components/UI';
 import { resolveServiceIcon, serviceTypeKeyFromIcon } from '../data/services';
 import { useListingPhotos } from '../hooks/useListingPhotos';
 import { useFormOptions } from '../hooks/useFormOptions';
@@ -1605,61 +1605,56 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     user?.id,
   );
   const [input, setInput] = useState('');
+  const [safetyMenuOpen, setSafetyMenuOpen] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
   const title = chatTitle || localizedListing.seller || t('common.messages');
   const counterpartKey = chatCounterpartKey || localizedListing.sellerKey;
   const counterpartAvatarUrl = chatCounterpartAvatarUrl;
 
-  const showSafetyMenu = () => {
+  const closeSafetyMenu = useCallback(() => setSafetyMenuOpen(false), []);
+
+  const showSafetyMenu = useCallback(() => {
     if (!counterpartKey) return;
-    const actions: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }> = [
+    setSafetyMenuOpen(true);
+  }, [counterpartKey]);
+
+  const handleReportListing = useCallback(() => {
+    if (!displayListing?.listingId) return;
+    closeSafetyMenu();
+    void submitReport(
       {
-        text: t('screens.chat.reportUser'),
-        onPress: () => {
-          void submitReport(
-            {
-              targetType: 'user',
-              targetId: counterpartKey,
-              reason: 'chat',
-            },
-            isLoggedIn,
-          )
-            .then(() => toast(t('toast.reportSubmitted')))
-            .catch(() => toast(t('toast.settingsUpdateFailed')));
-        },
+        targetType: 'listing',
+        targetId: String(displayListing.listingId),
+        reason: 'chat',
       },
-    ];
-    if (displayListing?.listingId) {
-      actions.unshift({
-        text: t('screens.chat.reportListing'),
-        onPress: () => {
-          void submitReport(
-            {
-              targetType: 'listing',
-              targetId: String(displayListing.listingId),
-              reason: 'chat',
-            },
-            isLoggedIn,
-          )
-            .then(() => toast(t('toast.reportSubmitted')))
-            .catch(() => toast(t('toast.settingsUpdateFailed')));
-        },
-      });
-    }
-    actions.push(
+      isLoggedIn,
+    )
+      .then(() => toast(t('toast.reportSubmitted')))
+      .catch(() => toast(t('toast.settingsUpdateFailed')));
+  }, [closeSafetyMenu, displayListing?.listingId, isLoggedIn, t, toast]);
+
+  const handleReportUser = useCallback(() => {
+    if (!counterpartKey) return;
+    closeSafetyMenu();
+    void submitReport(
       {
-        text: t('screens.chat.blockUser'),
-        style: 'destructive',
-        onPress: () => {
-          void blockUser(counterpartKey, isLoggedIn)
-            .then(() => toast(t('toast.userBlocked')))
-            .catch(() => toast(t('toast.settingsUpdateFailed')));
-        },
+        targetType: 'user',
+        targetId: counterpartKey,
+        reason: 'chat',
       },
-      { text: t('common.cancel'), style: 'cancel' },
-    );
-    Alert.alert(t('screens.chat.safetyTitle'), undefined, actions);
-  };
+      isLoggedIn,
+    )
+      .then(() => toast(t('toast.reportSubmitted')))
+      .catch(() => toast(t('toast.settingsUpdateFailed')));
+  }, [closeSafetyMenu, counterpartKey, isLoggedIn, t, toast]);
+
+  const handleBlockUser = useCallback(() => {
+    if (!counterpartKey) return;
+    closeSafetyMenu();
+    void blockUser(counterpartKey, isLoggedIn)
+      .then(() => toast(t('toast.userBlocked')))
+      .catch(() => toast(t('toast.settingsUpdateFailed')));
+  }, [closeSafetyMenu, counterpartKey, isLoggedIn, t, toast]);
 
   const handleSend = async () => {
     if (sending || !input.trim()) return;
@@ -1806,6 +1801,30 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
         </Pressable>
       </View>
       )}
+      <DismissibleModal
+        visible={safetyMenuOpen}
+        onClose={closeSafetyMenu}
+        placement="center"
+        animationType="fade"
+      >
+        <View style={styles.safetyMenuCard}>
+          <Text style={styles.safetyMenuTitle}>{t('screens.chat.safetyTitle')}</Text>
+          {displayListing?.listingId ? (
+            <Pressable style={styles.safetyMenuAction} onPress={handleReportListing}>
+              <Text style={styles.safetyMenuActionText}>{t('screens.chat.reportListing')}</Text>
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.safetyMenuAction} onPress={handleReportUser}>
+            <Text style={styles.safetyMenuActionText}>{t('screens.chat.reportUser')}</Text>
+          </Pressable>
+          <Pressable style={styles.safetyMenuAction} onPress={handleBlockUser}>
+            <Text style={styles.safetyMenuActionDestructive}>{t('screens.chat.blockUser')}</Text>
+          </Pressable>
+          <Pressable style={styles.safetyMenuCancel} onPress={closeSafetyMenu}>
+            <Text style={styles.safetyMenuCancelText}>{t('common.cancel')}</Text>
+          </Pressable>
+        </View>
+      </DismissibleModal>
     </View>
   );
 }
@@ -2155,5 +2174,45 @@ const styles = StyleSheet.create({
   },
   chatSendDisabled: {
     opacity: 0.35,
+  },
+  safetyMenuCard: {
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 10,
+    width: '100%',
+    maxWidth: 340,
+    alignSelf: 'center',
+  },
+  safetyMenuTitle: {
+    fontSize: 17,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  safetyMenuAction: {
+    paddingVertical: 14,
+  },
+  safetyMenuActionText: {
+    fontSize: 15,
+    fontWeight: fonts.weights.medium,
+    color: colors.trustText,
+  },
+  safetyMenuActionDestructive: {
+    fontSize: 15,
+    fontWeight: fonts.weights.medium,
+    color: colors.red,
+  },
+  safetyMenuCancel: {
+    paddingVertical: 14,
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+  },
+  safetyMenuCancelText: {
+    fontSize: 15,
+    color: colors.muted,
+    textAlign: 'center',
   },
 });

@@ -6,11 +6,9 @@ import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { resolveListingDetail } from '../services/catalogService';
-import { checkoutOrder, findPendingPayOrder, userCanChatOnListing } from '../services/ordersService';
+import { checkoutOrder, clearStalePendingPayForListing, userCanChatOnListing } from '../services/ordersService';
 import { listCoupons } from '../services/couponsService';
 import type { CouponDto } from '../api/types';
-import { ordersApi } from '../api';
-import { mapOrderDtoToUiOrder } from '../api/mappers';
 import { ApiError } from '../api/client';
 import { useCatalogRevision } from '../utils/catalogSync';
 import { ESCROW_FEE } from '../hooks/useProductFilters';
@@ -240,7 +238,6 @@ export function DetailScreen() {
   });
   const isBundleListing = isBundleListingProduct(currentItem) || bundleMeta != null;
   const bundleReady = !isBundleListing || (bundleMeta?.items?.length ?? 0) > 0;
-  const [ownPendingPay, setOwnPendingPay] = useState(false);
   const [bundleItemsFailed, setBundleItemsFailed] = useState(false);
   const catalogRevision = useCatalogRevision();
   const bundleHasOnHold = bundleMeta ? bundleHasOnHoldItemsFromMeta(bundleMeta) : false;
@@ -248,28 +245,8 @@ export function DetailScreen() {
     !isSelf &&
     listingPurchasable &&
     bundleReady &&
-    (ownPendingPay ||
-      (currentItem.purchaseAvailable === true && !bundleHasOnHold));
-
-  const refreshPendingPay = useCallback(() => {
-    if (!isLoggedIn || !currentItem.id) {
-      setOwnPendingPay(false);
-      return;
-    }
-    void findPendingPayOrder(currentItem.id, isLoggedIn).then((order) => {
-      setOwnPendingPay(order != null);
-    });
-  }, [currentItem.id, isLoggedIn]);
-
-  useEffect(() => {
-    refreshPendingPay();
-  }, [refreshPendingPay, catalogRevision]);
-
-  useFocusEffect(
-    useCallback(() => {
-      refreshPendingPay();
-    }, [refreshPendingPay]),
-  );
+    currentItem.purchaseAvailable === true &&
+    !bundleHasOnHold;
 
   useEffect(() => {
     if (!isLoggedIn || !needsOrderForChat) {
@@ -284,9 +261,8 @@ export function DetailScreen() {
     void loadProduct(currentItem.id);
   }, [catalogRevision, currentItem.id, loadProduct]);
 
-  const showCheckout = canPurchase || ownPendingPay;
-  const checkoutLabel =
-    ownPendingPay && !canPurchase ? t('common.continuePayment') : t('common.checkout');
+  const showCheckout = canPurchase;
+  const checkoutLabel = t('common.checkout');
 
   useEffect(() => {
     if (bundleMeta != null || !isBundleListingProduct(currentItem)) {
@@ -298,20 +274,24 @@ export function DetailScreen() {
     setBundleItemsFailed(false);
 
     void (async () => {
-      for (let attempt = 0; attempt < 4; attempt++) {
-        if (cancelled) return;
-        const detail = await resolveListingDetail(currentItem.id, isLoggedIn);
-        if (cancelled) return;
-        if (detail?.bundleMeta != null) {
-          mergeProductDetail(detail);
-          return;
+      try {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          if (cancelled) return;
+          const detail = await resolveListingDetail(currentItem.id, isLoggedIn);
+          if (cancelled) return;
+          if (detail?.bundleMeta != null) {
+            mergeProductDetail(detail);
+            return;
+          }
+          if (detail && !isBundleListingProduct(detail)) return;
+          if (attempt < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 350));
+          }
         }
-        if (detail && !isBundleListingProduct(detail)) return;
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 350));
-        }
+        if (!cancelled) setBundleItemsFailed(true);
+      } catch {
+        if (!cancelled) setBundleItemsFailed(true);
       }
-      if (!cancelled) setBundleItemsFailed(true);
     })();
 
     return () => {
@@ -340,13 +320,15 @@ export function DetailScreen() {
 
   const retryBundleItems = () => {
     setBundleItemsFailed(false);
-    void resolveListingDetail(currentItem.id, isLoggedIn).then((detail) => {
-      if (detail?.bundleMeta != null) {
-        mergeProductDetail(detail);
-      } else {
-        setBundleItemsFailed(true);
-      }
-    });
+    void resolveListingDetail(currentItem.id, isLoggedIn)
+      .then((detail) => {
+        if (detail?.bundleMeta != null) {
+          mergeProductDetail(detail);
+        } else {
+          setBundleItemsFailed(true);
+        }
+      })
+      .catch(() => setBundleItemsFailed(true));
   };
 
   return (
@@ -378,11 +360,13 @@ export function DetailScreen() {
         {isBundleListing && bundleMeta ? (
           <>
             <Text style={styles.detailTitle}>{item.title}</Text>
+            {item.desc ? <Text style={styles.detailDesc}>{item.desc}</Text> : null}
             <BundleDetailSummary meta={bundleMeta} />
           </>
         ) : isBundleListing ? (
           <>
             <Text style={styles.detailTitle}>{item.title}</Text>
+            {item.desc ? <Text style={styles.detailDesc}>{item.desc}</Text> : null}
             <View style={styles.badgeRow}>
               <Badge text={item.tag} fontSize={detailPageTokens.tagSize} />
             </View>
@@ -417,7 +401,7 @@ export function DetailScreen() {
             </View>
           </>
         )}
-        {!isBundleListing || !bundleMeta ? <Text style={styles.detailDesc}>{item.desc}</Text> : null}
+        {!isBundleListing ? <Text style={styles.detailDesc}>{item.desc}</Text> : null}
       </DetailCard>
       {isBundleListing && bundleMeta ? (
         <>
@@ -447,11 +431,6 @@ export function DetailScreen() {
           ) : (
             <LoadingState text={t('screens.detail.bundleItemsLoading')} />
           )}
-        </DetailCard>
-      ) : null}
-      {isBundleListing && bundleMeta ? (
-        <DetailCard>
-          <Text style={styles.detailDesc}>{item.desc}</Text>
         </DetailCard>
       ) : null}
       <DetailCard>
@@ -579,10 +558,6 @@ export function OrderScreen() {
   const listingPurchasable =
     !listingUnavailable && currentItem.listingStatus !== 'sold';
   const isSelf = isSelfSeller(currentItem.sellerKey, currentItem.sellerUserId, item.seller);
-  const [ownPendingPay, setOwnPendingPay] = useState(false);
-  const [pendingPayOrder, setPendingPayOrder] = useState<UiOrder | null>(null);
-  const [pendingPayChecked, setPendingPayChecked] = useState(false);
-  const [pendingPayLookupFailed, setPendingPayLookupFailed] = useState(false);
   const catalogItemPrice =
     isSeparateCheckout && selectedBundleItem?.separatePrice
       ? selectedBundleItem.separatePrice
@@ -594,66 +569,50 @@ export function OrderScreen() {
   const selectedCoupon = selectedCouponId
     ? coupons.find((row) => row.id === selectedCouponId) ?? null
     : null;
-  const discountAmount =
-    pendingPayOrder?.discountAmount ??
-    (selectedCoupon ? Math.min(selectedCoupon.amount, catalogItemPrice) : 0);
-  const itemPayable = pendingPayOrder?.amount ?? catalogItemPrice - discountAmount;
+  const discountAmount = selectedCoupon
+    ? Math.min(selectedCoupon.amount, catalogItemPrice)
+    : 0;
+  const itemPayable = catalogItemPrice - discountAmount;
   const checkoutEscrowFee =
     currentItem.escrowSupported === false
       ? 0
-      : pendingPayOrder?.escrowFee ?? currentItem.escrowFee ?? ESCROW_FEE;
+      : currentItem.escrowFee ?? ESCROW_FEE;
   const canPurchaseSeparate =
     isSeparateCheckout &&
     selectedBundleItem?.status === 'available' &&
     (selectedBundleItem.separatePrice ?? 0) > 0 &&
     bundleMeta?.allowSeparateSale !== false;
+  const [checkoutReady, setCheckoutReady] = useState(false);
   const canPurchase =
+    checkoutReady &&
     !isSelf &&
     bundleReady &&
-    !pendingPayLookupFailed &&
-    (ownPendingPay ||
-      canPurchaseSeparate ||
+    (canPurchaseSeparate ||
       (!isSeparateCheckout && listingPurchasable && currentItem.purchaseAvailable === true));
   const total = itemPayable + checkoutEscrowFee;
   const [submitting, setSubmitting] = useState(false);
   const deliveryLabel = findOptionLabel(options.deliveryMethods, deliveryMethod, i18n.language);
   const catalogRevision = useCatalogRevision();
 
-  const refreshPendingPay = useCallback(() => {
+  const prepareCheckout = useCallback(() => {
     if (!isLoggedIn || !currentItem.id) {
-      setOwnPendingPay(false);
-      setPendingPayOrder(null);
-      setPendingPayChecked(true);
-      setPendingPayLookupFailed(false);
+      setCheckoutReady(true);
       return;
     }
-    setPendingPayChecked(false);
-    setPendingPayLookupFailed(false);
-    void findPendingPayOrder(currentItem.id, isLoggedIn, checkoutBundleItemId ?? undefined)
-      .then((order) => {
-        setOwnPendingPay(order != null);
-        setPendingPayOrder(order);
-        if (order?.deliveryMethod) setDeliveryMethod(order.deliveryMethod);
-        if (order?.paymentMethodId) selectPaymentMethodById(order.paymentMethodId);
-        if (order?.couponId) setSelectedCouponId(order.couponId);
-        else setSelectedCouponId(null);
-        setPendingPayChecked(true);
-        setPendingPayLookupFailed(false);
-      })
-      .catch(() => {
-        setPendingPayLookupFailed(true);
-        setPendingPayChecked(true);
-      });
-  }, [checkoutBundleItemId, currentItem.id, isLoggedIn, selectPaymentMethodById, setDeliveryMethod]);
+    setCheckoutReady(false);
+    void clearStalePendingPayForListing(currentItem.id, checkoutBundleItemId ?? undefined)
+      .then(() => loadProduct(currentItem.id))
+      .finally(() => setCheckoutReady(true));
+  }, [checkoutBundleItemId, currentItem.id, isLoggedIn, loadProduct]);
 
   useEffect(() => {
-    refreshPendingPay();
-  }, [refreshPendingPay, catalogRevision]);
+    prepareCheckout();
+  }, [prepareCheckout, catalogRevision]);
 
   useFocusEffect(
     useCallback(() => {
-      refreshPendingPay();
-    }, [refreshPendingPay]),
+      prepareCheckout();
+    }, [prepareCheckout]),
   );
 
   useEffect(() => {
@@ -665,7 +624,7 @@ export function OrderScreen() {
   }, [isLoggedIn, catalogRevision]);
 
   useEffect(() => {
-    if (!pendingPayChecked || pendingPayLookupFailed || canPurchase || ownPendingPay) return;
+    if (!checkoutReady || canPurchase) return;
     if (listingPurchasable && currentItem.purchaseAvailable === false) {
       toast(t('toast.checkoutReservedByOther'));
     } else {
@@ -674,12 +633,10 @@ export function OrderScreen() {
     nav('detail');
   }, [
     canPurchase,
+    checkoutReady,
     currentItem.purchaseAvailable,
     listingPurchasable,
     nav,
-    ownPendingPay,
-    pendingPayChecked,
-    pendingPayLookupFailed,
     t,
     toast,
   ]);
@@ -696,41 +653,19 @@ export function OrderScreen() {
       [
         {
           text: t('screens.order.couponNone'),
-          onPress: () => {
-            void applyCouponSelection(null);
-          },
+          onPress: () => applyCouponSelection(null),
         },
         ...available.map((coupon) => ({
           text: `${t('common.currencyPrefix')}${coupon.amount} · ${coupon.description}`,
-          onPress: () => {
-            void applyCouponSelection(coupon.id);
-          },
+          onPress: () => applyCouponSelection(coupon.id),
         })),
         { text: t('common.cancel'), style: 'cancel' as const },
       ],
     );
   };
 
-  const applyCouponSelection = async (couponId: string | null) => {
+  const applyCouponSelection = (couponId: string | null) => {
     setSelectedCouponId(couponId);
-    if (!pendingPayOrder) return;
-    try {
-      const dto = await ordersApi.update(pendingPayOrder.id, { couponId });
-      const next = mapOrderDtoToUiOrder(dto);
-      setPendingPayOrder(next);
-      setSelectedCouponId(next.couponId ?? null);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.code === 'COUPON_IN_USE' || err.code === 'INVALID_STATE') {
-          toast(t('toast.couponInvalid'));
-        } else {
-          toast(t('toast.checkoutFailed'));
-        }
-      } else {
-        toast(t('toast.checkoutFailed'));
-      }
-      refreshPendingPay();
-    }
   };
 
   const showDeliveryPicker = () => {
@@ -786,28 +721,24 @@ export function OrderScreen() {
         sellerName: item.seller,
         isLoggedIn,
       });
-      const { order, paid, payFailed } = result;
+      const { paid, payFailed } = result;
       if (paid) {
         void loadProduct(currentItem.id);
         setCheckoutBundleItemId(null);
         toast(t('toast.paySuccess'));
+        setTimeout(() => nav('orders'), 700);
       } else if (payFailed) {
         toast(t('toast.payFailed'));
-      } else if (order.status === 'pendingPay') {
-        toast(t('toast.checkoutPendingPay'));
-        setTimeout(() => nav('orders'), 700);
+        void loadProduct(currentItem.id);
       } else {
         toast(t('toast.checkoutFailed'));
-      }
-      if (paid) {
-        setTimeout(() => nav('orders'), 700);
       }
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === 'INVALID_STATE') {
           toast(t('toast.cannotBuyOwnListing'));
         } else if (err.code === 'LISTING_RESERVED') {
-          toast(t('toast.checkoutOrderExists'));
+          toast(t('toast.checkoutFailed'));
         } else if (err.code === 'LISTING_RESERVED_BY_OTHER') {
           toast(t('toast.checkoutReservedByOther'));
         } else if (err.code === 'COUPON_IN_USE' || err.code === 'INVALID_STATE') {
@@ -831,18 +762,6 @@ export function OrderScreen() {
   const payLabel = t('screens.order.confirmPay', {
     amount: `${item.pricePrefix}${total.toFixed(2)}`,
   });
-
-  if (pendingPayLookupFailed) {
-    return (
-      <View style={styles.orderScreen}>
-        <ScreenScroll screenId="order">
-          <TitleBar center={t('screens.order.title')} />
-          <EmptyState text={t('screens.order.loadFailed')} />
-          <PillButton label={t('common.retry')} variant="light" full onPress={refreshPendingPay} />
-        </ScreenScroll>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.orderScreen}>
@@ -978,7 +897,7 @@ export function OrderScreen() {
           label={payLabel}
           onPress={handleCheckout}
           loading={submitting}
-          disabled={submitting || !canPurchase || !pendingPayChecked}
+          disabled={submitting || !canPurchase}
         />
       </StickyActions>
     </View>

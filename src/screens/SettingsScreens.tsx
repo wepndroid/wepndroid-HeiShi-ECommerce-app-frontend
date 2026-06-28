@@ -76,7 +76,7 @@ function openSupportEmail() {
 export function SettingsScreen() {
   const { t } = useTranslation();
   useAuthGuard();
-  const { nav, toast, clearCache, cacheSize, refreshCacheSize, isLoggedIn, logout } = useApp();
+  const { nav, toast, clearCache, cacheSize, refreshCacheSize, logout } = useApp();
 
   useFocusEffect(
     useCallback(() => {
@@ -100,7 +100,7 @@ export function SettingsScreen() {
             </>
           }
           right={<Chevron />}
-          onPress={() => (isLoggedIn ? nav('editProfile') : nav('login'))}
+          onPress={() => nav('editProfile')}
         />
         <ListRow
           left={
@@ -272,23 +272,13 @@ export function SettingsScreen() {
           border={false}
         />
       </ListCard>
-      {isLoggedIn ? (
-        <PillButton
-          label={t('common.logout')}
-          variant="warn"
-          full
-          onPress={() => void logout()}
-          style={{ marginTop: 10 }}
-        />
-      ) : (
-        <PillButton
-          label={t('screens.login.submit')}
-          variant="brand"
-          full
-          onPress={() => nav('login')}
-          style={{ marginTop: 10 }}
-        />
-      )}
+      <PillButton
+        label={t('common.logout')}
+        variant="warn"
+        full
+        onPress={() => void logout()}
+        style={{ marginTop: 10 }}
+      />
     </ScreenScroll>
   );
 }

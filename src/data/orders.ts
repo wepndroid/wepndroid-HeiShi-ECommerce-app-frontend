@@ -2,19 +2,19 @@ import { DemoOrder, OrderFilterKey } from '../types';
 
 export const ORDER_FILTERS: OrderFilterKey[] = [
   'all',
-  'pendingPay',
   'pendingShip',
   'pendingReceive',
   'pendingReview',
+  'completed',
 ];
 
 export const demoOrders: DemoOrder[] = [
   { id: 1, productId: 1, status: 'pendingReceive' },
   { id: 2, productId: 2, status: 'pendingReview' },
-  { id: 3, productId: 3, status: 'pendingPay' },
+  { id: 3, productId: 3, status: 'pendingShip' },
   { id: 4, productId: 4, status: 'pendingShip' },
   { id: 5, productId: 5, status: 'completed' },
-  { id: 6, productId: 6, status: 'pendingPay' },
+  { id: 6, productId: 6, status: 'pendingReceive' },
 ];
 
 export function filterOrders(orders: DemoOrder[], filter: OrderFilterKey): DemoOrder[] {
