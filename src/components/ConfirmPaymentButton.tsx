@@ -6,7 +6,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Text } from './typography';
-import { fonts, radius } from '../theme';
+import { fonts, radius, shadows } from '../theme';
 
 const PURCHASE_ORANGE = '#FF5000';
 const PURCHASE_ORANGE_PRESSED = '#E64800';
@@ -60,11 +60,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: PURCHASE_ORANGE,
-    shadowColor: PURCHASE_ORANGE,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    ...shadows.button,
   },
   buttonPressed: {
     backgroundColor: PURCHASE_ORANGE_PRESSED,
@@ -77,8 +73,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: fonts.weights.bold,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.18)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 });

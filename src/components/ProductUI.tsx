@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from './typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
@@ -11,13 +11,16 @@ import type { LocalService } from '../data/services';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { splitProductMasonryColumns } from '../utils/masonryColumns';
 import { useApp } from '../context/AppContext';
-import { colors, fonts, productCardTokens, radius, cardShadow, CARD_PREVIEW_ASPECT_RATIO, PRODUCT_CARD_RADIUS } from '../theme';
+import { colors, fonts, productCardTokens, profileScreenTokens, radius, serviceCardTokens, shadows, PRODUCT_CARD_RADIUS } from '../theme';
 import { homePromoBannerForLanguage } from '../assets/homeBanner';
 import { bannerArtworkAspectRatio } from '../assets/bannerAspect';
 import { AppIcon, AppIconName } from './AppIcon';
 import { AmazingSurface } from './AmazingSurface';
-import { Badge } from './UI';
+import { Badge, EmptyState } from './UI';
 import { SellerAvatar } from './SellerAvatar';
+import { resolveProductImages } from '../utils/productImages';
+import { getProductCardImageSize } from '../utils/productCardLayout';
+import { normalizeMediaUrl } from '../utils/mediaUrls';
 
 
 export function ProductCard({
@@ -28,30 +31,57 @@ export function ProductCard({
   onPress: () => void;
 }) {
   const { t } = useTranslation();
+  const { width: screenWidth } = useWindowDimensions();
+  const imageSize = useMemo(() => getProductCardImageSize(screenWidth), [screenWidth]);
   const { favs, toggleFavoriteById } = useApp();
   const isFav = favs.has(product.id);
+  const coverImage = resolveProductImages(product)[0];
 
   return (
     <AmazingSurface style={styles.card} highlight={false} preserveShadow>
-      <View style={[styles.pic, { aspectRatio: CARD_PREVIEW_ASPECT_RATIO }]}>
-        <Pressable style={styles.picPress} onPress={onPress}>
-          <Image source={{ uri: product.imageUrl }} style={styles.picImage} resizeMode="cover" />
-        </Pressable>
-        <Pressable
-          style={[styles.heart, isFav && styles.heartActive]}
-          onPress={() => void toggleFavoriteById(product.id)}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={isFav ? t('common.a11y.unfavorite') : t('common.a11y.favorite')}
-        >
-          <AppIcon
-            name={isFav ? 'heart' : 'heartOutline'}
-            size={14}
-            color={isFav ? '#ffffff' : colors.text}
+      <View
+        style={[styles.picFrame, { height: imageSize.height }]}
+        collapsable={false}
+        renderToHardwareTextureAndroid
+      >
+        {coverImage ? (
+          <Image
+            source={{ uri: coverImage }}
+            style={{ width: imageSize.width, height: imageSize.height }}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
           />
-        </Pressable>
-        <View style={styles.loc} pointerEvents="none">
-          <Text style={styles.locText}>{product.loc}</Text>
+        ) : (
+          <View
+            style={[
+              styles.picPlaceholder,
+              { width: imageSize.width, height: imageSize.height },
+            ]}
+          />
+        )}
+        <View style={styles.picOverlay} pointerEvents="box-none">
+          <Pressable
+            style={styles.picPress}
+            onPress={onPress}
+            accessibilityRole="button"
+            accessibilityLabel={product.title}
+          />
+          <Pressable
+            style={[styles.heart, isFav && styles.heartActive]}
+            onPress={() => void toggleFavoriteById(product.id)}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={isFav ? t('common.a11y.unfavorite') : t('common.a11y.favorite')}
+          >
+            <AppIcon
+              name={isFav ? 'heart' : 'heartOutline'}
+              size={14}
+              color={isFav ? '#ffffff' : colors.text}
+            />
+          </Pressable>
+          <View style={styles.loc} pointerEvents="none">
+            <Text style={styles.locText}>{product.loc}</Text>
+          </View>
         </View>
       </View>
       <Pressable style={styles.cardB} onPress={onPress}>
@@ -63,13 +93,15 @@ export function ProductCard({
           {product.price}
         </Text>
         <View style={styles.tagRow}>
-          <Badge text={product.tag} compact />
+          <Badge text={product.tag} compact fontSize={productCardTokens.tagSize} />
         </View>
         <View style={styles.meta}>
           <SellerAvatar
             sellerKey={product.sellerKey}
             seller={product.seller}
             avatarUrl={product.sellerAvatarUrl}
+            sellerUserId={product.sellerUserId}
+            listingId={product.id}
             size={18}
           />
           <Text style={styles.metaText} numberOfLines={1}>
@@ -120,11 +152,7 @@ export function ProductFeed({
 }) {
   const localized = useLocalizedProducts(data);
   if (!localized.length && emptyText) {
-    return (
-      <AmazingSurface style={styles.emptyState}>
-        <Text style={styles.emptyStateText}>{emptyText}</Text>
-      </AmazingSurface>
-    );
+    return <EmptyState text={emptyText} />;
   }
 
   return <ProductMasonry products={localized} onPress={onPress} />;
@@ -133,12 +161,16 @@ export function ProductFeed({
 export function ProductGrid({
   data,
   onPress,
+  emptyText,
 }: {
   data: Product[];
   onPress: (p: Product) => void;
+  emptyText?: string;
 }) {
   const localized = useLocalizedProducts(data);
-  if (!localized.length) return null;
+  if (!localized.length) {
+    return emptyText ? <EmptyState text={emptyText} /> : null;
+  }
 
   return <ProductMasonry products={localized} onPress={onPress} />;
 }
@@ -158,20 +190,21 @@ export function ServiceCard({
   };
 
   const demoKeys = shouldUseDemoI18n(i18n.language, service.id) ? getDemoListingI18nKeys(service.id) : null;
+  const servicePhoto = normalizeMediaUrl(service.imageUrl);
 
   return (
     <AmazingSurface style={styles.serviceCard} onPress={onPress}>
       <View style={styles.serviceRow}>
         <View style={styles.serviceImg}>
-          {service.imageUrl ? (
+          {servicePhoto ? (
             <Image
-              source={{ uri: service.imageUrl }}
+              source={{ uri: servicePhoto }}
               style={styles.servicePhoto}
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
           ) : (
-            <AppIcon name={iconMap[service.icon]} size={28} color="#b87000" />
+            <AppIcon name={iconMap[service.icon]} size={22} color="#b87000" />
           )}
         </View>
         <View style={{ flex: 1 }}>
@@ -183,7 +216,11 @@ export function ServiceCard({
           </Text>
           <View style={styles.serviceMeta}>
             <Text style={styles.serviceArea}>{formatLocationLabel(service.area)}</Text>
-            <Badge text={service.apiPriceLabel ?? (service.priceKey ? t(service.priceKey) : '')} />
+            <Badge
+              text={service.apiPriceLabel ?? (service.priceKey ? t(service.priceKey) : '')}
+              compact
+              fontSize={serviceCardTokens.tagSize}
+            />
           </View>
         </View>
       </View>
@@ -235,25 +272,107 @@ export function Banner({
   title,
   subtitle,
   icon = 'shoppingBags',
-  variant = 'standard',
+  variant = 'trust',
   artwork = false,
   artworkSource,
+  flushVertical,
+  badge,
+  actionLabel,
+  onAction,
 }: {
   title: string;
   subtitle: string;
   icon?: AppIconName;
-  variant?: 'standard' | 'promo';
+  /** trust = platform assurance card (v7); local = category page strip; promo = legacy gradient/artwork */
+  variant?: 'standard' | 'promo' | 'trust' | 'local';
   artwork?: boolean;
   /** Custom full-width banner image; defaults to home promo artwork. */
   artworkSource?: number;
+  /** Remove default vertical margins (parent controls spacing). */
+  flushVertical?: boolean;
+  /** Right-side pill on local variant (e.g. 保障). */
+  badge?: string;
+  /** Overlay CTA on artwork banners (e.g. profile 查看). */
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   const { i18n } = useTranslation();
+  const highlights = splitBannerHighlights(subtitle);
+
+  if (variant === 'local') {
+    return (
+      <AmazingSurface
+        style={[styles.bannerLocal, flushVertical && styles.bannerLocalFlush]}
+        highlight={false}
+        preserveShadow
+      >
+        <View style={styles.bannerLocalRow}>
+          <View style={styles.bannerLocalAccent} />
+          <View style={styles.bannerLocalBody}>
+            <Text style={styles.bannerLocalTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.bannerLocalSub} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          </View>
+          {badge ? (
+            <View style={styles.bannerLocalBadge}>
+              <Text style={styles.bannerLocalBadgeText}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+      </AmazingSurface>
+    );
+  }
+
+  if (variant === 'trust') {
+    return (
+      <AmazingSurface
+        style={[styles.bannerTrust, flushVertical && styles.bannerTrustFlush]}
+        highlight={false}
+        preserveShadow
+      >
+        <View style={styles.bannerTrustRow}>
+          <View style={styles.bannerTrustAccent} />
+          <View style={styles.bannerTrustBody}>
+            <Text style={styles.bannerTrustTitle} numberOfLines={2}>
+              {title}
+            </Text>
+            {highlights.length ? (
+              <View style={styles.bannerTrustChips}>
+                {highlights.map((item) => (
+                  <View key={item} style={styles.bannerTrustChip}>
+                    <AppIcon name="check" size={11} color={colors.green} />
+                    <Text style={styles.bannerTrustChipText} numberOfLines={1}>
+                      {item}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.bannerTrustSub} numberOfLines={2}>
+                {subtitle}
+              </Text>
+            )}
+          </View>
+        </View>
+      </AmazingSurface>
+    );
+  }
 
   if (variant === 'promo' && artwork) {
     const bannerSource = artworkSource ?? homePromoBannerForLanguage(i18n.language);
     const aspectRatio = bannerArtworkAspectRatio(bannerSource);
+    const actionHalfHeight = profileScreenTokens.bannerActionHeight / 2;
     return (
-      <View style={[styles.bannerArtworkWrap, { aspectRatio }]}>
+      <View
+        style={[
+          styles.bannerArtworkWrap,
+          { aspectRatio },
+          flushVertical && styles.bannerArtworkWrapFlush,
+        ]}
+      >
         <Image
           source={bannerSource}
           style={styles.bannerArtwork}
@@ -261,11 +380,23 @@ export function Banner({
           accessibilityRole="image"
           accessibilityLabel={title}
         />
+        {actionLabel && onAction ? (
+          <Pressable
+            style={[
+              styles.bannerArtworkAction,
+              { transform: [{ translateY: -actionHalfHeight }] },
+            ]}
+            onPress={onAction}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
+          >
+            <Text style={styles.bannerArtworkActionText}>{actionLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
 
-  const highlights = splitBannerHighlights(subtitle);
   const isPromo = variant === 'promo';
 
   return (
@@ -310,9 +441,10 @@ export function Banner({
 }
 
 export function OrderThumb({ imageUrl, size = 70 }: { imageUrl: string; size?: number }) {
+  const uri = normalizeMediaUrl(imageUrl) ?? imageUrl;
   return (
     <View style={[styles.orderImg, { width: size, height: size }]}>
-      <Image source={{ uri: imageUrl }} style={styles.orderImgPhoto} resizeMode="cover" />
+      <Image source={{ uri }} style={styles.orderImgPhoto} resizeMode="cover" />
     </View>
   );
 }
@@ -332,26 +464,22 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: colors.paper,
   },
-  pic: {
+  picFrame: {
     width: '100%',
     position: 'relative',
-    backgroundColor: '#f0f0f0',
     overflow: 'hidden',
     borderTopLeftRadius: PRODUCT_CARD_RADIUS,
     borderTopRightRadius: PRODUCT_CARD_RADIUS,
+    backgroundColor: '#f0f0f0',
+  },
+  picOverlay: {
+    ...StyleSheet.absoluteFill,
   },
   picPress: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFill,
   },
-  picImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
+  picPlaceholder: {
+    backgroundColor: '#f0f0f0',
   },
   heart: {
     position: 'absolute',
@@ -398,10 +526,11 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.bold,
     color: colors.red,
     fontSize: productCardTokens.priceSize,
-    marginTop: 3,
+    lineHeight: productCardTokens.priceSize + 2,
+    marginTop: 2,
   },
   tagRow: {
-    marginTop: 5,
+    marginTop: 3,
     alignSelf: 'flex-start',
   },
   meta: {
@@ -418,18 +547,19 @@ const styles = StyleSheet.create({
   },
   serviceCard: {
     borderRadius: radius.lg,
-    padding: 12,
-    marginBottom: 8,
+    paddingVertical: serviceCardTokens.paddingVertical,
+    paddingHorizontal: serviceCardTokens.paddingHorizontal,
+    marginBottom: serviceCardTokens.marginBottom,
   },
   serviceRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: serviceCardTokens.rowGap,
   },
   serviceImg: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.md,
-    backgroundColor: colors.brand3,
+    width: serviceCardTokens.thumbSize,
+    height: serviceCardTokens.thumbSize,
+    borderRadius: radius.lg,
+    backgroundColor: colors.trustSoft,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -439,25 +569,26 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   serviceTitle: {
-    fontSize: 14,
+    fontSize: serviceCardTokens.titleSize,
     fontWeight: fonts.weights.bold,
+    lineHeight: serviceCardTokens.titleLineHeight,
     color: colors.text,
   },
   serviceDesc: {
-    marginTop: 4,
+    marginTop: 2,
     color: colors.sub,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: serviceCardTokens.descSize,
+    lineHeight: serviceCardTokens.descLineHeight,
   },
   serviceMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 7,
+    gap: 6,
+    marginTop: 4,
   },
   serviceArea: {
     color: colors.sub,
-    fontSize: 11,
+    fontSize: serviceCardTokens.metaSize,
   },
   banner: {
     borderRadius: radius.lg,
@@ -474,11 +605,163 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     overflow: 'hidden',
     backgroundColor: colors.paper,
-    ...cardShadow,
+    position: 'relative',
+    ...shadows.card,
+  },
+  bannerArtworkWrapFlush: {
+    marginVertical: 0,
   },
   bannerArtwork: {
     width: '100%',
     height: '100%',
+  },
+  bannerArtworkAction: {
+    position: 'absolute',
+    right: profileScreenTokens.bannerActionRight,
+    top: '50%',
+    zIndex: 2,
+    width: profileScreenTokens.bannerActionWidth,
+    height: profileScreenTokens.bannerActionHeight,
+    minHeight: profileScreenTokens.bannerActionHeight,
+    borderRadius: profileScreenTokens.bannerActionRadius,
+    backgroundColor: colors.green,
+    borderWidth: 1.5,
+    borderColor: colors.paper,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    ...shadows.button,
+  },
+  bannerArtworkActionText: {
+    fontWeight: fonts.weights.bold,
+    fontSize: 11,
+    lineHeight: 13,
+    color: colors.paper,
+  },
+  bannerTrust: {
+    borderRadius: radius.md,
+    marginVertical: 6,
+    overflow: 'hidden',
+    backgroundColor: colors.paper,
+    minHeight: 72,
+  },
+  bannerTrustFlush: {
+    marginVertical: 0,
+  },
+  bannerTrustRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 72,
+  },
+  bannerLocal: {
+    borderRadius: radius.md,
+    marginVertical: 6,
+    overflow: 'hidden',
+    backgroundColor: colors.paper,
+    minHeight: 72,
+  },
+  bannerLocalFlush: {
+    marginVertical: 0,
+  },
+  bannerLocalRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 72,
+  },
+  bannerLocalAccent: {
+    alignSelf: 'stretch',
+    width: 5,
+    backgroundColor: colors.green,
+    borderTopLeftRadius: radius.md,
+    borderBottomLeftRadius: radius.md,
+  },
+  bannerLocalBody: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 4,
+    justifyContent: 'center',
+  },
+  bannerLocalTitle: {
+    fontSize: 14,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  bannerLocalSub: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.sub,
+  },
+  bannerLocalBadge: {
+    alignSelf: 'center',
+    marginRight: 12,
+    width: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.trustSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.trustBorder,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  bannerLocalBadgeText: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: fonts.weights.bold,
+    color: colors.trustText,
+    textAlign: 'center',
+  },
+  bannerTrustAccent: {
+    width: 4,
+    backgroundColor: colors.brand,
+    borderTopLeftRadius: radius.md,
+    borderBottomLeftRadius: radius.md,
+  },
+  bannerTrustBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  bannerTrustTitle: {
+    fontSize: 14,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  bannerTrustSub: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.sub,
+  },
+  bannerTrustChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  bannerTrustChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.trustSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.trustBorder,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    maxWidth: '100%',
+  },
+  bannerTrustChipText: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: fonts.weights.medium,
+    color: colors.trustText,
+    flexShrink: 1,
   },
   bannerPromo: {
     minHeight: 128,
@@ -488,12 +771,12 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   bannerSunburstClip: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
     borderRadius: radius.lg,
   },
   bannerSunburst: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   bannerSunRay: {
@@ -532,9 +815,9 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.bold,
     color: '#FFFFFF',
     marginBottom: 8,
-    textShadowColor: 'rgba(180, 90, 0, 0.35)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowColor: 'transparent',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 0,
   },
   bannerTitlePromo: {
     fontSize: 20,
@@ -577,11 +860,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 3,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    elevation: 2,
+    ...shadows.accent,
   },
   bannerBadgeBody: {
     width: 40,
@@ -592,29 +871,21 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#B86A00',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.22,
-    shadowRadius: 4,
-    elevation: 4,
+    ...shadows.accent,
   },
   mascot: {
     width: 52,
     height: 52,
-    borderRadius: 14,
+    borderRadius: radius.lg,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     transform: [{ rotate: '-8deg' }],
-    shadowColor: '#B86A00',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    ...shadows.accent,
   },
   orderImg: {
     borderRadius: radius.md,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
     overflow: 'hidden',
   },
   orderImgPhoto: {

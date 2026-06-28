@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import i18n from '../i18n';
-import type { NotificationSettingsDto, PrivacySettingsDto } from '../api/types';
+import type { NotificationSettingsDto, PrivacySettingsDto, TransactionReminderSettingsDto } from '../api/types';
 
 const NOTIFICATION_KEY = 'notificationSettings';
 const PRIVACY_KEY = 'privacySettings';
+const TRANSACTION_REMINDER_KEY = 'transactionReminderSettings';
 
 const DEFAULT_NOTIFICATIONS: NotificationSettingsDto = {
   intentAlerts: true,
@@ -16,6 +17,13 @@ const DEFAULT_PRIVACY: PrivacySettingsDto = {
   findByPhone: false,
   showWechatBadge: true,
   personalization: true,
+};
+
+const DEFAULT_TRANSACTION_REMINDERS: TransactionReminderSettingsDto = {
+  payAlerts: true,
+  shipAlerts: true,
+  receiveAlerts: true,
+  disputeAlerts: true,
 };
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
@@ -55,6 +63,19 @@ export async function saveLocalPrivacySettings(
   const current = await loadLocalPrivacySettings();
   const next = { ...current, ...patch };
   await writeJson(PRIVACY_KEY, next);
+  return next;
+}
+
+export async function loadLocalTransactionReminderSettings(): Promise<TransactionReminderSettingsDto> {
+  return readJson(TRANSACTION_REMINDER_KEY, DEFAULT_TRANSACTION_REMINDERS);
+}
+
+export async function saveLocalTransactionReminderSettings(
+  patch: Partial<TransactionReminderSettingsDto>,
+): Promise<TransactionReminderSettingsDto> {
+  const current = await loadLocalTransactionReminderSettings();
+  const next = { ...current, ...patch };
+  await writeJson(TRANSACTION_REMINDER_KEY, next);
   return next;
 }
 

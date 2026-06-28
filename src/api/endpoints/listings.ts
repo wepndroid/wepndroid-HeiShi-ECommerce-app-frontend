@@ -1,6 +1,7 @@
 import { apiRequest } from '../client';
 import type {
   CreateListingRequest,
+  ListingDetailDto,
   ListingSummaryDto,
   Paginated,
   UploadImageResponse,
@@ -32,9 +33,17 @@ export const listingsApi = {
     return apiRequest<void>(`/listings/${id}`, { method: 'DELETE' });
   },
 
+  /** GET /listings/:id — seller-owned listing (any non-sold status) */
+  getById(id: number) {
+    return apiRequest<ListingDetailDto>(`/listings/${id}`);
+  },
+
   /** POST /listings/resale/:sourceListingId */
-  createResaleDraft(sourceListingId: number) {
-    return apiRequest<ListingSummaryDto>(`/listings/resale/${sourceListingId}`, { method: 'POST' });
+  createResaleDraft(sourceListingId: number, body?: { title?: string; price?: number }) {
+    return apiRequest<ListingSummaryDto>(`/listings/resale/${sourceListingId}`, {
+      method: 'POST',
+      body: body ?? {},
+    });
   },
 
   /** POST /uploads/images */

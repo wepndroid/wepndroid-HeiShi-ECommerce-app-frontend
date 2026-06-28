@@ -1,39 +1,73 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
+import { ALL_AREAS } from '../data/region';
 import { serviceDetailProduct } from '../data/detailProducts';
 import type { LocalService } from '../data/services';
 import { serviceMatchesCategory } from '../data/services';
 import { useCatalogServices } from '../hooks/useCatalogServices';
 import { useFeed } from '../hooks/useFeed';
+import { ProductCatKey } from '../types';
 import {
   LOCAL_CATEGORY_SHORTCUTS,
   HomeCategoryShortcutRow,
 } from '../components/HomeCategoryShortcutRow';
 import {
+  MarketScreenHeader,
+  useInboxUnreadCount,
+} from '../components/MarketScreenHeader';
+import {
   ScreenScroll,
   SearchBar,
   SectionHead,
-  TitleBar,
+  LoadingState,
+  EmptyState,
+  PillButton,
 } from '../components/UI';
 import { Banner, ProductFeed, ServiceCard } from '../components/ProductUI';
-import { AmazingSurface } from '../components/AmazingSurface';
-import { localPageBannerForLanguage } from '../assets/localBanner';
-import { ProductCatKey } from '../types';
-import { fonts, radius } from '../theme';
+
+const LOCAL_DEFAULT_CATEGORY: ProductCatKey = 'digital';
+const LOCAL_ITEMS_PER_CATEGORY = 2;
 
 export function CategoryScreen() {
-  const { t, i18n } = useTranslation();
-  const { openSearch, openDetail, region, products } = useApp();
-  const { services: visibleServices } = useCatalogServices(region);
-  const [selectedCategory, setSelectedCategory] = useState<ProductCatKey | null>(null);
-  const { items: categoryProducts } = useFeed(region, 'recommended', selectedCategory);
+  const { t } = useTranslation();
+  const {
+    openSearch,
+    openDetail,
+    region,
+    nav,
+    requireAuthNav,
+    isLoggedIn,
+    authReady,
+    products,
+  } = useApp();
+  const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
+  const localRegion = useMemo(
+    () => ({ ...region, area: ALL_AREAS }),
+    [region.state, region.city, region.area],
+  );
+  const {
+    services: visibleServices,
+    loading: servicesLoading,
+  } = useCatalogServices(localRegion);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCatKey>(LOCAL_DEFAULT_CATEGORY);
+  const {
+    items: categoryProducts,
+    loading: productsLoading,
+    error: productsError,
+    reload: reloadProducts,
+  } = useFeed(localRegion, 'recommended', selectedCategory);
 
-  const filteredServices = useMemo(() => {
-    if (!selectedCategory) return visibleServices;
-    return visibleServices.filter((service) => serviceMatchesCategory(service, selectedCategory));
+  const displayProducts = useMemo(
+    () => categoryProducts.slice(0, LOCAL_ITEMS_PER_CATEGORY),
+    [categoryProducts],
+  );
+
+  const displayServices = useMemo(() => {
+    return visibleServices
+      .filter((service) => serviceMatchesCategory(service, selectedCategory))
+      .slice(0, LOCAL_ITEMS_PER_CATEGORY);
   }, [visibleServices, selectedCategory]);
 
   const openServiceDetail = (service: LocalService) => {
@@ -43,25 +77,29 @@ export function CategoryScreen() {
   };
 
   const selectCategory = (catKey: ProductCatKey) => {
-    setSelectedCategory((current) => (current === catKey ? null : catKey));
+    setSelectedCategory(catKey);
   };
 
   return (
     <ScreenScroll screenId="category">
-      <TitleBar title={t('nav.category')} />
+      <MarketScreenHeader
+        showRegion={false}
+        unreadCount={inboxUnreadCount}
+        onMessagesPress={() => requireAuthNav('messages')}
+        onSettingsPress={() => requireAuthNav('settings')}
+      />
       <SearchBar
         placeholder={t('screens.category.searchPlaceholder')}
         readonly
         onPress={openSearch}
       />
       <Banner
-        variant="promo"
-        artwork
-        artworkSource={localPageBannerForLanguage(i18n.language)}
+        variant="local"
         title={t('screens.category.bannerTitle')}
         subtitle={t('screens.category.bannerSubtitle')}
+        badge={t('screens.category.bannerBadge')}
       />
-      <SectionHead title={t('screens.category.sectionCategories')} />
+      <SectionHead title={t('screens.category.sectionCategories')} compact />
       <HomeCategoryShortcutRow
         categories={LOCAL_CATEGORY_SHORTCUTS}
         selectedKey={selectedCategory}
@@ -69,17 +107,24 @@ export function CategoryScreen() {
         layout="spread"
         contentStyle={styles.catRowContent}
       />
-      <SectionHead title={t('screens.category.sectionProducts')} />
-      {categoryProducts.length ? (
-        <ProductFeed data={categoryProducts} onPress={openDetail} />
+      <SectionHead title={t('screens.category.sectionProducts')} compact />
+      {productsLoading && !displayProducts.length ? (
+        <LoadingState compact />
+      ) : productsError ? (
+        <>
+          <EmptyState text={t('home.feedError')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={reloadProducts} />
+        </>
+      ) : displayProducts.length ? (
+        <ProductFeed data={displayProducts} onPress={openDetail} />
       ) : (
-        <AmazingSurface style={styles.empty}>
-          <Text style={styles.emptyText}>{t('screens.category.emptyProducts')}</Text>
-        </AmazingSurface>
+        <EmptyState text={t('screens.category.emptyProducts')} />
       )}
-      <SectionHead title={t('screens.category.sectionServices')} action={t('screens.category.featured')} />
-      {filteredServices.length ? (
-        filteredServices.map((service) => (
+      <SectionHead title={t('screens.category.sectionServices')} compact />
+      {servicesLoading && !displayServices.length ? (
+        <LoadingState compact />
+      ) : displayServices.length ? (
+        displayServices.map((service) => (
           <ServiceCard
             key={service.id}
             service={service}
@@ -87,9 +132,7 @@ export function CategoryScreen() {
           />
         ))
       ) : (
-        <AmazingSurface style={styles.empty}>
-          <Text style={styles.emptyText}>{t('screens.category.emptyServices')}</Text>
-        </AmazingSurface>
+        <EmptyState text={t('screens.category.emptyServices')} />
       )}
     </ScreenScroll>
   );
@@ -99,18 +142,5 @@ const styles = StyleSheet.create({
   catRowContent: {
     marginBottom: 0,
     paddingBottom: 0,
-  },
-  empty: {
-    borderStyle: 'dashed',
-    borderColor: '#e6dfc8',
-    borderRadius: radius.md,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: '#8a7a54',
-    fontSize: 13,
-    fontWeight: fonts.weights.bold,
   },
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { AddressDto } from '../api/types';
-import { createAddress, listAddresses, removeAddress } from '../services/userService';
+import { createAddress, listAddresses, removeAddress, updateAddress } from '../services/userService';
 
 export function useAddresses(isLoggedIn: boolean, authReady: boolean) {
   const [addresses, setAddresses] = React.useState<AddressDto[]>([]);
@@ -42,5 +42,20 @@ export function useAddresses(isLoggedIn: boolean, authReady: boolean) {
     [isLoggedIn],
   );
 
-  return { addresses, loading, refresh, add, remove };
+  const update = React.useCallback(
+    async (id: string, patch: Partial<Omit<AddressDto, 'id'>>) => {
+      const next = await updateAddress(id, patch, isLoggedIn);
+      setAddresses((prev) =>
+        prev.map((row) => {
+          if (row.id === id) return next;
+          if (patch.isDefault) return { ...row, isDefault: false };
+          return row;
+        }),
+      );
+      return next;
+    },
+    [isLoggedIn],
+  );
+
+  return { addresses, loading, refresh, add, remove, update };
 }

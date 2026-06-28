@@ -422,7 +422,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand3,
   },
   chipActive: {
-    backgroundColor: colors.brand,
+    backgroundColor: colors.brand3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.brand,
   },
   chipText: {
     fontSize: 12,

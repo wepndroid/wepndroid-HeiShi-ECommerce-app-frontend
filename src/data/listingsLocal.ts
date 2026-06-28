@@ -68,6 +68,7 @@ export async function createLocalListing(
           allowSeparateSale: body.allowSeparateSale ?? true,
           pickupWindow: body.pickupWindow,
           totalItems: body.bundleItems.length,
+          coverImageUrls: body.imageUrls.filter(Boolean),
           items: body.bundleItems.map((item, index) => {
             const photos = item.imageUrls?.length
               ? item.imageUrls
@@ -96,11 +97,16 @@ export async function createLocalListing(
     tagKey: body.tagKey ?? 'lightlyUsed',
     locationLabel: body.locationLabel,
     imageUrl: body.imageUrls[0] ?? productImageUrls[1],
-    status: body.type === 'bundle' ? 'draft' : status,
+    status,
     bundleMeta,
   };
   await writeListings([record, ...listings]);
   return mapLocalListingToUi(record);
+}
+
+export async function deleteLocalListing(listingId: number): Promise<void> {
+  const listings = await readListings();
+  await writeListings(listings.filter((item) => item.id !== listingId));
 }
 
 export async function createLocalResaleDraft(sourceListingId: number, title: string, price: number, imageUrl: string) {

@@ -7,6 +7,13 @@ export const favoritesApi = {
     return apiRequest<Paginated<FavoriteDto>>('/favorites', { query: params });
   },
 
+  /** GET /favorites/listings — includes sold/inactive favorited items */
+  listListings(params?: { page?: number; pageSize?: number }) {
+    return apiRequest<Paginated<import('../types').ListingSummaryDto>>('/favorites/listings', {
+      query: params,
+    });
+  },
+
   /** POST /favorites/:listingId */
   add(listingId: number) {
     return apiRequest<FavoriteDto>(`/favorites/${listingId}`, { method: 'POST' });
@@ -22,6 +29,13 @@ export const historyApi = {
   /** GET /history/views */
   listViews(params?: { page?: number; pageSize?: number }) {
     return apiRequest<Paginated<{ listingId: number; viewedAt: string }>>('/history/views', { query: params });
+  },
+
+  /** GET /history/listings — includes sold/inactive viewed items */
+  listListings(params?: { page?: number; pageSize?: number }) {
+    return apiRequest<Paginated<import('../types').ListingSummaryDto>>('/history/listings', {
+      query: params,
+    });
   },
 
   /** POST /history/views/:listingId */
@@ -52,7 +66,7 @@ export const followsApi = {
 
 export const couponsApi = {
   /** GET /coupons */
-  list(params?: { status?: 'available' | 'used' | 'expired' }) {
+  list(params?: { status?: 'available' | 'used' | 'expired'; page?: number; pageSize?: number }) {
     return apiRequest<Paginated<import('../types').CouponDto>>('/coupons', { query: params });
   },
 

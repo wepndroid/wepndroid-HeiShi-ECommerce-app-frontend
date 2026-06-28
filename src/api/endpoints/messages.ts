@@ -14,8 +14,13 @@ export const messagesApi = {
     return apiRequest<Paginated<ConversationDto>>('/conversations', { query: params });
   },
 
+  /** GET /conversations/:id */
+  getConversation(conversationId: string) {
+    return apiRequest<ConversationDto>(`/conversations/${conversationId}`);
+  },
+
   /** GET /conversations/:id/messages */
-  getMessages(conversationId: string, params?: { before?: string; limit?: number }) {
+  getMessages(conversationId: string, params?: { before?: string; beforeId?: string; limit?: number }) {
     return apiRequest<Paginated<ChatMessageDto>>(`/conversations/${conversationId}/messages`, {
       query: params,
     });
@@ -32,6 +37,22 @@ export const messagesApi = {
   /** POST /conversations — open or resume chat about a listing */
   openConversation(body: { listingId: number; counterpartUserId?: string }) {
     return apiRequest<ConversationDto>('/conversations', { method: 'POST', body });
+  },
+
+  /** POST /conversations/:id/read — mark incoming messages read up to maxMessageId */
+  markConversationRead(conversationId: string, body?: { maxMessageId?: string }) {
+    return apiRequest<ConversationDto>(`/conversations/${conversationId}/read`, {
+      method: 'POST',
+      body: body ?? {},
+    });
+  },
+
+  /** PATCH /conversations/:id/read-state — manual mark as unread/read */
+  setConversationMarkedUnread(conversationId: string, markedAsUnread: boolean) {
+    return apiRequest<ConversationDto>(`/conversations/${conversationId}/read-state`, {
+      method: 'PATCH',
+      body: { markedAsUnread },
+    });
   },
 
   /** GET /notifications/system */

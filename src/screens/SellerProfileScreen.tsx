@@ -8,7 +8,7 @@ import { sellerKeyFromUserId } from '../data/catalogDemo';
 import { DetailCard } from '../components/FormUI';
 import { ProductGrid } from '../components/ProductUI';
 import { AppIcon } from '../components/AppIcon';
-import { Notice, LoadingState, PillButton, ScreenScroll, SectionHead, TitleBar, followPillStyle } from '../components/UI';
+import { Notice, LoadingState, PillButton, ScreenScroll, SectionHead, TitleBar, BackButton, followPillStyle } from '../components/UI';
 import { SellerAvatar } from '../components/SellerAvatar';
 import { colors, fonts, radius } from '../theme';
 
@@ -50,7 +50,7 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
   if (loading && !profile) {
     return (
       <ScreenScroll screenId="sellerProfile">
-        <TitleBar center={t('screens.sellerProfile.title')} />
+        <TitleBar center={t('screens.sellerProfile.title')} left={<BackButton />} />
         <LoadingState />
       </ScreenScroll>
     );
@@ -59,7 +59,7 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
   if (error || !profile) {
     return (
       <ScreenScroll screenId="sellerProfile">
-        <TitleBar center={t('screens.sellerProfile.title')} />
+        <TitleBar center={t('screens.sellerProfile.title')} left={<BackButton />} />
         <Notice text={t('screens.sellerProfile.notFound')} />
       </ScreenScroll>
     );
@@ -67,19 +67,24 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
 
   return (
     <ScreenScroll screenId="sellerProfile">
-      <TitleBar center={profile.nickname} />
+      <TitleBar />
       <DetailCard>
         <View style={styles.header}>
           <SellerAvatar
             sellerKey={sellerKey}
             seller={profile.nickname}
             avatarUrl={profile.avatarUrl}
+            sellerUserId={profile.id}
             size={72}
           />
           <View style={styles.headerCopy}>
             <Text style={styles.name}>{profile.nickname}</Text>
             {profile.city ? <Text style={styles.city}>{profile.city}</Text> : null}
-            <StarRating rating={profile.rating} />
+            {profile.reviewCount > 0 ? (
+              <StarRating rating={profile.rating} />
+            ) : (
+              <Text style={styles.noReviews}>{t('screens.sellerProfile.noReviews')}</Text>
+            )}
             <Text style={styles.reviewLine}>
               {t('screens.sellerProfile.reviewCount', { count: profile.reviewCount })}
             </Text>
@@ -171,6 +176,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.sub,
   },
+  noReviews: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.sub,
+  },
   bio: {
     marginTop: 12,
     fontSize: 13,
@@ -218,7 +228,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: radius.pill,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
   },
   verifyBadgeText: {
     fontSize: 11,

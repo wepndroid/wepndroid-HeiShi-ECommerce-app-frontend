@@ -31,3 +31,40 @@ export async function bootstrapPaymentSelection(
 export async function selectPaymentMethod(method: PaymentMethodDto) {
   await saveSelectedPaymentMethodId(method.id);
 }
+
+export async function addPaymentMethod(
+  type: PaymentMethodDto['type'],
+  isLoggedIn: boolean,
+): Promise<PaymentMethodDto> {
+  if (isLoggedIn) {
+    try {
+      return await paymentsApi.addPaymentMethod({ type, token: 'demo-token' });
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payment_add_failed');
+    }
+  }
+  throw new Error('payment_add_failed');
+}
+
+export async function removePaymentMethod(methodId: string, isLoggedIn: boolean): Promise<void> {
+  if (isLoggedIn) {
+    try {
+      await paymentsApi.removePaymentMethod(methodId);
+      return;
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payment_remove_failed');
+    }
+  }
+  throw new Error('payment_remove_failed');
+}
+
+export async function setDefaultPaymentMethod(methodId: string, isLoggedIn: boolean): Promise<PaymentMethodDto> {
+  if (isLoggedIn) {
+    try {
+      return await paymentsApi.setDefaultPaymentMethod(methodId);
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payment_default_failed');
+    }
+  }
+  throw new Error('payment_default_failed');
+}

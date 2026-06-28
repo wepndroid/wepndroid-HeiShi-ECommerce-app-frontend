@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { pickImagesFromLibrary } from '../services/mediaPicker';
-import { uploadListingImage } from '../services/listingsService';
+import { uploadAvatarImage } from '../services/listingsService';
 
 export function useAvatarUpload(isLoggedIn: boolean) {
   const [uploading, setUploading] = useState(false);
@@ -14,11 +14,11 @@ export function useAvatarUpload(isLoggedIn: boolean) {
       if (!picked.length) return null;
 
       const asset = picked[0];
-      return await uploadListingImage(
+      return await uploadAvatarImage(
         asset.uri,
         isLoggedIn,
         asset.mimeType,
-        asset.fileName,
+        asset.fileName ?? 'avatar.jpg',
       );
     } finally {
       setUploading(false);

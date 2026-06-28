@@ -1,14 +1,17 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
 import { Text } from './typography';
-import { fonts, radius } from '../theme';
+import { FullScreenImageViewer } from './FullScreenImageViewer';
+import { fonts, radius, detailPageTokens, colors } from '../theme';
+import { AppIcon } from './AppIcon';
 
 const HERO_HEIGHT = 310;
 
@@ -20,7 +23,19 @@ type Props = {
 export function DetailImageGallery({ images, locationLabel }: Props) {
   const [width, setWidth] = useState(0);
   const [index, setIndex] = useState(0);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerStart, setViewerStart] = useState(0);
   const slides = images.length ? images : [];
+  const slidesKey = slides.join('\0');
+
+  useEffect(() => {
+    setIndex(0);
+  }, [slidesKey]);
+
+  const openViewer = useCallback((slideIndex: number) => {
+    setViewerStart(slideIndex);
+    setViewerVisible(true);
+  }, []);
 
   const onScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -39,6 +54,7 @@ export function DetailImageGallery({ images, locationLabel }: Props) {
       {width > 0 && slides.length > 0 ? (
         <FlatList
           data={slides}
+          extraData={slidesKey}
           horizontal
           pagingEnabled
           bounces={slides.length > 1}
@@ -50,15 +66,26 @@ export function DetailImageGallery({ images, locationLabel }: Props) {
             offset: width * slideIndex,
             index: slideIndex,
           })}
-          renderItem={({ item }) => (
-            <Image
-              source={{ uri: item }}
+          renderItem={({ item, index: slideIndex }) => (
+            <Pressable
               style={{ width, height: HERO_HEIGHT }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-            />
+              onPress={() => openViewer(slideIndex)}
+              accessibilityRole="imagebutton"
+            >
+              <Image
+                key={item}
+                source={{ uri: item }}
+                style={{ width, height: HERO_HEIGHT }}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            </Pressable>
           )}
         />
+      ) : width > 0 ? (
+        <View style={styles.placeholder}>
+          <AppIcon name="camera" size={40} color={colors.sub} />
+        </View>
       ) : null}
 
       {locationLabel ? (
@@ -84,6 +111,13 @@ export function DetailImageGallery({ images, locationLabel }: Props) {
           </View>
         </>
       ) : null}
+
+      <FullScreenImageViewer
+        visible={viewerVisible}
+        images={slides}
+        initialIndex={viewerStart}
+        onClose={() => setViewerVisible(false)}
+      />
     </View>
   );
 }
@@ -97,6 +131,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     position: 'relative',
   },
+  placeholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   loc: {
     position: 'absolute',
     left: 12,
@@ -109,7 +148,7 @@ const styles = StyleSheet.create({
   },
   locText: {
     color: '#ffffff',
-    fontSize: 11,
+    fontSize: detailPageTokens.galleryMetaSize,
     fontWeight: fonts.weights.medium,
   },
   dots: {
@@ -145,7 +184,7 @@ const styles = StyleSheet.create({
   },
   counterText: {
     color: '#ffffff',
-    fontSize: 11,
+    fontSize: detailPageTokens.galleryMetaSize,
     fontWeight: fonts.weights.medium,
   },
 });

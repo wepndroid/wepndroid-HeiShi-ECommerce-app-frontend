@@ -12,6 +12,7 @@ export function usePhotoSearch() {
     toast,
     clearImageSearch,
     setImageSearchLoading,
+    setImageSearchError,
     setImageSearchSession,
   } = useApp();
 
@@ -22,13 +23,15 @@ export function usePhotoSearch() {
 
       clearImageSearch();
       setImageSearchLoading(true);
+      setImageSearchError(false);
       nav('search');
 
       const { items, suggestedQuery, matchCount } = await searchCatalogByImage(region, picked[0]);
       setImageSearchSession(items, picked[0].uri, suggestedQuery);
       toast(t('toast.imageSearchDone', { count: matchCount }));
     } catch (error) {
-      clearImageSearch();
+      setImageSearchLoading(false);
+      setImageSearchError(true);
       if (error instanceof Error && error.message === 'permission_denied') {
         toast(t('toast.mediaPermissionDenied'));
       } else {
@@ -41,6 +44,7 @@ export function usePhotoSearch() {
     toast,
     clearImageSearch,
     setImageSearchLoading,
+    setImageSearchError,
     setImageSearchSession,
     t,
   ]);

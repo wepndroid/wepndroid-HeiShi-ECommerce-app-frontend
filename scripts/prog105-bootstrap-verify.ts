@@ -34,7 +34,7 @@ const originalLoad = (Module as unknown as { _load: Function })._load;
 };
 
 process.env.EXPO_PUBLIC_API_MOCK_FALLBACK = 'false';
-process.env.EXPO_PUBLIC_API_URL = 'http://127.0.0.1:8001/v1';
+process.env.EXPO_PUBLIC_API_URL = 'http://127.0.0.1:8000/v1';
 
 async function main() {
   const { AUTH_TOKEN_KEY } = await import('../src/api/config');
@@ -68,7 +68,11 @@ async function main() {
 
   const bootValid = await bootstrapAuth();
   check('Bootstrap restores valid session (simulated relaunch)', bootValid?.nickname === 'Holden');
-  check('Bootstrap user UUID id', Boolean(bootValid?.id?.includes('-')), bootValid?.id);
+  check(
+    'Bootstrap user id present and distinct from heishiId',
+    Boolean(bootValid?.id && bootValid?.heishiId && bootValid.id !== bootValid.heishiId),
+    `${bootValid?.id} vs ${bootValid?.heishiId}`,
+  );
   check('Bootstrap user heishiId', Boolean(bootValid?.heishiId?.startsWith('HS')), bootValid?.heishiId);
 
   await logoutWithAuth();
@@ -89,6 +93,7 @@ async function main() {
     phone: mockPhone,
     password: 'secret1',
     confirmPassword: 'secret1',
+    verificationCode: '123456',
   });
   check('Mock local register works', 'user' in mockReg && mockReg.user.heishiId.startsWith('HS'));
 

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+import i18n from '../i18n';
 import type { PublicUserProfileDto } from '../api/types';
 import type { Product } from '../types';
 import { fetchPublicUserListings, fetchPublicUserProfile } from '../services/userService';
+import { useCatalogRevision } from '../utils/catalogSync';
 
 export function usePublicUserProfile(userId: string | null) {
   const [profile, setProfile] = useState<PublicUserProfileDto | null>(null);
   const [listings, setListings] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const catalogRevision = useCatalogRevision();
 
   const reload = useCallback(async () => {
     if (!userId) {
@@ -17,21 +20,26 @@ export function usePublicUserProfile(userId: string | null) {
     }
     setLoading(true);
     setError(false);
-    try {
-      const [nextProfile, nextListings] = await Promise.all([
-        fetchPublicUserProfile(userId),
-        fetchPublicUserListings(userId),
-      ]);
-      setProfile(nextProfile);
-      setListings(nextListings);
-    } catch {
-      setError(true);
+    const [profileResult, listingsResult] = await Promise.allSettled([
+      fetchPublicUserProfile(userId),
+      fetchPublicUserListings(userId),
+    ]);
+    if (profileResult.status === 'fulfilled') {
+      setProfile(profileResult.value);
+    } else {
       setProfile(null);
-      setListings([]);
-    } finally {
-      setLoading(false);
+      setError(true);
     }
-  }, [userId]);
+    if (listingsResult.status === 'fulfilled') {
+      setListings(listingsResult.value);
+    } else {
+      setListings([]);
+      if (profileResult.status !== 'fulfilled') {
+        setError(true);
+      }
+    }
+    setLoading(false);
+  }, [userId, catalogRevision, i18n.language]);
 
   useEffect(() => {
     void reload();

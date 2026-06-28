@@ -11,11 +11,14 @@ import type {
   UserProfileUpdateRequest,
 } from '../api/types';
 import type { AuthUser } from '../data/auth';
+import { isPersistedAvatarUrl } from '../utils/sellerAvatar';
+import { uploadAvatarImage } from './listingsService';
 import { mockPublicListingProducts, mockPublicProfile } from '../data/publicProfiles';
 import {
   addLocalAddress,
   deleteLocalAddress,
   loadLocalAddresses,
+  updateLocalAddress,
   loadLocalProfile,
   loadLocalVerification,
   mockCreditProfile,
@@ -56,6 +59,30 @@ export async function updateUserProfile(
     return saveLocalProfile(user, patch);
   }
   throw new Error('profile_update_failed');
+}
+
+/** Pick, upload, and persist a profile avatar. Returns the server-stored URL. */
+export async function saveUserAvatar(
+  user: AuthUser | null,
+  isLoggedIn: boolean,
+  localUri: string,
+  mimeType?: string,
+  fileName?: string,
+): Promise<string> {
+  const uploadedUrl = await uploadAvatarImage(
+    localUri,
+    isLoggedIn,
+    mimeType,
+    fileName ?? 'avatar.jpg',
+  );
+  if (!isPersistedAvatarUrl(uploadedUrl)) {
+    throw new Error('AVATAR_UPLOAD_FAILED');
+  }
+  const profile = await updateUserProfile(user, isLoggedIn, { avatarUrl: uploadedUrl });
+  if (!profile.avatarUrl || !isPersistedAvatarUrl(profile.avatarUrl)) {
+    throw new Error('AVATAR_SAVE_FAILED');
+  }
+  return profile.avatarUrl;
 }
 
 export async function listAddresses(isLoggedIn: boolean): Promise<AddressDto[]> {
@@ -105,6 +132,24 @@ export async function removeAddress(id: string, isLoggedIn: boolean): Promise<vo
   throw new Error('address_delete_failed');
 }
 
+export async function updateAddress(
+  id: string,
+  patch: Partial<Omit<AddressDto, 'id'>>,
+  isLoggedIn: boolean,
+): Promise<AddressDto> {
+  if (isLoggedIn) {
+    try {
+      return await userApi.updateAddress(id, patch);
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('address_update_failed');
+    }
+  }
+  if (API_USE_MOCK_FALLBACK || !isLoggedIn) {
+    return updateLocalAddress(id, patch);
+  }
+  throw new Error('address_update_failed');
+}
+
 export async function fetchVerificationStatus(isLoggedIn: boolean): Promise<VerificationStatus> {
   if (isLoggedIn) {
     try {
@@ -118,16 +163,12 @@ export async function fetchVerificationStatus(isLoggedIn: boolean): Promise<Veri
 
 export async function fetchCreditProfile(isLoggedIn: boolean): Promise<CreditProfileDto> {
   if (isLoggedIn) {
-    try {
-      return await userApi.getCreditProfile();
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) return mockCreditProfile();
-    }
+    return userApi.getCreditProfile();
   }
-  if (API_USE_MOCK_FALLBACK || !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     return mockCreditProfile();
   }
-  return mockCreditProfile();
+  throw new Error('credit_profile_failed');
 }
 
 export async function fetchReviewSummary(isLoggedIn: boolean): Promise<ReviewSummaryDto> {
@@ -135,13 +176,13 @@ export async function fetchReviewSummary(isLoggedIn: boolean): Promise<ReviewSum
     try {
       return await userApi.getReviewSummary();
     } catch {
-      if (!API_USE_MOCK_FALLBACK) return mockReviewSummary();
+      if (!API_USE_MOCK_FALLBACK) throw new Error('review_summary_failed');
     }
   }
   if (API_USE_MOCK_FALLBACK || !isLoggedIn) {
     return mockReviewSummary();
   }
-  return mockReviewSummary();
+  throw new Error('review_summary_failed');
 }
 
 export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMethodDto[]> {
@@ -156,6 +197,60 @@ export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMeth
     return mockPayoutMethods();
   }
   return [];
+}
+
+export async function addPayoutMethod(
+  type: PayoutMethodDto['type'],
+  isLoggedIn: boolean,
+): Promise<PayoutMethodDto> {
+  if (isLoggedIn) {
+    try {
+      return await paymentsApi.addPayoutMethod({ type, accountToken: 'demo-account' });
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payout_add_failed');
+    }
+  }
+  throw new Error('payout_add_failed');
+}
+
+export async function removePayoutMethod(methodId: string, isLoggedIn: boolean): Promise<void> {
+  if (isLoggedIn) {
+    try {
+      await paymentsApi.removePayoutMethod(methodId);
+      return;
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payout_remove_failed');
+    }
+  }
+  throw new Error('payout_remove_failed');
+}
+
+export async function setDefaultPayoutMethod(
+  methodId: string,
+  isLoggedIn: boolean,
+): Promise<PayoutMethodDto> {
+  if (isLoggedIn) {
+    try {
+      return await paymentsApi.setDefaultPayoutMethod(methodId);
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('payout_default_failed');
+    }
+  }
+  throw new Error('payout_default_failed');
+}
+
+export async function bindVerification(
+  type: 'wechat' | 'alipay' | 'identity' | 'business',
+  isLoggedIn: boolean,
+): Promise<VerificationStatus> {
+  if (isLoggedIn) {
+    try {
+      return await userApi.bindVerification(type);
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('verification_bind_failed');
+    }
+  }
+  throw new Error('verification_bind_failed');
 }
 
 export async function fetchPublicUserProfile(userId: string): Promise<PublicUserProfileDto> {
@@ -173,8 +268,16 @@ export async function fetchPublicUserProfile(userId: string): Promise<PublicUser
 
 export async function fetchPublicUserListings(userId: string) {
   try {
-    const result = await userApi.getPublicListings(userId, { pageSize: 50 });
-    return result.items.map(mapListingToProduct);
+    const items: Awaited<ReturnType<typeof userApi.getPublicListings>>['items'] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 25) {
+      const result = await userApi.getPublicListings(userId, { page, pageSize: 50 });
+      items.push(...result.items);
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return items.map(mapListingToProduct);
   } catch {
     if (API_USE_MOCK_FALLBACK) return mockPublicListingProducts(userId);
     throw new Error('public_listings_failed');

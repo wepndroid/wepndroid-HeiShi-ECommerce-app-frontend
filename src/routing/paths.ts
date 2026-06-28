@@ -89,6 +89,8 @@ export const NO_NAV_PATH_PREFIXES = [
   '/profile/reviews',
   '/help',
   '/safety',
+  '/safety/blocklist',
+  '/safety/trade-rules',
 ] as const;
 
 /** Path → screen id (longest prefix match for nested routes). */
@@ -108,13 +110,16 @@ export function normalizePathname(pathname: string): string {
 
 export function screenPath(
   screen: ScreenId,
-  params?: { productId?: number; sellerUserId?: string },
+  params?: { productId?: number; sellerUserId?: string; chatId?: string },
 ): string {
   if (screen === 'detail' && params?.productId != null) {
     return `${ROUTE_PATHS.detail}/${params.productId}`;
   }
   if (screen === 'sellerProfile' && params?.sellerUserId) {
     return `${ROUTE_PATHS.sellerProfile}/${encodeURIComponent(params.sellerUserId)}`;
+  }
+  if (screen === 'chat' && params?.chatId) {
+    return `${ROUTE_PATHS.chat}/${encodeURIComponent(params.chatId)}`;
   }
   return ROUTE_PATHS[screen];
 }
@@ -132,6 +137,10 @@ export function pathnameToScreenId(pathname: string): ScreenId {
 
   if (path.startsWith(`${ROUTE_PATHS.messageGroup}/`)) {
     return 'messageGroup';
+  }
+
+  if (path.startsWith(`${ROUTE_PATHS.chat}/`)) {
+    return 'chat';
   }
 
   for (const { path: routePath, screen } of PATH_TO_SCREEN) {
@@ -170,6 +179,19 @@ export function productIdFromPathname(pathname: string): number | null {
 export function sellerUserIdFromPathname(pathname: string): string | null {
   const path = normalizePathname(pathname);
   const prefix = `${ROUTE_PATHS.sellerProfile}/`;
+  if (!path.startsWith(prefix)) return null;
+  const raw = path.slice(prefix.length).split('/')[0];
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+export function chatIdFromPathname(pathname: string): string | null {
+  const path = normalizePathname(pathname);
+  const prefix = `${ROUTE_PATHS.chat}/`;
   if (!path.startsWith(prefix)) return null;
   const raw = path.slice(prefix.length).split('/')[0];
   if (!raw) return null;

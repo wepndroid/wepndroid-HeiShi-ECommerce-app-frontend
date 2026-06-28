@@ -1,4 +1,5 @@
 import { Product } from '../types';
+import { isDemoCatalogListing } from './catalogDemo';
 import { demoBundleMeta } from './bundle';
 import { localServices, LocalService } from './services';
 import { productById, products } from './products';
@@ -8,6 +9,11 @@ export const BUNDLE_DETAIL_ID = 200;
 
 /** Detail route ids for local services (101 = moving, 102 = cleaning, …). */
 export const SERVICE_DETAIL_BASE = 100;
+
+/** Seeded demo listings only — not real API ids above 100 (e.g. user-published #131). */
+export function isLocalDetailListing(id: number): boolean {
+  return isDemoCatalogListing(id) || id === BUNDLE_DETAIL_ID;
+}
 
 export function serviceDetailProduct(service: LocalService, imageUrl: string): Product {
   return {
@@ -33,23 +39,23 @@ export function serviceDetailProduct(service: LocalService, imageUrl: string): P
 
 export function resolveDetailProduct(id: number): Product | undefined {
   if (id === BUNDLE_DETAIL_ID) {
+    const bundleMeta = demoBundleMeta();
+    const coverUrl = bundleMeta.coverImageUrls?.[0] ?? products[0].imageUrl;
     return {
       id: BUNDLE_DETAIL_ID,
-      price: demoBundleMeta().fullPrice,
+      price: bundleMeta.fullPrice,
       catKey: 'home',
       tagKey: 'bundleSet',
       sellerKey: 'amy',
       seller: 'Amy',
       loc: 'Clayton',
       height: 'tall',
-      imageUrl: products[4]?.imageUrl ?? products[0].imageUrl,
-      imageUrls: [products[4], products[2], products[9], products[3]]
-        .map((p) => p?.imageUrl)
-        .filter(Boolean) as string[],
+      imageUrl: coverUrl,
+      imageUrls: bundleMeta.coverImageUrls?.length ? bundleMeta.coverImageUrls : [coverUrl],
       apiTitle: 'Clayton 2BR whole-home clearance',
       apiDesc: 'Near Monash, pickup by Jun 28. Buy separately or as a bundle.',
       listingType: 'bundle',
-      bundleMeta: demoBundleMeta(),
+      bundleMeta,
       favoriteCount: 12,
     };
   }

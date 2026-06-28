@@ -1,23 +1,27 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from './typography';
 import { useTranslation } from 'react-i18next';
 import {
   BundleLineItem,
   BundleMeta,
+  bundleHasSoldItemsFromMeta,
   bundleItemImageUrls,
   createBundleLineItem,
   distributeEvenShares,
   getRemainingBundlePriceFromMeta,
   sumBundleShares,
 } from '../data/bundle';
-import { formControlStyles } from './FormUI';
+import { formControlStyles, useFormFieldPill } from './FormUI';
 import { AmazingSurface } from './AmazingSurface';
 import { AppIcon } from './AppIcon';
 import { PhotoUploadGrid } from './PhotoUploadGrid';
-import { Badge } from './UI';
-import { colors, fonts, formControls, radius } from '../theme';
+import { FullScreenImageViewer } from './FullScreenImageViewer';
+import { colors, fonts, formControls, radius, detailPageTokens } from '../theme';
 import { filterNumericInput, numericKeyboardType } from '../utils/numericInput';
+import { formatPickupDateLabel } from '../utils/pickupDate';
+import { findOptionLabel } from '../utils/formOptionLabel';
+import { useFormOptions } from '../hooks/useFormOptions';
 import { FORM_CARD_ITEM_PHOTO_INSET } from '../utils/photoGridSizing';
 
 type EditorProps = {
@@ -40,13 +44,16 @@ export function BundleLineItemsEditor({
   onRemoveItemPhoto,
 }: EditorProps) {
   const { t } = useTranslation();
+  const usePill = useFormFieldPill();
+  const pillBox = usePill ? formControlStyles.boxPill : null;
 
   const updateItem = (id: string, patch: Partial<BundleLineItem>) => {
     onChange(items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   };
 
   const addItem = () => {
-    onChange([...items, createBundleLineItem()]);
+    const next = [...items, createBundleLineItem()];
+    onChange(bundlePrice > 0 && next.length >= 2 ? distributeEvenShares(next, bundlePrice) : next);
   };
 
   const removeItem = (id: string) => {
@@ -82,7 +89,7 @@ export function BundleLineItemsEditor({
             horizontalInset={FORM_CARD_ITEM_PHOTO_INSET}
             compact
           />
-          <View style={formControlStyles.box}>
+          <View style={[formControlStyles.box, pillBox]}>
             <TextInput
               style={formControlStyles.input}
               value={item.title}
@@ -94,7 +101,7 @@ export function BundleLineItemsEditor({
           <View style={styles.priceRow}>
             <View style={styles.priceField}>
               <Text style={styles.priceLabel}>{t('screens.publishBundle.sharePrice')}</Text>
-              <View style={formControlStyles.box}>
+              <View style={[formControlStyles.box, pillBox]}>
                 <TextInput
                   style={formControlStyles.input}
                   value={item.sharePrice ? String(item.sharePrice) : ''}
@@ -106,14 +113,14 @@ export function BundleLineItemsEditor({
                     updateItem(item.id, { sharePrice: filtered ? Number.parseFloat(filtered) : 0 });
                   }}
                   keyboardType={numericKeyboardType('decimal')}
-                  placeholder="0"
+                  placeholder={t('screens.publishBundle.sharePriceSample')}
                   placeholderTextColor={formControls.placeholderColor}
                 />
               </View>
             </View>
             <View style={styles.priceField}>
               <Text style={styles.priceLabel}>{t('screens.publishBundle.separatePrice')}</Text>
-              <View style={formControlStyles.box}>
+              <View style={[formControlStyles.box, pillBox]}>
                 <TextInput
                   style={formControlStyles.input}
                   value={item.separatePrice != null ? String(item.separatePrice) : ''}
@@ -157,78 +164,150 @@ export function BundleLineItemsEditor({
   );
 }
 
-function statusLabelKey(status: BundleLineItem['status']) {
-  if (status === 'sold') return 'screens.publishBundle.statusSold';
-  if (status === 'onHold') return 'screens.publishBundle.statusHold';
-  return 'screens.publishBundle.statusAvailable';
-}
-
-function resolveItemTitle(title: string, t: (key: string) => string) {
-  return title.startsWith('screens.') ? t(title) : title;
-}
-
-export function BundleDetailSection({ meta }: { meta: BundleMeta }) {
-  const { t } = useTranslation();
+export function BundleDetailSummary({ meta }: { meta: BundleMeta }) {
+  const { t, i18n } = useTranslation();
+  const { options } = useFormOptions();
   const remaining = getRemainingBundlePriceFromMeta(meta);
-  const hasSold = meta.items.some((item) => item.status === 'sold');
+  const hasSold = bundleHasSoldItemsFromMeta(meta);
+  const pickupWindowLabel = meta.pickupWindow
+    ? findOptionLabel(options.serviceTimeSlots, meta.pickupWindow, i18n.language) || meta.pickupWindow
+    : '';
 
   return (
     <View style={styles.detailWrap}>
-      <View style={styles.detailStats}>
-        <Badge text={t('tags.bundleSet')} />
-        <Text style={styles.detailStatText}>
-          {t('screens.publishBundle.statItems', { count: meta.totalItems })}
-        </Text>
-        {meta.pickupDeadline ? (
-          <Text style={styles.detailStatText}>
-            {t('screens.publishBundle.pickupBy', { date: meta.pickupDeadline })}
-          </Text>
-        ) : null}
-      </View>
       <Text style={styles.detailPrice}>
-        {hasSold
-          ? t('products.bundle.remainingPrice', { amount: remaining })
-          : t('products.bundle.fullPrice', { amount: meta.fullPrice })}
+        {t('common.currencyPrefix')}
+        {remaining}
       </Text>
       {hasSold ? (
-        <Text style={styles.detailWasPrice}>
+        <Text style={styles.detailStatText}>
           {t('products.bundle.wasFullPrice', { amount: meta.fullPrice })}
         </Text>
+      ) : null}
+      {meta.pickupDeadline ? (
+        <Text style={styles.detailStatText}>
+          {t('screens.publishBundle.pickupBy', {
+            date: formatPickupDateLabel(meta.pickupDeadline, i18n.language),
+          })}
+        </Text>
+      ) : null}
+      {pickupWindowLabel ? (
+        <Text style={styles.detailStatText}>{pickupWindowLabel}</Text>
       ) : null}
       {meta.allowSeparateSale ? (
         <Text style={styles.detailHint}>{t('screens.publishBundle.separateAllowed')}</Text>
       ) : null}
-      <Text style={styles.itemsHeading}>{t('screens.publishBundle.itemsHeading')}</Text>
-      {meta.items.map((item) => {
-        const photos = bundleItemImageUrls(item);
-        return (
-          <View key={item.id} style={styles.detailItem}>
-            {photos[0] ? (
-              <View style={styles.detailThumbWrap}>
-                <Image source={{ uri: photos[0] }} style={styles.detailThumb} resizeMode="cover" />
-                {photos.length > 1 ? (
-                  <View style={styles.detailPhotoCount}>
-                    <Text style={styles.detailPhotoCountText}>+{photos.length - 1}</Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : (
-              <View style={styles.detailThumbPlaceholder}>
-                <AppIcon name="box" size={18} color={colors.sub} />
-              </View>
-            )}
-            <View style={styles.detailItemMain}>
-              <Text style={styles.detailItemTitle}>{resolveItemTitle(item.title, t)}</Text>
-              {item.separatePrice != null && item.status === 'available' ? (
-                <Text style={styles.detailSeparate}>
-                  {t('screens.publishBundle.separateListing', { amount: item.separatePrice })}
-                </Text>
-              ) : null}
-            </View>
-            <Badge text={t(statusLabelKey(item.status))} />
-          </View>
-        );
-      })}
+    </View>
+  );
+}
+
+export function BundleItemDetailCard({
+  item,
+  allowSeparateSale = true,
+  onBuySeparate,
+  buyDisabled = false,
+}: {
+  item: BundleMeta['items'][number];
+  allowSeparateSale?: boolean;
+  onBuySeparate?: () => void;
+  buyDisabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const photos = bundleItemImageUrls(item);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerStart, setViewerStart] = useState(0);
+  const title = (() => {
+    const trimmed = item.title.trim();
+    if (trimmed.startsWith('screens.')) return t(trimmed);
+    return trimmed;
+  })();
+
+  const openViewer = useCallback((photoIndex: number) => {
+    setViewerStart(photoIndex);
+    setViewerVisible(true);
+  }, []);
+
+  return (
+    <View style={styles.detailItemCardInner}>
+      {title ? <Text style={styles.detailItemTitle}>{title}</Text> : null}
+      {item.status === 'sold' ? (
+        <Text style={styles.detailItemStatus}>{t('common.sold')}</Text>
+      ) : item.status === 'onHold' ? (
+        <Text style={styles.detailItemStatus}>{t('common.onHold')}</Text>
+      ) : null}
+      {item.sharePrice > 0 ? (
+        <Text style={styles.detailSharePrice}>
+          {t('common.currencyPrefix')}
+          {item.sharePrice.toFixed(2)}
+        </Text>
+      ) : null}
+      {allowSeparateSale && item.separatePrice != null && item.separatePrice > 0 ? (
+        <Text style={styles.detailSharePrice}>
+          {t('screens.publishBundle.separateListing', { amount: item.separatePrice.toFixed(2) })}
+        </Text>
+      ) : null}
+      {onBuySeparate &&
+      allowSeparateSale &&
+      item.separatePrice != null &&
+      item.separatePrice > 0 &&
+      item.status !== 'sold' &&
+      item.status !== 'onHold' ? (
+        <Pressable
+          style={[styles.detailBuySeparateBtn, buyDisabled && styles.detailBuySeparateBtnDisabled]}
+          onPress={buyDisabled ? undefined : onBuySeparate}
+          accessibilityRole="button"
+        >
+          <Text style={styles.detailBuySeparateText}>{t('common.buySeparately')}</Text>
+        </Pressable>
+      ) : null}
+      {photos.length ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.detailPhotoStrip}
+        >
+          {photos.map((uri, photoIndex) => (
+            <Pressable key={uri} onPress={() => openViewer(photoIndex)} accessibilityRole="imagebutton">
+              <Image
+                source={{ uri }}
+                style={styles.detailPhotoThumb}
+                resizeMode="cover"
+              />
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
+      <FullScreenImageViewer
+        visible={viewerVisible}
+        images={photos}
+        initialIndex={viewerStart}
+        onClose={() => setViewerVisible(false)}
+      />
+    </View>
+  );
+}
+
+export function BundleItemsSection({
+  meta,
+  onBuySeparate,
+  buyDisabled = false,
+}: {
+  meta: BundleMeta;
+  onBuySeparate?: (itemId: string) => void;
+  buyDisabled?: boolean;
+}) {
+  return (
+    <View style={styles.detailItemsWrap}>
+      {meta.items.map((item) => (
+        <AmazingSurface key={item.id} style={styles.detailItemCard}>
+          <BundleItemDetailCard
+            item={item}
+            allowSeparateSale={meta.allowSeparateSale}
+            onBuySeparate={onBuySeparate ? () => onBuySeparate(item.id) : undefined}
+            buyDisabled={buyDisabled}
+          />
+        </AmazingSurface>
+      ))}
     </View>
   );
 }
@@ -285,7 +364,7 @@ const styles = StyleSheet.create({
     borderColor: colors.brand,
     borderRadius: radius.md,
     paddingVertical: 12,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
   },
   addBtnText: {
     fontSize: 13,
@@ -319,63 +398,84 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailStatText: {
-    fontSize: 12,
+    fontSize: detailPageTokens.bundleMetaSize,
     color: colors.sub,
   },
   detailPrice: {
-    fontSize: 22,
+    fontSize: detailPageTokens.bundlePriceSize,
     fontWeight: fonts.weights.bold,
     color: colors.red,
   },
   detailWasPrice: {
-    fontSize: 12,
+    fontSize: detailPageTokens.bundleMetaSize,
     color: colors.sub,
   },
   detailHint: {
-    fontSize: 12,
+    fontSize: detailPageTokens.bundleMetaSize,
     color: colors.sub,
-    lineHeight: 17,
+    lineHeight: 16,
   },
-  itemsHeading: {
-    marginTop: 4,
-    fontSize: 15,
-    fontWeight: fonts.weights.bold,
-    color: colors.text,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  detailItemsWrap: {
     gap: 10,
+    marginTop: 4,
+  },
+  detailItemCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: radius.md,
+  },
+  detailItemCardInner: {
+    gap: 10,
+  },
+  detailItemHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  detailItemIndex: {
+    fontSize: 11,
+    color: colors.sub,
+    fontWeight: fonts.weights.medium,
+  },
+  detailSharePrice: {
+    fontSize: detailPageTokens.bundleMetaSize,
+    color: colors.text,
+    fontWeight: fonts.weights.medium,
+  },
+  detailBuySeparateBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brand,
   },
-  detailThumbWrap: {
-    position: 'relative',
+  detailBuySeparateBtnDisabled: {
+    opacity: 0.45,
   },
-  detailThumb: {
-    width: 48,
-    height: 48,
+  detailBuySeparateText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: fonts.weights.semibold,
+  },
+  detailPhotoLabel: {
+    fontSize: 11,
+    color: colors.sub,
+    fontWeight: fonts.weights.medium,
+  },
+  detailPhotoStrip: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  detailPhotoThumb: {
+    width: 100,
+    height: 100,
     borderRadius: radius.md,
     backgroundColor: colors.stage,
   },
-  detailPhotoCount: {
-    position: 'absolute',
-    right: 2,
-    bottom: 2,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  detailPhotoCountText: {
-    fontSize: 9,
-    color: '#ffffff',
-    fontWeight: fonts.weights.bold,
-  },
-  detailThumbPlaceholder: {
-    width: 48,
-    height: 48,
+  detailPhotoEmpty: {
+    width: 100,
+    height: 100,
     borderRadius: radius.md,
     backgroundColor: colors.stage,
     alignItems: 'center',
@@ -387,12 +487,17 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   detailItemTitle: {
-    fontSize: 14,
+    fontSize: detailPageTokens.bundleItemTitleSize,
     fontWeight: fonts.weights.medium,
     color: colors.text,
   },
+  detailItemStatus: {
+    fontSize: 12,
+    fontWeight: fonts.weights.medium,
+    color: colors.muted,
+  },
   detailSeparate: {
-    fontSize: 11,
+    fontSize: detailPageTokens.bundleMetaSize,
     color: colors.sub,
   },
 });

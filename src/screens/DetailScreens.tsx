@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { useFocusEffect, router } from 'expo-router';
 import { ConfirmPaymentButton } from '../components/ConfirmPaymentButton';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
-import { checkoutOrder } from '../services/ordersService';
+import { resolveListingDetail } from '../services/catalogService';
+import { checkoutOrder, findPendingPayOrder, userCanChatOnListing } from '../services/ordersService';
+import { listCoupons } from '../services/couponsService';
+import type { CouponDto } from '../api/types';
+import { ordersApi } from '../api';
+import { mapOrderDtoToUiOrder } from '../api/mappers';
+import { ApiError } from '../api/client';
+import { useCatalogRevision } from '../utils/catalogSync';
 import { ESCROW_FEE } from '../hooks/useProductFilters';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useFormOptions } from '../hooks/useFormOptions';
@@ -26,8 +34,10 @@ import { ProductGrid, OrderThumb } from '../components/ProductUI';
 import { DetailImageGallery } from '../components/DetailImageGallery';
 import { SellerAuthorRow } from '../components/SellerAvatar';
 import { resolveProductImages } from '../utils/productImages';
+import { normalizeMediaUrl } from '../utils/mediaUrls';
 import {
   Badge,
+  EmptyState,
   IconButton,
   LoadingState,
   PillButton,
@@ -39,10 +49,11 @@ import {
 } from '../components/UI';
 import { AppIcon } from '../components/AppIcon';
 import { usePhotoSearch } from '../hooks/usePhotoSearch';
-import { demoBundleMeta } from '../data/bundle';
+import { demoBundleMeta, bundleHasOnHoldItemsFromMeta, getRemainingBundlePriceFromMeta, isBundleListingProduct } from '../data/bundle';
 import { BUNDLE_DETAIL_ID } from '../data/detailProducts';
-import { BundleDetailSection } from '../components/BundleUI';
-import { colors, fonts, iconTokens, radius } from '../theme';
+import { BundleDetailSummary, BundleItemDetailCard } from '../components/BundleUI';
+import { colors, fonts, iconTokens, radius, detailPageTokens } from '../theme';
+import type { UiOrder } from '../types';
 
 export function SearchScreen() {
   const { t } = useTranslation();
@@ -52,18 +63,28 @@ export function SearchScreen() {
     searchValue,
     setSearchValue,
     toast,
+    products,
     imageSearchResults,
     imageSearchPreviewUri,
     imageSearchLoading,
+    imageSearchError,
     clearImageSearch,
+    setImageSearchLoading,
+    setImageSearchError,
   } = useApp();
-  const { results, suggestions, loading, isImageMode } = useSearch(
+  const { results, suggestions, loading, error, reload, isImageMode } = useSearch(
     region,
     searchValue,
     imageSearchResults,
     imageSearchLoading,
   );
   const searchByPhoto = usePhotoSearch();
+  const showSearchError = error || (isImageMode && imageSearchError);
+
+  const retryImageSearch = () => {
+    setImageSearchError(false);
+    void searchByPhoto();
+  };
 
   return (
     <ScreenScroll screenId="search">
@@ -101,13 +122,33 @@ export function SearchScreen() {
                 style={styles.suggest}
                 onPress={() => {
                   setSearchValue(item.query);
+                  if (item.productId != null) {
+                    void fetchListingDetail(item.productId).then((product) => {
+                      if (product) {
+                        openDetail(product);
+                        return;
+                      }
+                      const fromResults = results.find((p) => p.id === item.productId);
+                      if (fromResults) {
+                        openDetail(fromResults);
+                        return;
+                      }
+                      const fromCatalog = products.find((p) => p.id === item.productId);
+                      if (fromCatalog) {
+                        openDetail(fromCatalog);
+                        return;
+                      }
+                      toast(t('toast.listingUnavailable'));
+                    });
+                    return;
+                  }
                   toast(t('toast.quickSearch', { query: item.query }));
                 }}
               >
                 <View style={styles.sgImg}>
                   {item.imageUrl ? (
                     <Image
-                      source={{ uri: item.imageUrl }}
+                      source={{ uri: normalizeMediaUrl(item.imageUrl) ?? item.imageUrl }}
                       style={styles.sgImgPhoto}
                       resizeMode="cover"
                     />
@@ -125,11 +166,22 @@ export function SearchScreen() {
       <SectionHead
         title={isImageMode ? t('screens.search.imageResults') : t('screens.search.results')}
         action={t('common.tapForDetails')}
+        compact
       />
       {loading ? (
         <LoadingState text={t('screens.search.searching')} />
+      ) : showSearchError ? (
+        <>
+          <EmptyState text={t('screens.search.error')} />
+          <PillButton
+            label={t('common.retry')}
+            variant="light"
+            full
+            onPress={isImageMode && imageSearchError ? retryImageSearch : reload}
+          />
+        </>
       ) : (
-        <ProductGrid data={results} onPress={openDetail} />
+        <ProductGrid data={results} onPress={openDetail} emptyText={t('screens.search.empty')} />
       )}
     </ScreenScroll>
   );
@@ -146,23 +198,156 @@ export function DetailScreen() {
     favs,
     toggleFollow,
     isFollowingSeller,
+    isSelfSeller,
     region,
     openDetail,
     openSellerProfile,
     openChat,
+    mergeProductDetail,
+    loadProduct,
+    isLoggedIn,
+    openOrderCheckout,
   } = useApp();
   const item = useLocalizedProduct(currentItem);
-  const related = useRelatedListings(currentItem.id, region);
+  const { items: related, loadError: relatedLoadError, reload: reloadRelated } = useRelatedListings(
+    currentItem.id,
+    region,
+  );
   const isFav = favs.has(currentItem.id);
   const isFollowing = isFollowingSeller(currentItem.sellerKey);
+  const isSelf = isSelfSeller(currentItem.sellerKey, currentItem.sellerUserId, item.seller);
+  const listingUnavailable =
+    currentItem.listingStatus === 'inactive' || currentItem.listingStatus === 'draft';
+  const listingPurchasable =
+    !listingUnavailable && currentItem.listingStatus !== 'sold';
+  const needsOrderForChat =
+    currentItem.listingStatus === 'sold' || currentItem.listingStatus === 'inactive';
+  const [hasListingOrder, setHasListingOrder] = useState<boolean | null>(null);
+  const canChat =
+    !isSelf &&
+    currentItem.listingStatus !== 'draft' &&
+    (currentItem.listingStatus === 'active' ||
+      hasListingOrder === true ||
+      (needsOrderForChat && hasListingOrder === null));
   const stickyBarInset = useStickyActionsBarInset();
   const favoriteCount = currentItem.favoriteCount ?? 0;
-  const galleryImages = resolveProductImages(currentItem);
   const bundleMeta =
     currentItem.bundleMeta ??
-    (currentItem.listingType === 'bundle' || currentItem.id === BUNDLE_DETAIL_ID
-      ? demoBundleMeta()
-      : null);
+    (currentItem.id === BUNDLE_DETAIL_ID ? demoBundleMeta() : null);
+  const galleryImages = resolveProductImages({
+    ...currentItem,
+    bundleMeta,
+  });
+  const isBundleListing = isBundleListingProduct(currentItem) || bundleMeta != null;
+  const bundleReady = !isBundleListing || (bundleMeta?.items?.length ?? 0) > 0;
+  const [ownPendingPay, setOwnPendingPay] = useState(false);
+  const [bundleItemsFailed, setBundleItemsFailed] = useState(false);
+  const catalogRevision = useCatalogRevision();
+  const bundleHasOnHold = bundleMeta ? bundleHasOnHoldItemsFromMeta(bundleMeta) : false;
+  const canPurchase =
+    !isSelf &&
+    listingPurchasable &&
+    bundleReady &&
+    (ownPendingPay ||
+      (currentItem.purchaseAvailable === true && !bundleHasOnHold));
+
+  const refreshPendingPay = useCallback(() => {
+    if (!isLoggedIn || !currentItem.id) {
+      setOwnPendingPay(false);
+      return;
+    }
+    void findPendingPayOrder(currentItem.id, isLoggedIn).then((order) => {
+      setOwnPendingPay(order != null);
+    });
+  }, [currentItem.id, isLoggedIn]);
+
+  useEffect(() => {
+    refreshPendingPay();
+  }, [refreshPendingPay, catalogRevision]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPendingPay();
+    }, [refreshPendingPay]),
+  );
+
+  useEffect(() => {
+    if (!isLoggedIn || !needsOrderForChat) {
+      setHasListingOrder(null);
+      return;
+    }
+    void userCanChatOnListing(currentItem.id, isLoggedIn).then(setHasListingOrder);
+  }, [currentItem.id, isLoggedIn, needsOrderForChat, catalogRevision]);
+
+  useEffect(() => {
+    if (!currentItem.id) return;
+    void loadProduct(currentItem.id);
+  }, [catalogRevision, currentItem.id, loadProduct]);
+
+  const showCheckout = canPurchase || ownPendingPay;
+  const checkoutLabel =
+    ownPendingPay && !canPurchase ? t('common.continuePayment') : t('common.checkout');
+
+  useEffect(() => {
+    if (bundleMeta != null || !isBundleListingProduct(currentItem)) {
+      setBundleItemsFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setBundleItemsFailed(false);
+
+    void (async () => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (cancelled) return;
+        const detail = await resolveListingDetail(currentItem.id, isLoggedIn);
+        if (cancelled) return;
+        if (detail?.bundleMeta != null) {
+          mergeProductDetail(detail);
+          return;
+        }
+        if (detail && !isBundleListingProduct(detail)) return;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+      }
+      if (!cancelled) setBundleItemsFailed(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentItem.id,
+    currentItem.listingType,
+    currentItem.tagKey,
+    bundleMeta,
+    isLoggedIn,
+    mergeProductDetail,
+  ]);
+
+  const openEditListing = () => {
+    if (currentItem.listingType === 'bundle') {
+      router.push(`/publish/bundle?mode=edit&listingId=${currentItem.id}`);
+      return;
+    }
+    if (currentItem.listingType === 'service') {
+      router.push(`/publish/service?mode=edit&listingId=${currentItem.id}`);
+      return;
+    }
+    router.push(`/publish/product?mode=edit&listingId=${currentItem.id}`);
+  };
+
+  const retryBundleItems = () => {
+    setBundleItemsFailed(false);
+    void resolveListingDetail(currentItem.id, isLoggedIn).then((detail) => {
+      if (detail?.bundleMeta != null) {
+        mergeProductDetail(detail);
+      } else {
+        setBundleItemsFailed(true);
+      }
+    });
+  };
 
   return (
     <View style={styles.detailShell}>
@@ -171,19 +356,41 @@ export function DetailScreen() {
         right={
           <IconButton
             icon={isFav ? 'heart' : 'heartOutline'}
-            onPress={toggleFav}
+            onPress={isSelf ? undefined : toggleFav}
             active={isFav}
           />
         }
       />
-      <DetailImageGallery
-        key={currentItem.id}
-        images={galleryImages}
-        locationLabel={currentItem.loc}
-      />
+      {isBundleListing ? (
+        <DetailImageGallery
+          key={`${currentItem.id}-cover-${galleryImages.join('\0')}`}
+          images={galleryImages}
+          locationLabel={currentItem.loc}
+        />
+      ) : (
+        <DetailImageGallery
+          key={`${currentItem.id}-${galleryImages.join('\0')}`}
+          images={galleryImages}
+          locationLabel={currentItem.loc}
+        />
+      )}
       <DetailCard>
-        {bundleMeta ? (
-          <BundleDetailSection meta={bundleMeta} />
+        {isBundleListing && bundleMeta ? (
+          <>
+            <Text style={styles.detailTitle}>{item.title}</Text>
+            <BundleDetailSummary meta={bundleMeta} />
+          </>
+        ) : isBundleListing ? (
+          <>
+            <Text style={styles.detailTitle}>{item.title}</Text>
+            <View style={styles.badgeRow}>
+              <Badge text={item.tag} fontSize={detailPageTokens.tagSize} />
+            </View>
+            <Text style={styles.detailPrice}>
+              {item.pricePrefix}
+              {currentItem.price}
+            </Text>
+          </>
         ) : (
           <>
             <Text style={styles.detailPrice}>
@@ -192,26 +399,78 @@ export function DetailScreen() {
             </Text>
             <Text style={styles.detailTitle}>{item.title}</Text>
             <View style={styles.badgeRow}>
-              <Badge text={item.tag} />
-              <Badge text={t('common.escrowSupported')} />
-              <Badge text={t('common.negotiable')} />
+              <Badge text={item.tag} fontSize={detailPageTokens.tagSize} />
+              {currentItem.escrowSupported !== false ? (
+                <Badge text={t('common.escrowSupported')} fontSize={detailPageTokens.tagSize} />
+              ) : null}
+              {currentItem.negotiable ? (
+                <Badge text={t('common.negotiable')} fontSize={detailPageTokens.tagSize} />
+              ) : null}
+              {!listingPurchasable ? (
+                <Badge
+                  text={
+                    currentItem.listingStatus === 'sold' ? t('common.sold') : t('common.hold')
+                  }
+                  fontSize={detailPageTokens.tagSize}
+                />
+              ) : null}
             </View>
           </>
         )}
-        <Text style={styles.detailDesc}>{item.desc}</Text>
+        {!isBundleListing || !bundleMeta ? <Text style={styles.detailDesc}>{item.desc}</Text> : null}
       </DetailCard>
+      {isBundleListing && bundleMeta ? (
+        <>
+          {bundleMeta.items.map((bundleItem) => (
+            <DetailCard key={bundleItem.id}>
+              <BundleItemDetailCard
+                item={bundleItem}
+                allowSeparateSale={bundleMeta.allowSeparateSale}
+                onBuySeparate={() => openOrderCheckout(bundleItem.id)}
+                buyDisabled={isSelf || bundleItem.status !== 'available'}
+              />
+            </DetailCard>
+          ))}
+        </>
+      ) : isBundleListing ? (
+        <DetailCard>
+          {bundleItemsFailed ? (
+            <View style={styles.bundleItemsFailedWrap}>
+              <Text style={styles.detailDesc}>{t('screens.detail.bundleItemsLoadFailed')}</Text>
+              <PillButton
+                label={t('screens.detail.bundleItemsRetry')}
+                variant="light"
+                onPress={retryBundleItems}
+                style={styles.bundleItemsRetryBtn}
+              />
+            </View>
+          ) : (
+            <LoadingState text={t('screens.detail.bundleItemsLoading')} />
+          )}
+        </DetailCard>
+      ) : null}
+      {isBundleListing && bundleMeta ? (
+        <DetailCard>
+          <Text style={styles.detailDesc}>{item.desc}</Text>
+        </DetailCard>
+      ) : null}
       <DetailCard>
         <SellerAuthorRow
           sellerKey={currentItem.sellerKey}
           seller={item.seller}
           avatarUrl={currentItem.sellerAvatarUrl}
+          sellerUserId={currentItem.sellerUserId}
+          listingId={currentItem.id}
           subtitle={t('screens.detail.sellerMeta')}
           onPress={() => openSellerProfile(currentItem.sellerKey)}
           action={
             <PillButton
               label={isFollowing ? t('common.following') : t('common.follow')}
               variant={isFollowing ? 'brand' : 'light'}
-              onPress={() => void toggleFollow(currentItem.sellerKey)}
+              onPress={
+                isSelf ? undefined : () => void toggleFollow(currentItem.sellerKey, currentItem.sellerUserId, item.seller)
+              }
+              disabled={isSelf}
               style={followPillStyle}
             />
           }
@@ -221,8 +480,15 @@ export function DetailScreen() {
         <Text style={styles.cardH3}>{t('screens.detail.tradeProtection')}</Text>
         <Text style={styles.detailDesc}>{t('screens.detail.tradeProtectionBody')}</Text>
       </DetailCard>
-      <SectionHead title={t('screens.detail.related')} action={t('screens.detail.relatedHint')} />
-      <ProductGrid data={related} onPress={openDetail} />
+      <SectionHead title={t('screens.detail.related')} action={t('screens.detail.relatedHint')} compact />
+      {relatedLoadError ? (
+        <>
+          <EmptyState text={t('screens.detail.relatedLoadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={reloadRelated} />
+        </>
+      ) : (
+        <ProductGrid data={related} onPress={openDetail} />
+      )}
       </ScreenScroll>
       <StickyActions fixed>
         <DetailBottomBar
@@ -231,7 +497,7 @@ export function DetailScreen() {
               icon={isFav ? 'heart' : 'heartOutline'}
               label={String(favoriteCount)}
               active={isFav}
-              onPress={toggleFav}
+              onPress={isSelf ? undefined : toggleFav}
               accessibilityLabel={
                 isFav ? t('common.a11y.unfavorite') : t('common.a11y.favorite')
               }
@@ -239,25 +505,37 @@ export function DetailScreen() {
           }
           trailing={
             <View style={styles.detailActionsRight}>
-              <PillButton
-                label={t('common.checkout')}
-                variant="light"
-                onPress={() => requireAuthNav('order')}
-                style={styles.detailBuyBtn}
-              />
-              <PillButton
-                label={t('common.chat')}
-                icon="messages"
-                variant="brand"
-                onPress={() =>
-                  openChat({
-                    listingId: currentItem.id,
-                    counterpartName: item.seller,
-                    listingTitle: item.title,
-                  })
-                }
-                style={styles.detailChatBtn}
-              />
+              {isSelf && currentItem.listingStatus === 'draft' ? (
+                <PillButton
+                  label={t('screens.myListings.editA11y')}
+                  variant="brand"
+                  onPress={openEditListing}
+                  style={styles.detailChatBtn}
+                />
+              ) : null}
+              {!isSelf && showCheckout ? (
+                <PillButton
+                  label={checkoutLabel}
+                  variant="light"
+                  onPress={() => openOrderCheckout()}
+                  style={styles.detailBuyBtn}
+                />
+              ) : null}
+              {canChat ? (
+                <PillButton
+                  label={t('common.chat')}
+                  icon="messages"
+                  variant="brand"
+                  onPress={() =>
+                    openChat({
+                      listingId: currentItem.id,
+                      counterpartName: item.seller,
+                      listingTitle: item.title,
+                    })
+                  }
+                  style={styles.detailChatBtn}
+                />
+              ) : null}
             </View>
           }
         />
@@ -279,13 +557,181 @@ export function OrderScreen() {
     deliveryMethod,
     setDeliveryMethod,
     isLoggedIn,
+    isSelfSeller,
+    mergeProductDetail,
+    loadProduct,
+    checkoutBundleItemId,
+    setCheckoutBundleItemId,
   } = useApp();
   useAuthGuard();
   const { options } = useFormOptions();
   const item = useLocalizedProduct(currentItem);
-  const total = currentItem.price + ESCROW_FEE;
+  const bundleMeta = currentItem.bundleMeta ?? null;
+  const selectedBundleItem =
+    checkoutBundleItemId && bundleMeta
+      ? bundleMeta.items.find((row) => row.id === checkoutBundleItemId)
+      : null;
+  const isSeparateCheckout = Boolean(selectedBundleItem);
+  const isBundleListing = isBundleListingProduct(currentItem) || bundleMeta != null;
+  const bundleReady = !isBundleListing || (bundleMeta?.items?.length ?? 0) > 0;
+  const listingUnavailable =
+    currentItem.listingStatus === 'inactive' || currentItem.listingStatus === 'draft';
+  const listingPurchasable =
+    !listingUnavailable && currentItem.listingStatus !== 'sold';
+  const isSelf = isSelfSeller(currentItem.sellerKey, currentItem.sellerUserId, item.seller);
+  const [ownPendingPay, setOwnPendingPay] = useState(false);
+  const [pendingPayOrder, setPendingPayOrder] = useState<UiOrder | null>(null);
+  const [pendingPayChecked, setPendingPayChecked] = useState(false);
+  const [pendingPayLookupFailed, setPendingPayLookupFailed] = useState(false);
+  const catalogItemPrice =
+    isSeparateCheckout && selectedBundleItem?.separatePrice
+      ? selectedBundleItem.separatePrice
+      : isBundleListing && bundleMeta
+        ? getRemainingBundlePriceFromMeta(bundleMeta)
+        : currentItem.price;
+  const [coupons, setCoupons] = useState<CouponDto[]>([]);
+  const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null);
+  const selectedCoupon = selectedCouponId
+    ? coupons.find((row) => row.id === selectedCouponId) ?? null
+    : null;
+  const discountAmount =
+    pendingPayOrder?.discountAmount ??
+    (selectedCoupon ? Math.min(selectedCoupon.amount, catalogItemPrice) : 0);
+  const itemPayable = pendingPayOrder?.amount ?? catalogItemPrice - discountAmount;
+  const checkoutEscrowFee =
+    currentItem.escrowSupported === false
+      ? 0
+      : pendingPayOrder?.escrowFee ?? currentItem.escrowFee ?? ESCROW_FEE;
+  const canPurchaseSeparate =
+    isSeparateCheckout &&
+    selectedBundleItem?.status === 'available' &&
+    (selectedBundleItem.separatePrice ?? 0) > 0 &&
+    bundleMeta?.allowSeparateSale !== false;
+  const canPurchase =
+    !isSelf &&
+    bundleReady &&
+    !pendingPayLookupFailed &&
+    (ownPendingPay ||
+      canPurchaseSeparate ||
+      (!isSeparateCheckout && listingPurchasable && currentItem.purchaseAvailable === true));
+  const total = itemPayable + checkoutEscrowFee;
   const [submitting, setSubmitting] = useState(false);
   const deliveryLabel = findOptionLabel(options.deliveryMethods, deliveryMethod, i18n.language);
+  const catalogRevision = useCatalogRevision();
+
+  const refreshPendingPay = useCallback(() => {
+    if (!isLoggedIn || !currentItem.id) {
+      setOwnPendingPay(false);
+      setPendingPayOrder(null);
+      setPendingPayChecked(true);
+      setPendingPayLookupFailed(false);
+      return;
+    }
+    setPendingPayChecked(false);
+    setPendingPayLookupFailed(false);
+    void findPendingPayOrder(currentItem.id, isLoggedIn, checkoutBundleItemId ?? undefined)
+      .then((order) => {
+        setOwnPendingPay(order != null);
+        setPendingPayOrder(order);
+        if (order?.deliveryMethod) setDeliveryMethod(order.deliveryMethod);
+        if (order?.paymentMethodId) selectPaymentMethodById(order.paymentMethodId);
+        if (order?.couponId) setSelectedCouponId(order.couponId);
+        else setSelectedCouponId(null);
+        setPendingPayChecked(true);
+        setPendingPayLookupFailed(false);
+      })
+      .catch(() => {
+        setPendingPayLookupFailed(true);
+        setPendingPayChecked(true);
+      });
+  }, [checkoutBundleItemId, currentItem.id, isLoggedIn, selectPaymentMethodById, setDeliveryMethod]);
+
+  useEffect(() => {
+    refreshPendingPay();
+  }, [refreshPendingPay, catalogRevision]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPendingPay();
+    }, [refreshPendingPay]),
+  );
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setCoupons([]);
+      return;
+    }
+    void listCoupons(true).then(setCoupons);
+  }, [isLoggedIn, catalogRevision]);
+
+  useEffect(() => {
+    if (!pendingPayChecked || pendingPayLookupFailed || canPurchase || ownPendingPay) return;
+    if (listingPurchasable && currentItem.purchaseAvailable === false) {
+      toast(t('toast.checkoutReservedByOther'));
+    } else {
+      toast(t('toast.listingUnavailable'));
+    }
+    nav('detail');
+  }, [
+    canPurchase,
+    currentItem.purchaseAvailable,
+    listingPurchasable,
+    nav,
+    ownPendingPay,
+    pendingPayChecked,
+    pendingPayLookupFailed,
+    t,
+    toast,
+  ]);
+
+  const showCouponPicker = () => {
+    const available = coupons.filter((row) => row.status === 'available');
+    if (!available.length) {
+      toast(t('screens.order.couponEmpty'));
+      return;
+    }
+    Alert.alert(
+      t('screens.order.coupon'),
+      undefined,
+      [
+        {
+          text: t('screens.order.couponNone'),
+          onPress: () => {
+            void applyCouponSelection(null);
+          },
+        },
+        ...available.map((coupon) => ({
+          text: `${t('common.currencyPrefix')}${coupon.amount} · ${coupon.description}`,
+          onPress: () => {
+            void applyCouponSelection(coupon.id);
+          },
+        })),
+        { text: t('common.cancel'), style: 'cancel' as const },
+      ],
+    );
+  };
+
+  const applyCouponSelection = async (couponId: string | null) => {
+    setSelectedCouponId(couponId);
+    if (!pendingPayOrder) return;
+    try {
+      const dto = await ordersApi.update(pendingPayOrder.id, { couponId });
+      const next = mapOrderDtoToUiOrder(dto);
+      setPendingPayOrder(next);
+      setSelectedCouponId(next.couponId ?? null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'COUPON_IN_USE' || err.code === 'INVALID_STATE') {
+          toast(t('toast.couponInvalid'));
+        } else {
+          toast(t('toast.checkoutFailed'));
+        }
+      } else {
+        toast(t('toast.checkoutFailed'));
+      }
+      refreshPendingPay();
+    }
+  };
 
   const showDeliveryPicker = () => {
     if (!options.deliveryMethods.length) {
@@ -318,26 +764,64 @@ export function OrderScreen() {
   };
 
   const handleCheckout = async () => {
-    if (submitting) return;
+    if (submitting || !canPurchase) return;
     if (!deliveryMethod) {
       toast(t('toast.selectDelivery'));
       return;
     }
+    if (!paymentMethodId) {
+      toast(t('toast.selectPayment'));
+      return;
+    }
     setSubmitting(true);
     try {
-      await checkoutOrder({
+      const result = await checkoutOrder({
         listingId: currentItem.id,
         deliveryMethod,
         paymentMethodId,
+        bundleItemId: checkoutBundleItemId ?? undefined,
+        couponId: selectedCouponId ?? undefined,
         product: currentItem,
         title: item.title,
         sellerName: item.seller,
         isLoggedIn,
       });
-      toast(t('toast.paySuccess'));
-      setTimeout(() => nav('orders'), 700);
-    } catch {
-      toast(t('toast.checkoutFailed'));
+      const { order, paid, payFailed } = result;
+      if (paid) {
+        void loadProduct(currentItem.id);
+        setCheckoutBundleItemId(null);
+        toast(t('toast.paySuccess'));
+      } else if (payFailed) {
+        toast(t('toast.payFailed'));
+      } else if (order.status === 'pendingPay') {
+        toast(t('toast.checkoutPendingPay'));
+        setTimeout(() => nav('orders'), 700);
+      } else {
+        toast(t('toast.checkoutFailed'));
+      }
+      if (paid) {
+        setTimeout(() => nav('orders'), 700);
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.code === 'INVALID_STATE') {
+          toast(t('toast.cannotBuyOwnListing'));
+        } else if (err.code === 'LISTING_RESERVED') {
+          toast(t('toast.checkoutOrderExists'));
+        } else if (err.code === 'LISTING_RESERVED_BY_OTHER') {
+          toast(t('toast.checkoutReservedByOther'));
+        } else if (err.code === 'COUPON_IN_USE' || err.code === 'INVALID_STATE') {
+          toast(t('toast.couponInvalid'));
+        } else if (err.code === 'USER_BLOCKED') {
+          toast(t('toast.userBlocked'));
+        } else if (err.status === 404) {
+          toast(t('toast.listingUnavailable'));
+        } else {
+          toast(t('toast.checkoutFailed'));
+        }
+      } else {
+        toast(t('toast.checkoutFailed'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -347,6 +831,18 @@ export function OrderScreen() {
   const payLabel = t('screens.order.confirmPay', {
     amount: `${item.pricePrefix}${total.toFixed(2)}`,
   });
+
+  if (pendingPayLookupFailed) {
+    return (
+      <View style={styles.orderScreen}>
+        <ScreenScroll screenId="order">
+          <TitleBar center={t('screens.order.title')} />
+          <EmptyState text={t('screens.order.loadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refreshPendingPay} />
+        </ScreenScroll>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.orderScreen}>
@@ -360,7 +856,7 @@ export function OrderScreen() {
             <Text style={styles.orderSub}>{t('screens.order.subtitle')}</Text>
             <Text style={styles.detailPrice}>
               {item.pricePrefix}
-              {currentItem.price}
+              {catalogItemPrice}
             </Text>
           </View>
         </View>
@@ -379,17 +875,41 @@ export function OrderScreen() {
           right={<AppIcon name="chevronForward" size={16} color="#bbbbbb" />}
           onPress={showDeliveryPicker}
         />
+        {checkoutEscrowFee > 0 ? (
+          <ListRow
+            left={
+              <View style={styles.listLeft}>
+                <AppIcon name="shield" size={iconTokens.sizes.sm} color={iconTokens.accent} />
+                <View>
+                  <Text style={styles.listMain}>{t('screens.order.escrow')}</Text>
+                  <Text style={styles.listSub}>{t('screens.order.escrowSub')}</Text>
+                </View>
+              </View>
+            }
+            right={
+              <Text style={styles.strong}>
+                {t('common.currencyPrefix')}
+                {checkoutEscrowFee.toFixed(2)}
+              </Text>
+            }
+          />
+        ) : null}
         <ListRow
           left={
             <View style={styles.listLeft}>
-              <AppIcon name="shield" size={iconTokens.sizes.sm} color={iconTokens.accent} />
+              <AppIcon name="coupon" size={iconTokens.sizes.sm} color={iconTokens.accent} />
               <View>
-                <Text style={styles.listMain}>{t('screens.order.escrow')}</Text>
-                <Text style={styles.listSub}>{t('screens.order.escrowSub')}</Text>
+                <Text style={styles.listMain}>{t('screens.order.coupon')}</Text>
+                <Text style={styles.listSub}>
+                  {selectedCoupon
+                    ? `${t('common.currencyPrefix')}${selectedCoupon.amount} · ${selectedCoupon.description}`
+                    : t('screens.order.couponNone')}
+                </Text>
               </View>
             </View>
           }
-          right={<Text style={styles.strong}>A$0.99</Text>}
+          right={<AppIcon name="chevronForward" size={16} color="#bbbbbb" />}
+          onPress={showCouponPicker}
         />
         <ListRow
           left={
@@ -412,14 +932,32 @@ export function OrderScreen() {
           right={
             <Text style={styles.strong}>
               {item.pricePrefix}
-              {currentItem.price.toFixed(2)}
+              {catalogItemPrice.toFixed(2)}
             </Text>
           }
         />
-        <ListRow
-          left={<Text>{t('screens.order.escrowFee')}</Text>}
-          right={<Text style={styles.strong}>A$0.99</Text>}
-        />
+        {discountAmount > 0 ? (
+          <ListRow
+            left={<Text>{t('screens.order.couponDiscount')}</Text>}
+            right={
+              <Text style={styles.strong}>
+                -{item.pricePrefix}
+                {discountAmount.toFixed(2)}
+              </Text>
+            }
+          />
+        ) : null}
+        {checkoutEscrowFee > 0 ? (
+          <ListRow
+            left={<Text>{t('screens.order.escrowFee')}</Text>}
+            right={
+              <Text style={styles.strong}>
+                {t('common.currencyPrefix')}
+                {checkoutEscrowFee.toFixed(2)}
+              </Text>
+            }
+          />
+        ) : null}
         <ListRow
           left={<Text>{t('screens.order.total')}</Text>}
           right={
@@ -440,7 +978,7 @@ export function OrderScreen() {
           label={payLabel}
           onPress={handleCheckout}
           loading={submitting}
-          disabled={submitting}
+          disabled={submitting || !canPurchase || !pendingPayChecked}
         />
       </StickyActions>
     </View>
@@ -452,15 +990,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   suggestRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 10,
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: 8,
   },
   suggest: {
-    width: '48%',
-    borderRadius: 17,
-    padding: 10,
+    width: '100%',
+    borderRadius: radius.lg,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
@@ -468,8 +1006,8 @@ const styles = StyleSheet.create({
   sgImg: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: colors.brand3,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -497,14 +1035,14 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
     padding: 10,
-    borderRadius: 16,
+    borderRadius: radius.xl,
     backgroundColor: colors.paper,
   },
   imageSearchPreview: {
     width: 56,
     height: 56,
-    borderRadius: 14,
-    backgroundColor: colors.brand3,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
   },
   imageSearchMeta: {
     flex: 1,
@@ -541,15 +1079,15 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   detailPrice: {
-    fontSize: 24,
+    fontSize: detailPageTokens.priceSize,
     color: colors.red,
     fontWeight: fonts.weights.bold,
     marginBottom: 6,
   },
   detailTitle: {
-    fontSize: 17,
+    fontSize: detailPageTokens.titleSize,
     fontWeight: fonts.weights.bold,
-    lineHeight: 22,
+    lineHeight: detailPageTokens.titleLineHeight,
     marginBottom: 6,
     color: colors.text,
   },
@@ -560,15 +1098,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   detailDesc: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: detailPageTokens.bodySize,
+    lineHeight: detailPageTokens.bodyLineHeight,
     color: colors.sub,
   },
   cardH3: {
-    fontSize: 16,
+    fontSize: detailPageTokens.cardHeadingSize,
     fontWeight: fonts.weights.bold,
     marginBottom: 10,
     color: colors.text,
+  },
+  bundleItemsFailedWrap: {
+    gap: 12,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  bundleItemsRetryBtn: {
+    alignSelf: 'center',
   },
   orderItem: {
     borderRadius: radius.lg,
@@ -608,7 +1154,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   tableNoteShell: {
-    borderRadius: 16,
+    borderRadius: radius.xl,
     padding: 12,
     marginTop: 10,
   },

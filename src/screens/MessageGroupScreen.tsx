@@ -3,14 +3,14 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../components/typography';
-import { useApp } from '../context/AppContext';
+import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useGroupNotifications } from '../hooks/useGroupNotifications';
 import { AppIcon } from '../components/AppIcon';
 import { BackButton, ScreenScroll, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
 import { AmazingSurface } from '../components/AmazingSurface';
 import type { NotificationCategory } from '../types';
-import { colors, fonts } from '../theme';
+import { colors, fonts, messagesScreenTokens } from '../theme';
 import { formatMessageTimeLabel } from '../utils/formatMessageTimeLabel';
 
 const GROUP_TITLE_KEYS: Record<NotificationCategory, string> = {
@@ -27,9 +27,10 @@ function parseCategory(raw: string | string[] | undefined): NotificationCategory
 
 export function MessageGroupScreen() {
   const { t, i18n } = useTranslation();
+  useAuthGuard();
   const { category: rawCategory } = useLocalSearchParams<{ category: string }>();
   const category = parseCategory(rawCategory);
-  const { nav, toast, isLoggedIn, authReady } = useApp();
+  const { nav, toast, isLoggedIn, authReady, openDetail, products } = useApp();
   const { items, loading, remove } = useGroupNotifications(category, isLoggedIn, authReady);
 
   const handleOpen = (item: (typeof items)[number]) => {
@@ -41,6 +42,27 @@ export function MessageGroupScreen() {
       nav('following');
       return;
     }
+    if (item.actionRef) {
+      const listingId = Number(item.actionRef);
+      if (Number.isFinite(listingId) && listingId > 0) {
+        const fromCatalog = products.find((p) => p.id === listingId);
+        openDetail(
+          fromCatalog ?? {
+            id: listingId,
+            price: 0,
+            catKey: 'misc',
+            tagKey: 'lightlyUsed',
+            sellerKey: '',
+            seller: '',
+            loc: '',
+            height: '',
+            imageUrl: '',
+            apiTitle: item.title,
+          },
+        );
+        return;
+      }
+    }
   };
 
   const confirmDelete = (id: string, title: string) => {
@@ -50,7 +72,9 @@ export function MessageGroupScreen() {
         text: t('screens.messageGroup.deleteConfirm'),
         style: 'destructive',
         onPress: () => {
-          void remove(id).then(() => toast(t('toast.notificationDeleted')));
+          void remove(id)
+            .then(() => toast(t('toast.notificationDeleted')))
+            .catch(() => toast(t('toast.notificationDeleteFailed')));
         },
       },
     ]);
@@ -71,22 +95,27 @@ export function MessageGroupScreen() {
           <Text style={styles.emptyStateText}>{t('screens.messageGroup.loading')}</Text>
         </AmazingSurface>
       ) : items.length ? (
-        <ListCard>
+        <ListCard compact>
           {items.map((item, index) => (
             <View
               key={item.id}
               style={[styles.row, index < items.length - 1 && styles.rowBorder]}
             >
               <Pressable style={styles.rowMain} onPress={() => handleOpen(item)}>
-                <View style={styles.rowText}>
-                  <Text style={[styles.title, item.unread && styles.titleUnread]}>{item.title}</Text>
-                  <Text style={styles.body} numberOfLines={3}>
-                    {item.body}
+                <View style={styles.rowHeader}>
+                  <Text
+                    style={[styles.title, item.unread && styles.titleUnread, styles.titleFlex]}
+                    numberOfLines={1}
+                  >
+                    {item.title}
                   </Text>
                   <Text style={styles.time}>
                     {formatMessageTimeLabel(item.timeLabel, t, i18n.language)}
                   </Text>
                 </View>
+                <Text style={styles.body} numberOfLines={messagesScreenTokens.groupBodyLines}>
+                  {item.body}
+                </Text>
               </Pressable>
               <Pressable
                 style={styles.deleteBtn}
@@ -115,9 +144,8 @@ export function openMessageGroup(category: NotificationCategory) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    alignItems: 'center',
+    paddingVertical: messagesScreenTokens.rowPaddingVertical,
   },
   rowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -125,29 +153,36 @@ const styles = StyleSheet.create({
   },
   rowMain: {
     flex: 1,
+    minWidth: 0,
+    gap: messagesScreenTokens.previewGap,
   },
-  rowText: {
-    gap: 4,
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   title: {
-    fontFamily: fonts.medium,
-    fontSize: 15,
+    fontWeight: fonts.weights.medium,
+    fontSize: messagesScreenTokens.titleSize,
     color: colors.text,
   },
+  titleFlex: {
+    flex: 1,
+    minWidth: 0,
+  },
   titleUnread: {
-    fontFamily: fonts.bold,
+    fontWeight: fonts.weights.bold,
   },
   body: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: messagesScreenTokens.groupBodySize,
     color: colors.muted,
-    lineHeight: 18,
+    lineHeight: messagesScreenTokens.groupBodyLineHeight,
   },
   time: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: messagesScreenTokens.timeSize,
     color: colors.muted,
-    marginTop: 4,
+    flexShrink: 0,
   },
   deleteBtn: {
     justifyContent: 'center',
@@ -160,8 +195,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyStateText: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
+    fontSize: messagesScreenTokens.emptySize,
     color: colors.muted,
     textAlign: 'center',
   },

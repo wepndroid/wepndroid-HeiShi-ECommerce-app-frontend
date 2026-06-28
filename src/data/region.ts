@@ -165,6 +165,21 @@ export function normalizeProfileCity(value: string | undefined | null): string {
   return ci?.key ?? DEFAULT_REGION.city;
 }
 
+/** Resolve state + city keys from a profile/publish city key. */
+export function regionFromCityKey(cityKey: string): Pick<RegionSelection, 'state' | 'city'> {
+  const normalized = normalizeProfileCity(cityKey);
+  for (const group of regionData) {
+    const city = group.cities.find((entry) => entry.name === normalized);
+    if (city) return { state: group.state, city: city.name };
+  }
+  return { state: DEFAULT_REGION.state, city: DEFAULT_REGION.city };
+}
+
+export function listingRegionFields(cityKey: string): { regionState: string; regionCity: string } {
+  const { state, city } = regionFromCityKey(cityKey);
+  return { regionState: state, regionCity: city };
+}
+
 export function formatStateHeading(state: string, stateName: string): string {
   return formatStateName(state, stateName);
 }
@@ -184,6 +199,12 @@ export function formatLocationLabel(label: string): string {
   const compoundKey = `region.areaNames.${label}`;
   const compound = i18n.t(compoundKey);
   if (compound !== compoundKey) return compound;
+  if (label.includes(' · ')) {
+    return label
+      .split(' · ')
+      .map((part) => formatAreaLabel(part.trim()))
+      .join(' · ');
+  }
   if (label.includes('/')) {
     return label
       .split('/')

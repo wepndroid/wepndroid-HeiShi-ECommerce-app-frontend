@@ -1,22 +1,51 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { ORDER_FILTERS } from '../data/orders';
 import { productImageUrl } from '../data/productImages';
+import { useAuthGuard } from '../hooks/useAuthGuard';
+import { useCoupons } from '../hooks/useCoupons';
+import { useFavoriteProducts } from '../hooks/useFavoriteProducts';
 import { useHistoryProducts } from '../hooks/useHistory';
 import { useMyListings } from '../hooks/useMyListings';
+import { useSellerOrders } from '../hooks/useSellerOrders';
 import { useOrders } from '../hooks/useOrders';
+import { cancelOrder, fetchOrderReview, releaseSalesOrder, sellerActionForStatus, submitOrderReview } from '../services/ordersService';
 import { regionProducts } from '../hooks/useProductFilters';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { ListCard, TableNote } from '../components/FormUI';
 import { AmazingSurface } from '../components/AmazingSurface';
 import { OrderThumb, ProductGrid } from '../components/ProductUI';
-import { PillButton, followPillStyle, ScreenScroll, TitleBar } from '../components/UI';
+import { PillButton, followPillStyle, ScreenScroll, TitleBar, EmptyState, LoadingState } from '../components/UI';
+import { AppIcon } from '../components/AppIcon';
 import { SellerAvatar } from '../components/SellerAvatar';
+import { useFollowList } from '../hooks/useFollowList';
+import { deleteListing, updateListing } from '../services/listingsService';
 import { colors, fonts, radius } from '../theme';
-import { OrderFilterKey, OrderStatus, Product } from '../types';
+import { OrderFilterKey, OrderStatus, Product, UiListing, UiOrder } from '../types';
+
+function uiListingToProduct(listing: UiListing, sellerId?: string, sellerName?: string): Product {
+  const images = listing.imageUrls?.length ? listing.imageUrls : listing.imageUrl ? [listing.imageUrl] : [];
+  return {
+    id: listing.id,
+    price: listing.price,
+    catKey: 'home',
+    tagKey: listing.listingType === 'bundle' ? 'bundleSet' : listing.listingType === 'service' ? 'localService' : 'lightlyUsed',
+    sellerKey: sellerId ?? '',
+    seller: sellerName ?? '',
+    sellerUserId: sellerId,
+    loc: '',
+    height: '',
+    imageUrl: images[0] ?? listing.imageUrl,
+    imageUrls: images,
+    apiTitle: listing.title,
+    listingType: listing.listingType,
+    listingStatus: listing.status,
+  };
+}
 
 const FILTER_LABEL_KEYS: Record<OrderFilterKey, 'screens.orders.all' | 'screens.orders.pendingPay' | 'screens.orders.pendingShip' | 'screens.orders.pendingReceive' | 'screens.orders.pendingReview'> = {
   all: 'screens.orders.all',
@@ -33,7 +62,7 @@ function orderDisplay(
   statusTitle: string;
   statusSub: string;
   statusColor: string;
-  secondaryLabel: string;
+  secondaryLabel: string | null;
   secondaryToastKey: string;
   secondaryIsBrand: boolean;
 } {
@@ -54,7 +83,7 @@ function orderDisplay(
         statusColor: colors.brand2,
         secondaryLabel: t('screens.orders.remindShip'),
         secondaryToastKey: 'toast.reminderSent',
-        secondaryIsBrand: true,
+        secondaryIsBrand: false,
       };
     case 'pendingReceive':
       return {
@@ -70,8 +99,8 @@ function orderDisplay(
         statusTitle: t('common.completed'),
         statusSub: t('screens.orders.waitReview'),
         statusColor: '#999999',
-        secondaryLabel: t('screens.orders.viewReview'),
-        secondaryToastKey: 'toast.viewReview',
+        secondaryLabel: t('screens.orders.submitReview'),
+        secondaryToastKey: 'toast.reviewSubmitted',
         secondaryIsBrand: true,
       };
     case 'completed':
@@ -83,13 +112,99 @@ function orderDisplay(
         secondaryToastKey: 'toast.viewReview',
         secondaryIsBrand: true,
       };
+    case 'cancelled':
+      return {
+        statusTitle: t('screens.orders.cancelled'),
+        statusSub: t('screens.orders.cancelledSub'),
+        statusColor: '#999999',
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.orderCancelled',
+        secondaryIsBrand: false,
+      };
+  }
+}
+
+function sellerOrderDisplay(
+  status: OrderStatus,
+  t: (key: string) => string,
+): {
+  statusTitle: string;
+  statusSub: string;
+  statusColor: string;
+  secondaryLabel: string | null;
+  secondaryToastKey: string;
+} {
+  switch (status) {
+    case 'pendingShip':
+      return {
+        statusTitle: t('screens.orders.inProgress'),
+        statusSub: t('screens.sold.waitShip'),
+        statusColor: colors.brand2,
+        secondaryLabel: t('screens.sold.shipNow'),
+        secondaryToastKey: 'toast.shipped',
+      };
+    case 'pendingPay':
+      return {
+        statusTitle: t('screens.orders.inProgress'),
+        statusSub: t('screens.sold.waitPay'),
+        statusColor: colors.brand2,
+        secondaryLabel: t('screens.sold.releaseOrder'),
+        secondaryToastKey: 'toast.orderReleased',
+      };
+    case 'cancelled':
+      return {
+        statusTitle: t('screens.orders.cancelled'),
+        statusSub: t('screens.orders.cancelledSub'),
+        statusColor: '#999999',
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.orderCancelled',
+      };
+    case 'pendingReceive':
+      return {
+        statusTitle: t('screens.orders.inProgress'),
+        statusSub: t('screens.sold.waitBuyerConfirm'),
+        statusColor: colors.brand2,
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.shipped',
+      };
+    case 'pendingReview':
+      return {
+        statusTitle: t('common.completed'),
+        statusSub: t('screens.sold.waitReview'),
+        statusColor: '#999999',
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.shipped',
+      };
+    case 'completed':
+      return {
+        statusTitle: t('common.completed'),
+        statusSub: t('screens.sold.buyerConfirmed'),
+        statusColor: '#999999',
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.shipped',
+      };
+    default:
+      return {
+        statusTitle: t('screens.orders.inProgress'),
+        statusSub: t('screens.sold.waitBuyerConfirm'),
+        statusColor: colors.brand2,
+        secondaryLabel: null,
+        secondaryToastKey: 'toast.shipped',
+      };
   }
 }
 
 export function OrdersScreen() {
   const { t } = useTranslation();
-  const { products, requireAuthNav, toast, openChat, isLoggedIn, authReady } = useApp();
-  const [activeFilter, setActiveFilter] = useState<OrderFilterKey>('all');
+  useAuthGuard();
+  const params = useLocalSearchParams<{ filter?: string }>();
+  const { products, requireAuthNav, toast, openChat, openDetail, nav, isLoggedIn, authReady, paymentMethods } = useApp();
+  const [activeFilter, setActiveFilter] = useState<OrderFilterKey>(() => {
+    const filter = params.filter;
+    return filter && ORDER_FILTERS.includes(filter as OrderFilterKey)
+      ? (filter as OrderFilterKey)
+      : 'all';
+  });
   const localizedProducts = useLocalizedProducts(products);
 
   const resolveTitle = useCallback(
@@ -103,7 +218,7 @@ export function OrdersScreen() {
     [localizedProducts],
   );
 
-  const { orders: visibleOrders, runAction } = useOrders(
+  const { orders: visibleOrders, loading, error, runAction, refresh } = useOrders(
     activeFilter,
     isLoggedIn,
     authReady,
@@ -112,17 +227,93 @@ export function OrdersScreen() {
     resolveSeller,
   );
 
+  const openOrderCheckout = useCallback(
+    (order: UiOrder) => {
+      if (!paymentMethods.length) {
+        toast(t('toast.selectPayment'));
+        nav('paymentSettings');
+        return;
+      }
+      const fromCatalog = products.find((p) => p.id === order.listingId);
+      openDetail(
+        fromCatalog ?? {
+          id: order.listingId,
+          price: order.amount,
+          catKey: 'misc',
+          tagKey: 'lightlyUsed',
+          sellerKey: '',
+          seller: order.sellerName,
+          loc: '',
+          height: '',
+          imageUrl: order.imageUrl,
+          apiTitle: order.title,
+        },
+      );
+      nav('order');
+    },
+    [nav, openDetail, paymentMethods.length, products, t, toast],
+  );
+
   const handleSecondaryAction = async (order: (typeof visibleOrders)[number]) => {
     const display = orderDisplay(order.status, t);
-    if (order.status === 'pendingReview' || order.status === 'completed') {
-      toast(t(display.secondaryToastKey));
+    if (order.status === 'pendingPay') {
+      openOrderCheckout(order);
       return;
     }
+    if (order.status === 'pendingReview') {
+      Alert.alert(
+        t('screens.orders.reviewTitle'),
+        t('screens.orders.reviewPrompt'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          ...([5, 4, 3, 2, 1] as const).map((stars) => ({
+            text: t('screens.orders.reviewStars', { count: stars }),
+            onPress: () => {
+              void (async () => {
+                try {
+                  await submitOrderReview(order, stars, isLoggedIn);
+                  toast(t('toast.reviewSubmitted'));
+                  refresh();
+                } catch {
+                  toast(t('toast.orderActionFailed'));
+                }
+              })();
+            },
+          })),
+        ],
+      );
+      return;
+    }
+    if (order.status === 'completed') {
+      try {
+        const review = await fetchOrderReview(order.id, isLoggedIn);
+        Alert.alert(
+          t('screens.orders.reviewTitle'),
+          review.comment?.trim()
+            ? t('screens.orders.reviewDetail', { stars: review.rating, comment: review.comment })
+            : t('screens.orders.reviewStarsOnly', { count: review.rating }),
+        );
+      } catch {
+        toast(t('toast.reviewNotFound'));
+      }
+      return;
+    }
+    if (!display.secondaryLabel) return;
     try {
       await runAction(order);
       toast(t(display.secondaryToastKey));
     } catch {
-      toast(t('toast.checkoutFailed'));
+      toast(t('toast.orderActionFailed'));
+    }
+  };
+
+  const handleCancelOrder = async (order: (typeof visibleOrders)[number]) => {
+    try {
+      await cancelOrder(order, isLoggedIn);
+      toast(t('toast.orderCancelled'));
+      refresh();
+    } catch {
+      toast(t('toast.orderActionFailed'));
     }
   };
 
@@ -149,7 +340,14 @@ export function OrdersScreen() {
           );
         })}
       </ScrollView>
-      {visibleOrders.length ? (
+      {loading ? (
+        <LoadingState compact />
+      ) : error ? (
+        <>
+          <EmptyState text={t('screens.orders.loadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
+        </>
+      ) : visibleOrders.length ? (
         visibleOrders.map((order) => {
           const display = orderDisplay(order.status, t);
           return (
@@ -190,6 +388,7 @@ export function OrdersScreen() {
                   {t('screens.orders.contactSeller')}
                 </Text>
               </Pressable>
+              {display.secondaryLabel ? (
               <Pressable
                 style={[styles.orderBtn, display.secondaryIsBrand && styles.orderBtnYellow]}
                 onPress={() => handleSecondaryAction(order)}
@@ -198,14 +397,18 @@ export function OrdersScreen() {
                   {display.secondaryLabel}
                 </Text>
               </Pressable>
+              ) : null}
             </View>
+            {order.status === 'pendingPay' ? (
+              <Pressable onPress={() => void handleCancelOrder(order)} style={styles.cancelLink}>
+                <Text style={styles.cancelLinkText}>{t('screens.orders.cancelOrder')}</Text>
+              </Pressable>
+            ) : null}
           </AmazingSurface>
           );
         })
       ) : (
-        <AmazingSurface style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>{t('screens.orders.emptyFilter')}</Text>
-        </AmazingSurface>
+        <EmptyState text={t('screens.orders.emptyFilter')} />
       )}
     </ScreenScroll>
   );
@@ -213,33 +416,162 @@ export function OrdersScreen() {
 
 export function SoldScreen() {
   const { t } = useTranslation();
+  useAuthGuard();
+  const { isLoggedIn, authReady, toast } = useApp();
+  const { orders, loading, error, shipOrder, releaseOrder, refresh } = useSellerOrders('all', isLoggedIn, authReady);
+
+  const handleShip = async (order: UiOrder) => {
+    try {
+      await shipOrder(order);
+      toast(t('toast.shipped'));
+    } catch {
+      toast(t('toast.orderActionFailed'));
+    }
+  };
+
+  const handleRelease = async (order: UiOrder) => {
+    try {
+      await releaseOrder(order);
+      toast(t('toast.orderReleased'));
+    } catch {
+      toast(t('toast.orderActionFailed'));
+    }
+  };
+
   return (
     <ScreenScroll screenId="sold">
       <TitleBar center={t('screens.sold.title')} />
-      <AmazingSurface style={styles.orderItem}>
-        <View style={styles.orderTop}>
-          <Text style={styles.orderTopStrong}>{t('common.completed')}</Text>
-          <Text style={styles.price}>A$50</Text>
-        </View>
-        <View style={styles.orderMid}>
-          <OrderThumb imageUrl={productImageUrl(12)} />
-          <View>
-            <Text style={styles.orderTitle}>{t('products.items.12.title')}</Text>
-            <Text style={styles.orderSub}>{t('screens.sold.buyerConfirmed')}</Text>
-          </View>
-        </View>
-      </AmazingSurface>
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        <>
+          <EmptyState text={t('screens.sold.loadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
+        </>
+      ) : orders.length ? (
+        orders.map((order) => {
+          const display = sellerOrderDisplay(order.status, t);
+          const sellerAction = sellerActionForStatus(order.status);
+          const actionHandler =
+            sellerAction === 'ship' ? handleShip : sellerAction === 'release' ? handleRelease : null;
+          return (
+            <AmazingSurface key={order.id} style={styles.orderItem}>
+              <View style={styles.orderTop}>
+                <Text style={[styles.orderTopStrong, { color: display.statusColor }]}>
+                  {display.statusTitle}
+                </Text>
+                <Text style={styles.price}>
+                  {t('common.currencyPrefix')}
+                  {order.amount}
+                </Text>
+              </View>
+              <View style={styles.orderMid}>
+                <OrderThumb imageUrl={order.imageUrl} />
+                <View style={styles.orderInfo}>
+                  <Text style={styles.orderTitle} numberOfLines={2}>
+                    {order.title}
+                  </Text>
+                  {order.buyerName ? (
+                    <Text style={styles.orderSub}>
+                      {t('screens.sold.buyerLine', { name: order.buyerName })}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.orderSub}>{display.statusSub}</Text>
+                </View>
+              </View>
+              {display.secondaryLabel && actionHandler ? (
+                <PillButton
+                  label={display.secondaryLabel}
+                  variant="brand"
+                  full
+                  onPress={() => void actionHandler(order)}
+                />
+              ) : null}
+            </AmazingSurface>
+          );
+        })
+      ) : (
+        <EmptyState text={t('screens.sold.empty')} />
+      )}
     </ScreenScroll>
   );
 }
 
 export function MyListingsScreen() {
   const { t } = useTranslation();
-  const { requireAuthNav, isLoggedIn, authReady } = useApp();
+  useAuthGuard();
+  const { requireAuthNav, isLoggedIn, authReady, toast, openDetail, products, user } = useApp();
   const [statusIndex, setStatusIndex] = useState(0);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const statuses: Array<'active' | 'draft' | 'inactive' | undefined> = ['active', 'draft', 'inactive'];
   const status = statuses[statusIndex];
-  const { listings } = useMyListings(status, isLoggedIn, authReady);
+  const { listings, loading, error, refresh } = useMyListings(status, isLoggedIn, authReady);
+  const productListings = useMemo(
+    () => listings.filter((listing) => listing.listingType !== 'service'),
+    [listings],
+  );
+
+  const openListingDetail = useCallback(
+    (listing: UiListing) => {
+      const fromCatalog = products.find((p) => p.id === listing.id);
+      openDetail(fromCatalog ?? uiListingToProduct(listing, user?.id, user?.nickname));
+    },
+    [openDetail, products, user?.id, user?.nickname],
+  );
+
+  const confirmDeleteListing = useCallback(
+    (listingId: number, title: string) => {
+      Alert.alert(t('screens.myListings.deleteTitle'), t('screens.myListings.deleteBody', { title }), [
+        { text: t('screens.myListings.cancel'), style: 'cancel' },
+        {
+          text: t('screens.myListings.deleteConfirm'),
+          style: 'destructive',
+          onPress: () => {
+            setDeletingId(listingId);
+            void deleteListing(listingId, isLoggedIn)
+              .then(() => {
+                toast(t('toast.listingDeleted'));
+                refresh();
+              })
+              .catch(() => toast(t('toast.listingDeleteFailed')))
+              .finally(() => setDeletingId(null));
+          },
+        },
+      ]);
+    },
+    [isLoggedIn, refresh, t, toast],
+  );
+
+  const openEditListing = useCallback(
+    (listing: UiListing) => {
+      if (listing.listingType === 'bundle') {
+        router.push(`/publish/bundle?mode=edit&listingId=${listing.id}`);
+        return;
+      }
+      if (listing.listingType === 'service') {
+        router.push(`/publish/service?mode=edit&listingId=${listing.id}`);
+        return;
+      }
+      if (listing.listingType && listing.listingType !== 'product') {
+        toast(t('toast.editListingTypeUnsupported'));
+        return;
+      }
+      router.push(`/publish/product?mode=edit&listingId=${listing.id}`);
+    },
+    [t, toast],
+  );
+
+  const relistListing = useCallback(
+    (listingId: number) => {
+      void updateListing(listingId, { status: 'active' }, isLoggedIn)
+        .then(() => {
+          toast(t('toast.listingRelisted'));
+          refresh();
+        })
+        .catch(() => toast(t('toast.publishFailed')));
+    },
+    [isLoggedIn, refresh, t, toast],
+  );
 
   return (
     <ScreenScroll screenId="myListings">
@@ -253,25 +585,71 @@ export function MyListingsScreen() {
           </Pressable>
         ))}
       </ScrollView>
-      {listings.length ? (
-        listings.map((listing) => (
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        <>
+          <EmptyState text={t('screens.myListings.loadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
+        </>
+      ) : productListings.length ? (
+        productListings.map((listing) => (
           <AmazingSurface key={listing.id} style={styles.orderItem}>
-            <View style={styles.orderMid}>
-              <OrderThumb imageUrl={listing.imageUrl} />
-              <View style={styles.orderInfo}>
-                <Text style={styles.orderTitle} numberOfLines={2}>
-                  {listing.title}
-                </Text>
-                <Text style={styles.price}>
-                  {t('common.currencyPrefix')}
-                  {listing.price}
-                </Text>
-              </View>
+            <View style={styles.listingRow}>
+              <Pressable
+                style={styles.listingTapArea}
+                onPress={() => openListingDetail(listing)}
+                accessibilityRole="button"
+              >
+                <View style={styles.orderMid}>
+                  <OrderThumb imageUrl={listing.imageUrl} />
+                  <View style={styles.orderInfo}>
+                    <Text style={styles.orderTitle} numberOfLines={2}>
+                      {listing.title}
+                    </Text>
+                    <Text style={styles.price}>
+                      {t('common.currencyPrefix')}
+                      {listing.price}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+              {status === 'inactive' ? (
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => relistListing(listing.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('screens.myListings.relistA11y')}
+                  hitSlop={8}
+                >
+                  <AppIcon name="upload" size={18} color={colors.sub} />
+                </Pressable>
+              ) : listing.listingType === 'product' || listing.listingType === 'bundle' || !listing.listingType ? (
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => openEditListing(listing)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('screens.myListings.editA11y')}
+                  hitSlop={8}
+                >
+                  <AppIcon name="edit" size={18} color={colors.sub} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                style={[styles.deleteBtn, deletingId === listing.id && styles.deleteBtnDisabled]}
+                onPress={() => confirmDeleteListing(listing.id, listing.title)}
+                disabled={deletingId === listing.id}
+                accessibilityRole="button"
+                accessibilityLabel={t('screens.myListings.deleteA11y')}
+                hitSlop={8}
+              >
+                <AppIcon name="trash" size={18} color={colors.sub} />
+              </Pressable>
             </View>
           </AmazingSurface>
         ))
       ) : (
-        <TableNote>{t('screens.myListings.empty')}</TableNote>
+        <EmptyState text={t('screens.myListings.empty')} />
       )}
       <PillButton label={t('screens.myListings.goPublish')} variant="brand" full onPress={() => requireAuthNav('publish')} />
     </ScreenScroll>
@@ -280,10 +658,143 @@ export function MyListingsScreen() {
 
 export function MyServicesScreen() {
   const { t } = useTranslation();
-  const { requireAuthNav } = useApp();
+  useAuthGuard();
+  const { requireAuthNav, isLoggedIn, authReady, toast, openDetail, products, user } = useApp();
+  const [statusIndex, setStatusIndex] = useState(0);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const statuses: Array<'active' | 'draft' | 'inactive' | undefined> = ['active', 'draft', 'inactive'];
+  const status = statuses[statusIndex];
+  const { listings, loading, error, refresh } = useMyListings(status, isLoggedIn, authReady);
+  const serviceListings = useMemo(
+    () => listings.filter((listing) => listing.listingType === 'service'),
+    [listings],
+  );
+
+  const openListingDetail = useCallback(
+    (listing: UiListing) => {
+      const fromCatalog = products.find((p) => p.id === listing.id);
+      openDetail(fromCatalog ?? uiListingToProduct(listing, user?.id, user?.nickname));
+    },
+    [openDetail, products, user?.id, user?.nickname],
+  );
+
+  const openEditService = useCallback((listing: UiListing) => {
+    router.push(`/publish/service?mode=edit&listingId=${listing.id}`);
+  }, []);
+
+  const relistListing = useCallback(
+    (listingId: number) => {
+      void updateListing(listingId, { status: 'active' }, isLoggedIn)
+        .then(() => {
+          toast(t('toast.listingRelisted'));
+          refresh();
+        })
+        .catch(() => toast(t('toast.publishFailed')));
+    },
+    [isLoggedIn, refresh, t, toast],
+  );
+
+  const confirmDeleteListing = useCallback(
+    (listingId: number, title: string) => {
+      Alert.alert(t('screens.myListings.deleteTitle'), t('screens.myListings.deleteBody', { title }), [
+        { text: t('screens.myListings.cancel'), style: 'cancel' },
+        {
+          text: t('screens.myListings.deleteConfirm'),
+          style: 'destructive',
+          onPress: () => {
+            setDeletingId(listingId);
+            void deleteListing(listingId, isLoggedIn)
+              .then(() => {
+                toast(t('toast.listingDeleted'));
+                refresh();
+              })
+              .catch(() => toast(t('toast.listingDeleteFailed')))
+              .finally(() => setDeletingId(null));
+          },
+        },
+      ]);
+    },
+    [isLoggedIn, refresh, t, toast],
+  );
+
   return (
     <ScreenScroll screenId="myServices">
       <TitleBar center={t('screens.myServices.title')} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        {[t('screens.myListings.active'), t('screens.myListings.draft'), t('screens.myListings.inactive')].map((chip, i) => (
+          <Pressable key={chip} style={[styles.chip, i === statusIndex && styles.chipActive]} onPress={() => setStatusIndex(i)}>
+            <Text style={[styles.chipText, i === statusIndex && styles.chipTextActive]} numberOfLines={1}>
+              {chip}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        <>
+          <EmptyState text={t('screens.myListings.loadFailed')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
+        </>
+      ) : serviceListings.length ? (
+        serviceListings.map((listing) => (
+          <AmazingSurface key={listing.id} style={styles.orderItem}>
+            <View style={styles.listingRow}>
+              <Pressable
+                style={styles.listingTapArea}
+                onPress={() => openListingDetail(listing)}
+                accessibilityRole="button"
+              >
+                <View style={styles.orderMid}>
+                  <OrderThumb imageUrl={listing.imageUrl} />
+                  <View style={styles.orderInfo}>
+                    <Text style={styles.orderTitle} numberOfLines={2}>
+                      {listing.title}
+                    </Text>
+                    <Text style={styles.price}>
+                      {t('common.currencyPrefix')}
+                      {listing.price}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+              {status === 'inactive' ? (
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => relistListing(listing.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('screens.myListings.relistA11y')}
+                  hitSlop={8}
+                >
+                  <AppIcon name="upload" size={18} color={colors.sub} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={styles.editBtn}
+                  onPress={() => openEditService(listing)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('screens.myListings.editA11y')}
+                  hitSlop={8}
+                >
+                  <AppIcon name="edit" size={18} color={colors.sub} />
+                </Pressable>
+              )}
+              <Pressable
+                style={[styles.deleteBtn, deletingId === listing.id && styles.deleteBtnDisabled]}
+                onPress={() => confirmDeleteListing(listing.id, listing.title)}
+                disabled={deletingId === listing.id}
+                accessibilityRole="button"
+                accessibilityLabel={t('screens.myListings.deleteA11y')}
+                hitSlop={8}
+              >
+                <AppIcon name="trash" size={18} color={colors.sub} />
+              </Pressable>
+            </View>
+          </AmazingSurface>
+        ))
+      ) : (
+        <EmptyState text={t('screens.myServices.empty')} />
+      )}
       <TableNote>{t('screens.myServices.note')}</TableNote>
       <PillButton label={t('screens.myServices.publish')} variant="brand" full onPress={() => requireAuthNav('publishService')} />
     </ScreenScroll>
@@ -292,53 +803,59 @@ export function MyServicesScreen() {
 
 export function FavoritesScreen() {
   const { t } = useTranslation();
-  const { favs, products, region, openDetail, favCount } = useApp();
-  const data = useMemo(
-    () => regionProducts(products.filter((p) => favs.has(p.id)), region),
-    [products, favs, region],
-  );
+  useAuthGuard();
+  const { openDetail, isLoggedIn, favs } = useApp();
+  const { items: data, loading } = useFavoriteProducts(isLoggedIn, favs);
 
   return (
     <ScreenScroll screenId="favorites">
-      <TitleBar center={t('screens.favorites.title', { count: favCount })} />
-      <ProductGrid data={data} onPress={openDetail} />
+      <TitleBar center={t('screens.favorites.title', { count: data.length })} />
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <ProductGrid data={data} onPress={openDetail} emptyText={t('screens.favorites.empty')} />
+      )}
     </ScreenScroll>
   );
 }
 
 export function HistoryScreen() {
   const { t } = useTranslation();
+  useAuthGuard();
   const { openDetail, region, isLoggedIn } = useApp();
-  const { items: data } = useHistoryProducts(region, isLoggedIn);
+  const { items: data, loading } = useHistoryProducts(region, isLoggedIn);
 
   return (
     <ScreenScroll screenId="history">
       <TitleBar center={t('screens.history.title')} />
-      <ProductGrid data={data} onPress={openDetail} />
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <ProductGrid data={data} onPress={openDetail} emptyText={t('screens.history.empty')} />
+      )}
     </ScreenScroll>
   );
 }
 
 export function FollowingScreen() {
   const { t } = useTranslation();
-  const { follows, toggleFollow, products, openSellerProfile } = useApp();
+  useAuthGuard();
+  const { follows, toggleFollow, openSellerProfile, isLoggedIn } = useApp();
+  const { items: followItems } = useFollowList(isLoggedIn);
 
-  const rows = useMemo(() => {
-    return [...follows].map((userId) => {
-      const product = products.find(
-        (item) =>
-          item.sellerKey === userId ||
-          (item.sellerKey.length <= 8 ? `seller-${item.sellerKey}` : item.sellerKey) === userId,
-      );
-      return {
-        userId,
-        name: product?.seller ?? userId.replace(/^seller-/, ''),
-        sellerKey: product?.sellerKey ?? userId.replace(/^seller-/, ''),
-        sellerAvatarUrl: product?.sellerAvatarUrl,
-        sub: product ? product.loc : t('screens.following.mia'),
-      };
-    });
-  }, [follows, products, t]);
+  const rows = useMemo(
+    () =>
+      followItems
+        .filter((item) => follows.has(item.userId))
+        .map((item) => ({
+          userId: item.userId,
+          name: item.nickname,
+          sellerKey: item.userId,
+          sellerAvatarUrl: item.avatarUrl,
+          sub: item.subtitle ?? '',
+        })),
+    [followItems, follows],
+  );
 
   return (
     <ScreenScroll screenId="following">
@@ -360,6 +877,7 @@ export function FollowingScreen() {
                     sellerKey={row.sellerKey}
                     seller={row.name}
                     avatarUrl={row.sellerAvatarUrl}
+                    sellerUserId={row.userId}
                     size={48}
                   />
                   <View style={{ flex: 1 }}>
@@ -378,9 +896,7 @@ export function FollowingScreen() {
           })}
         </ListCard>
       ) : (
-        <AmazingSurface style={styles.emptyState}>
-          <Text style={styles.emptyStateText}>{t('screens.following.empty')}</Text>
-        </AmazingSurface>
+        <EmptyState text={t('screens.following.empty')} />
       )}
     </ScreenScroll>
   );
@@ -388,43 +904,47 @@ export function FollowingScreen() {
 
 export function CouponsScreen() {
   const { t } = useTranslation();
-  const { toast } = useApp();
-  const [usedCoupons, setUsedCoupons] = useState<Set<string>>(new Set());
-  const coupons = [
-    { id: 'c1', amount: 'A$6', subKey: 'screens.coupons.c1' },
-    { id: 'c2', amount: 'A$3', subKey: 'screens.coupons.c2' },
-    { id: 'c3', amount: 'A$10', subKey: 'screens.coupons.c3' },
-  ];
+  useAuthGuard();
+  const { toast, isLoggedIn, authReady } = useApp();
+  const { coupons, loading } = useCoupons(isLoggedIn, authReady);
 
-  const handleUseCoupon = (couponId: string) => {
-    if (usedCoupons.has(couponId)) return;
-    setUsedCoupons((prev) => new Set(prev).add(couponId));
-    toast(t('toast.couponUsed'));
+  const handleUseCoupon = () => {
+    toast(t('screens.coupons.useAtCheckout'));
+    router.push('/');
   };
 
   return (
     <ScreenScroll screenId="coupons">
       <TitleBar center={t('screens.coupons.title')} />
-      {coupons.map((coupon) => {
-        const used = usedCoupons.has(coupon.id);
-        return (
-          <AmazingSurface key={coupon.id} style={styles.coupon}>
-            <View>
-              <Text style={styles.couponAmt}>{coupon.amount}</Text>
-              <Text style={styles.couponSub}>{t(coupon.subKey)}</Text>
-            </View>
-            <Pressable
-              style={[styles.couponBtn, used && styles.couponBtnUsed]}
-              onPress={() => handleUseCoupon(coupon.id)}
-              disabled={used}
-            >
-              <Text style={[styles.couponBtnText, used && styles.couponBtnTextUsed]}>
-                {used ? t('screens.coupons.used') : t('screens.coupons.use')}
-              </Text>
-            </Pressable>
-          </AmazingSurface>
-        );
-      })}
+      {loading ? (
+        <LoadingState compact />
+      ) : coupons.length ? (
+        coupons.map((coupon) => {
+          const used = coupon.status !== 'available';
+          return (
+            <AmazingSurface key={coupon.id} style={styles.coupon}>
+              <View>
+                <Text style={styles.couponAmt}>
+                  {t('common.currencyPrefix')}
+                  {coupon.amount}
+                </Text>
+                <Text style={styles.couponSub}>{coupon.description}</Text>
+              </View>
+              <Pressable
+                style={[styles.couponBtn, used && styles.couponBtnUsed]}
+                onPress={() => handleUseCoupon()}
+                disabled={used}
+              >
+                <Text style={[styles.couponBtnText, used && styles.couponBtnTextUsed]}>
+                  {used ? t('screens.coupons.used') : t('screens.coupons.use')}
+                </Text>
+              </Pressable>
+            </AmazingSurface>
+          );
+        })
+      ) : (
+        <EmptyState text={t('screens.coupons.empty')} />
+      )}
     </ScreenScroll>
   );
 }
@@ -440,11 +960,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: 11,
     paddingVertical: 7,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.paper,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
     flexShrink: 0,
   },
   chipActive: {
-    backgroundColor: colors.brand,
+    backgroundColor: colors.brand3,
+    borderColor: colors.brand,
   },
   chipText: {
     fontWeight: fonts.weights.bold,
@@ -470,8 +993,40 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   orderMid: {
+    flex: 1,
     flexDirection: 'row',
     gap: 10,
+    minWidth: 0,
+  },
+  listingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  listingTapArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+  deleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    flexShrink: 0,
+  },
+  editBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    flexShrink: 0,
+  },
+  deleteBtnDisabled: {
+    opacity: 0.45,
   },
   orderInfo: {
     flex: 1,
@@ -515,20 +1070,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.text,
   },
-  emptyState: {
-    borderStyle: 'dashed',
-    borderColor: '#e6dfc8',
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 20,
-    alignItems: 'center',
-    marginBottom: 10,
+  cancelLink: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    paddingVertical: 4,
   },
-  emptyStateText: {
-    color: '#8a7a54',
-    fontSize: 13,
-    fontWeight: fonts.weights.bold,
-    textAlign: 'center',
+  cancelLinkText: {
+    fontSize: 12,
+    color: colors.muted,
+    textDecorationLine: 'underline',
   },
   followRow: {
     flexDirection: 'row',

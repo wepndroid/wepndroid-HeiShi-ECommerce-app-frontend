@@ -1,16 +1,30 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
+import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useConversations } from '../hooks/useConversations';
 import { useNotificationGroups } from '../hooks/useNotificationGroups';
+import {
+  areChatNotificationsSupported,
+  getNotificationPermissionStatus,
+  registerDevicePushTokenWithBackend,
+  requestNotificationPermissions,
+  type NotificationPermissionStatus,
+} from '../services/messageNotifications';
 import { openMessageGroup } from './MessageGroupScreen';
+import {
+  conversationShowsUnread,
+  inboxUnreadCount,
+  setConversationMarkedUnread,
+} from '../services/messagesService';
 import { AppIcon } from '../components/AppIcon';
-import { IconButton, EmptyHint, Notice, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
+import { IconButton, EmptyHint, LoadingState, Notice, PillButton, ScreenScroll, SearchBar, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
 import { SellerAvatar } from '../components/SellerAvatar';
-import { colors, fonts, iconTokens } from '../theme';
+import { colors, fonts, iconTokens, messagesScreenTokens } from '../theme';
 import { formatMessageTimeLabel } from '../utils/formatMessageTimeLabel';
 
 const GROUP_TITLE_KEYS = {
@@ -21,10 +35,49 @@ const GROUP_TITLE_KEYS = {
 
 export function MessagesScreen() {
   const { t, i18n } = useTranslation();
-  const { nav, toast, openChat, openSellerProfile, isLoggedIn, authReady } = useApp();
-  const { conversations } = useConversations(isLoggedIn, authReady);
-  const { groups } = useNotificationGroups(isLoggedIn, authReady);
+  useAuthGuard();
+  const { nav, requireAuthNav, toast, openChat, openSellerProfile, isLoggedIn, authReady } = useApp();
+  const { conversations, loading: conversationsLoading, loadError: conversationsLoadError, refresh: refreshConversations } = useConversations(isLoggedIn, authReady);
+  const { groups, loading: groupsLoading } = useNotificationGroups(isLoggedIn, authReady);
   const [query, setQuery] = useState('');
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermissionStatus>('undetermined');
+  const notificationsSupported = areChatNotificationsSupported();
+
+  const refreshNotificationPermission = useCallback(() => {
+    void getNotificationPermissionStatus().then(setNotificationPermission);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshNotificationPermission();
+    }, [refreshNotificationPermission]),
+  );
+
+  const enableNotifications = useCallback(async () => {
+    if (!notificationsSupported) {
+      toast(t('toast.notificationsRebuildRequired'));
+      return;
+    }
+    const status = await requestNotificationPermissions();
+    setNotificationPermission(status);
+    if (status === 'granted') {
+      await registerDevicePushTokenWithBackend(isLoggedIn);
+      toast(t('toast.notificationsEnabled'));
+    } else if (status === 'denied') toast(t('toast.notificationsDenied'));
+  }, [isLoggedIn, notificationsSupported, t, toast]);
+
+  const markUnread = useCallback(
+    async (conversationId: string) => {
+      try {
+        await setConversationMarkedUnread(conversationId, isLoggedIn, true);
+        toast(t('screens.messages.markedUnread'));
+      } catch {
+        toast(t('toast.markUnreadFailed'));
+      }
+    },
+    [isLoggedIn, t, toast],
+  );
 
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -46,7 +99,13 @@ export function MessagesScreen() {
     );
   }, [conversations, normalizedQuery]);
 
+  const headerUnreadCount = useMemo(
+    () => inboxUnreadCount([...conversations, ...groups]),
+    [conversations, groups],
+  );
+
   const hasResults = filteredGroups.length > 0 || filteredConversations.length > 0;
+  const inboxLoading = authReady && (conversationsLoading || groupsLoading);
 
   return (
     <ScreenScroll screenId="messages">
@@ -54,16 +113,25 @@ export function MessagesScreen() {
         title={t('screens.messages.title')}
         right={
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <IconButton icon="bell" onPress={() => toast(t('toast.notificationsEnabled'))} />
-            <IconButton icon="settings" onPress={() => nav('settings')} />
+            <IconButton
+              icon="bell"
+              badgeCount={headerUnreadCount}
+              onPress={() => void enableNotifications()}
+            />
+            <IconButton icon="settings" onPress={() => requireAuthNav('settings')} />
           </View>
         }
       />
-      <Notice
-        text={t('screens.messages.notice')}
-        action={t('common.enable')}
-        onAction={() => toast(t('toast.notificationsEnabled'))}
-      />
+      {!notificationsSupported ? (
+        <Notice text={t('screens.messages.noticeRebuild')} />
+      ) : notificationPermission !== 'granted' ? (
+        <Notice
+          text={t('screens.messages.notice')}
+          action={t('common.enable')}
+          onAction={() => void enableNotifications()}
+          whiteAction
+        />
+      ) : null}
       <SearchBar
         placeholder={t('screens.messages.searchPlaceholder')}
         value={query}
@@ -72,8 +140,19 @@ export function MessagesScreen() {
       {!hasResults && normalizedQuery ? (
         <EmptyHint text={t('screens.messages.noSearchResults')} />
       ) : null}
-      {filteredGroups.length ? (
-      <ListCard>
+      {inboxLoading ? (
+        <LoadingState compact />
+      ) : conversationsLoadError && !hasResults ? (
+        <>
+          <EmptyHint text={t('screens.messages.loadError')} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={refreshConversations} />
+        </>
+      ) : null}
+      {!inboxLoading && !hasResults && !normalizedQuery && !conversationsLoadError ? (
+        <EmptyHint text={t('screens.messages.emptyInbox')} />
+      ) : null}
+      {!inboxLoading && filteredGroups.length ? (
+      <ListCard compact>
         {filteredGroups.map((row, index) => (
           <Pressable
             key={row.category}
@@ -82,9 +161,13 @@ export function MessagesScreen() {
           >
             <View style={styles.messageAvatar}>
               <AppIcon name={row.icon} size={iconTokens.sizes.lg} color={iconTokens.accent} />
-              {row.unreadCount > 0 ? (
+              {conversationShowsUnread(row) ? (
                 <View style={styles.unread}>
-                  <Text style={styles.unreadText}>{row.unreadCount}</Text>
+                  {row.unreadCount > 0 ? (
+                    <Text style={styles.unreadText}>{row.unreadCount}</Text>
+                  ) : (
+                    <View style={styles.unreadDot} />
+                  )}
                 </View>
               ) : null}
             </View>
@@ -105,8 +188,8 @@ export function MessagesScreen() {
         ))}
       </ListCard>
       ) : null}
-      {filteredConversations.length ? (
-      <ListCard>
+      {!inboxLoading && filteredConversations.length ? (
+      <ListCard compact>
         {filteredConversations.map((row, index) => (
           <Pressable
             key={row.id}
@@ -121,6 +204,8 @@ export function MessagesScreen() {
                 listingId: row.listingId,
               })
             }
+            onLongPress={() => void markUnread(row.id)}
+            accessibilityHint={t('screens.messages.markUnread')}
           >
             <Pressable
               style={styles.messageAvatar}
@@ -130,11 +215,16 @@ export function MessagesScreen() {
                 sellerKey={row.counterpartKey}
                 seller={row.counterpartName}
                 avatarUrl={row.counterpartAvatarUrl}
-                size={44}
+                sellerUserId={row.counterpartKey}
+                size={messagesScreenTokens.avatarSize}
               />
-              {row.unreadCount > 0 ? (
+              {conversationShowsUnread(row) ? (
                 <View style={styles.unread}>
-                  <Text style={styles.unreadText}>{row.unreadCount}</Text>
+                  {row.unreadCount > 0 ? (
+                    <Text style={styles.unreadText}>{row.unreadCount}</Text>
+                  ) : (
+                    <View style={styles.unreadDot} />
+                  )}
                 </View>
               ) : null}
             </Pressable>
@@ -163,18 +253,21 @@ export function MessagesScreen() {
 const styles = StyleSheet.create({
   messageRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    alignItems: 'center',
+    gap: messagesScreenTokens.rowGap,
+    paddingVertical: messagesScreenTokens.rowPaddingVertical,
   },
   messageBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
   messageAvatar: {
-    width: 44,
-    height: 44,
+    width: messagesScreenTokens.avatarSize,
+    height: messagesScreenTokens.avatarSize,
+    borderRadius: messagesScreenTokens.avatarSize / 2,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
   },
   unread: {
@@ -190,14 +283,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   unreadText: {
-    fontFamily: fonts.bold,
-    fontSize: 10,
+    fontWeight: fonts.weights.bold,
+    fontSize: messagesScreenTokens.unreadSize,
     color: colors.phoneBorder,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.phoneBorder,
   },
   messageInfo: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: messagesScreenTokens.previewGap,
   },
   messageHeader: {
     flexDirection: 'row',
@@ -206,8 +305,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   messageTitle: {
-    fontFamily: fonts.medium,
-    fontSize: 15,
+    fontWeight: fonts.weights.medium,
+    fontSize: messagesScreenTokens.titleSize,
     color: colors.text,
   },
   messageTitleFlex: {
@@ -215,15 +314,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   time: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: messagesScreenTokens.timeSize,
     color: colors.muted,
     flexShrink: 0,
   },
   messageMsg: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: messagesScreenTokens.previewSize,
     color: colors.muted,
-    marginTop: 2,
   },
 });

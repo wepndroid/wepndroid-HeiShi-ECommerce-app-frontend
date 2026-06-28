@@ -5,9 +5,10 @@ import {
   mapServiceDtoToLocalService,
   regionToFeedQuery,
 } from '../api/mappers';
+import { ApiError } from '../api/client';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import i18n from '../i18n';
-import { resolveDetailProduct, SERVICE_DETAIL_BASE } from '../data/detailProducts';
+import { isLocalDetailListing, resolveDetailProduct } from '../data/detailProducts';
 import { products as mockProducts } from '../data/products';
 import { localServices, serviceInRegion } from '../data/services';
 import { homeFeedProducts, regionProducts } from '../hooks/useProductFilters';
@@ -16,6 +17,10 @@ import type { LocalService } from '../data/services';
 import type { RegionSelection } from '../data/region';
 import type { HomeTabKey, Product, ProductCatKey } from '../types';
 import { Platform } from 'react-native';
+import { isBundleListingProduct } from '../data/bundle';
+import { normalizeMediaUrl } from '../utils/mediaUrls';
+import { productImageUrl } from '../data/productImages';
+import { isDemoCatalogListing } from '../data/catalogDemo';
 
 export interface SearchSuggestion {
   query: string;
@@ -47,19 +52,29 @@ function mockFeed(region: RegionSelection, tab: HomeTabKey, categoryKey?: Produc
   return base;
 }
 
+function mockSearchableText(product: Product): string {
+  const title =
+    product.apiTitle ??
+    i18n.t(`products.items.${product.id}.title`, { defaultValue: '' });
+  return [
+    title,
+    product.apiDesc ?? '',
+    product.loc,
+    product.catKey,
+    product.seller,
+    product.sellerKey,
+    product.tagKey,
+    String(product.id),
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
 function mockSearch(region: RegionSelection, query: string): Product[] {
   const q = query.trim().toLowerCase();
   const regional = regionProducts(mockProducts, region);
   if (!q) return regional.slice(0, 6);
-  return regional.filter((product) => {
-    return (
-      String(product.id).includes(q) ||
-      product.catKey.toLowerCase().includes(q) ||
-      product.seller.toLowerCase().includes(q) ||
-      product.sellerKey.toLowerCase().includes(q) ||
-      product.tagKey.toLowerCase().includes(q)
-    );
-  });
+  return regional.filter((product) => mockSearchableText(product).includes(q));
 }
 
 function mockRelated(region: RegionSelection, listingId: number): Product[] {
@@ -80,16 +95,25 @@ export async function fetchFeed(
   categoryKey?: ProductCatKey,
 ): Promise<Product[]> {
   try {
-    const result = await catalogApi.getFeed({
-      ...regionToFeedQuery(region),
-      tab,
-      categoryKey,
-      pageSize: 40,
-    });
-    return result.items.map(mapListingToProduct);
+    const items: Product[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 25) {
+      const result = await catalogApi.getFeed({
+        ...regionToFeedQuery(region),
+        tab,
+        categoryKey,
+        page,
+        pageSize: 40,
+      });
+      items.push(...result.items.map(mapListingToProduct));
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return items;
   } catch {
     if (API_USE_MOCK_FALLBACK) return mockFeed(region, tab, categoryKey);
-    return [];
+    throw new Error('feed_failed');
   }
 }
 
@@ -99,19 +123,31 @@ export async function searchCatalog(
   sort: 'relevance' | 'priceAsc' | 'priceDesc' | 'newest' = 'relevance',
 ): Promise<Product[]> {
   const q = query.trim();
-  if (!q) return mockSearch(region, '');
+  if (!q) {
+    if (API_USE_MOCK_FALLBACK) return mockSearch(region, '');
+    return fetchFeed(region, 'recommended');
+  }
 
   try {
-    const result = await catalogApi.search({
-      ...regionToFeedQuery(region),
-      q,
-      sort,
-      pageSize: 40,
-    });
-    return result.items.map(mapListingToProduct);
+    const items: Product[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 25) {
+      const result = await catalogApi.search({
+        ...regionToFeedQuery(region),
+        q,
+        sort,
+        page,
+        pageSize: 40,
+      });
+      items.push(...result.items.map(mapListingToProduct));
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return items;
   } catch {
     if (API_USE_MOCK_FALLBACK) return mockSearch(region, q);
-    return [];
+    throw new Error('search_failed');
   }
 }
 
@@ -139,12 +175,23 @@ export async function searchCatalogByImage(
   media: PickedMedia,
 ): Promise<{ items: Product[]; suggestedQuery: string; matchCount: number }> {
   try {
-    const result = await catalogApi.searchByImage(buildImageSearchFormData(media), regionToFeedQuery(region));
-    return {
-      items: result.items.map(mapListingToProduct),
-      suggestedQuery: result.suggestedQuery,
-      matchCount: result.matchCount,
-    };
+    const items: Product[] = [];
+    let page = 1;
+    let hasMore = true;
+    let suggestedQuery = '';
+    let matchCount = 0;
+    while (hasMore && page <= 25) {
+      const result = await catalogApi.searchByImage(
+        buildImageSearchFormData(media),
+        { ...regionToFeedQuery(region), page, pageSize: 40 },
+      );
+      items.push(...result.items.map(mapListingToProduct));
+      suggestedQuery = result.suggestedQuery || suggestedQuery;
+      matchCount = result.matchCount;
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return { items, suggestedQuery, matchCount };
   } catch {
     if (API_USE_MOCK_FALLBACK) {
       const items = mockSearch(region, '');
@@ -158,41 +205,91 @@ export async function searchCatalogByImage(
   }
 }
 
-export async function fetchListingDetail(id: number): Promise<Product | undefined> {
-  if (id > SERVICE_DETAIL_BASE) {
-    return resolveDetailProduct(id);
+/** @returns product, null if 404, undefined on network/other failure */
+export async function fetchListingDetail(id: number): Promise<Product | null | undefined> {
+  if (isLocalDetailListing(id)) {
+    return resolveDetailProduct(id) ?? undefined;
   }
 
   try {
     const dto = await catalogApi.getListing(id);
     return mapDetailDtoToProduct(dto);
-  } catch {
+  } catch (err) {
     if (API_USE_MOCK_FALLBACK) return resolveDetailProduct(id);
+    if (err instanceof ApiError && err.status === 404) return null;
     return undefined;
   }
+}
+
+/** Public catalog detail, with owned-listing fallback for drafts the seller is viewing. */
+export async function resolveListingDetail(
+  id: number,
+  isLoggedIn: boolean,
+): Promise<Product | null | undefined> {
+  const detail = await fetchListingDetail(id);
+  if (detail === undefined) {
+    if (!isLoggedIn) return undefined;
+    const { fetchMyListingDetail } = await import('./listingsService');
+    return (await fetchMyListingDetail(id, true)) ?? undefined;
+  }
+  if (detail === null) {
+    if (!isLoggedIn) return null;
+    const { fetchMyListingDetail } = await import('./listingsService');
+    return (await fetchMyListingDetail(id, true)) ?? null;
+  }
+  if (isBundleListingProduct(detail) && detail.bundleMeta == null && isLoggedIn) {
+    const { fetchMyListingDetail } = await import('./listingsService');
+    const owned = await fetchMyListingDetail(id, true);
+    if (owned?.bundleMeta != null) return owned;
+  }
+  return detail;
 }
 
 export async function fetchRelatedListings(
   listingId: number,
   region: RegionSelection,
-): Promise<Product[]> {
-  if (listingId > SERVICE_DETAIL_BASE) {
-    return mockRelated(region, listingId);
+): Promise<{ items: Product[]; failed: boolean }> {
+  if (isLocalDetailListing(listingId)) {
+    return { items: mockRelated(region, listingId), failed: false };
   }
 
   try {
-    const result = await catalogApi.getRelatedListings(listingId, regionToFeedQuery(region));
-    return result.items.map(mapListingToProduct);
+    const items: Product[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 25) {
+      const result = await catalogApi.getRelatedListings(listingId, {
+        ...regionToFeedQuery(region),
+        page,
+        pageSize: 40,
+      });
+      items.push(...result.items.map(mapListingToProduct));
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return { items, failed: false };
   } catch {
-    if (API_USE_MOCK_FALLBACK) return mockRelated(region, listingId);
-    return [];
+    if (API_USE_MOCK_FALLBACK) return { items: mockRelated(region, listingId), failed: false };
+    return { items: [], failed: true };
   }
 }
 
 export async function fetchLocalServices(region: RegionSelection): Promise<LocalService[]> {
   try {
-    const result = await catalogApi.getLocalServices(regionToFeedQuery(region));
-    return result.items.map(mapServiceDtoToLocalService);
+    const items: LocalService[] = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 25) {
+      const result = await catalogApi.getLocalServices({
+        ...regionToFeedQuery(region),
+        page,
+        pageSize: 40,
+      });
+      items.push(...result.items.map(mapServiceDtoToLocalService));
+      hasMore = result.hasMore;
+      page += 1;
+    }
+    return items;
   } catch {
     if (API_USE_MOCK_FALLBACK) return mockServices(region);
     return [];
@@ -207,7 +304,10 @@ export async function fetchSearchSuggestions(region: RegionSelection): Promise<S
       productId: item.listingId,
       title: item.title,
       subtitle: item.subtitle,
-      imageUrl: mockProducts.find((p) => p.id === item.listingId)?.imageUrl,
+      imageUrl:
+        normalizeMediaUrl(item.imageUrl) ??
+        normalizeMediaUrl(mockProducts.find((p) => p.id === item.listingId)?.imageUrl) ??
+        (isDemoCatalogListing(item.listingId) ? productImageUrl(item.listingId) : undefined),
     }));
   } catch {
     if (API_USE_MOCK_FALLBACK) {
@@ -218,7 +318,7 @@ export async function fetchSearchSuggestions(region: RegionSelection): Promise<S
 }
 
 export async function fetchListingsByIds(ids: number[]): Promise<Product[]> {
-  const unique = [...new Set(ids)].filter((id) => id <= SERVICE_DETAIL_BASE);
+  const unique = [...new Set(ids)];
   const results = await Promise.all(unique.map((id) => fetchListingDetail(id)));
   return results.filter((p): p is Product => p != null);
 }

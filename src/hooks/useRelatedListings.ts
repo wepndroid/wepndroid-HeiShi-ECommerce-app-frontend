@@ -3,19 +3,30 @@ import type { RegionSelection } from '../data/region';
 import i18n from '../i18n';
 import { fetchRelatedListings } from '../services/catalogService';
 import type { Product } from '../types';
+import { useCatalogRevision } from '../utils/catalogSync';
 
 export function useRelatedListings(listingId: number, region: RegionSelection) {
   const [items, setItems] = React.useState<Product[]>([]);
+  const [loadError, setLoadError] = React.useState(false);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const catalogRevision = useCatalogRevision();
+
+  const reload = React.useCallback(() => {
+    setRefreshKey((key) => key + 1);
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
-    fetchRelatedListings(listingId, region).then((related) => {
-      if (!cancelled) setItems(related);
+    setLoadError(false);
+    fetchRelatedListings(listingId, region).then(({ items: related, failed }) => {
+      if (cancelled) return;
+      setItems(related);
+      setLoadError(failed);
     });
     return () => {
       cancelled = true;
     };
-  }, [listingId, region.state, region.city, region.area, i18n.language]);
+  }, [listingId, region.state, region.city, region.area, i18n.language, catalogRevision, refreshKey]);
 
-  return items;
+  return { items, loadError, reload };
 }

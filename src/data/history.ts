@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const HISTORY_KEY = 'catalogViewHistory';
+export const BROWSE_HISTORY_KEY = 'catalogViewHistory';
 
 export async function loadLocalHistory(): Promise<number[]> {
-  const raw = await AsyncStorage.getItem(HISTORY_KEY);
+  const raw = await AsyncStorage.getItem(BROWSE_HISTORY_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as number[];
@@ -16,5 +16,9 @@ export async function loadLocalHistory(): Promise<number[]> {
 export async function recordLocalView(listingId: number) {
   const current = await loadLocalHistory();
   const next = [listingId, ...current.filter((id) => id !== listingId)].slice(0, 50);
-  await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  await AsyncStorage.setItem(BROWSE_HISTORY_KEY, JSON.stringify(next));
+}
+
+export async function clearLocalBrowseHistory(): Promise<void> {
+  await AsyncStorage.removeItem(BROWSE_HISTORY_KEY);
 }

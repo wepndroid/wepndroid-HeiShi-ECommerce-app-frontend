@@ -14,7 +14,7 @@ while ($true) {
     $devices = adb devices 2>$null | Out-String
     if ($devices -match "127\.0\.0\.1:$Port\s+device" -or $devices -match "emulator-5554\s+device") {
       Connect-LdPlayer -Port $Port
-      Set-MetroPortForward -Ports @(8081, 8082, 8000)
+      Set-MetroPortForward -Ports (Get-LdPlayerForwardPorts)
     }
   } catch {
     Write-Host "[watch] $($_.Exception.Message)" -ForegroundColor DarkYellow

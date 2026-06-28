@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Platform } from 'react-native';
 import { router, usePathname, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
@@ -17,12 +18,15 @@ import {
 } from '../data/region';
 import { products as defaultProducts } from '../data/products';
 import { resolveDetailProduct } from '../data/detailProducts';
+import { isBundleListingProduct } from '../data/bundle';
+import { ApiError } from '../api/client';
 import { mergeProducts } from '../api/mappers';
 import {
-  fetchListingDetail,
   fetchListingsByIds,
   mockCatalogProducts,
+  resolveListingDetail,
 } from '../services/catalogService';
+import { fetchMyListingDetail } from '../services/listingsService';
 import { fetchUserProfile } from '../services/userService';
 import { setAppLanguage } from '../i18n';
 import {
@@ -34,6 +38,8 @@ import {
   setFollow,
 } from '../services/userDataService';
 import { useFeed } from '../hooks/useFeed';
+import { useMessageNotifications } from '../hooks/useMessageNotifications';
+import { registerNotificationOpenHandler } from '../services/messageNotifications';
 import {
   AuthErrorKey,
   AuthUser,
@@ -51,16 +57,22 @@ import {
   ROOT_PATH,
   screenPath,
 } from '../routing/paths';
-import { HomeTabKey, Product, ProductCatKey, ScreenId, TabScreenId, ChatListingContext } from '../types';
+import { HomeTabKey, LoadProductResult, Product, ProductCatKey, ScreenId, TabScreenId, ChatListingContext, UiConversation } from '../types';
 import type { PaymentMethodDto } from '../api/types';
 import {
   bootstrapPaymentSelection,
   listPaymentMethods,
   selectPaymentMethod,
 } from '../services/paymentsService';
-import { openConversation } from '../services/messagesService';
-import { resolveChatListing } from '../services/chatListingService';
-import { clearAppCache } from '../services/settingsService';
+import { openConversation, listConversations } from '../services/messagesService';
+import { resolveChatListing, buildChatListingFromId, chatListingFromConversation } from '../services/chatListingService';
+import { clearAppCache, getAppCacheSizeLabel } from '../services/settingsService';
+import { invalidateCatalog, useCatalogRevision } from '../utils/catalogSync';
+import {
+  loadPublishBundleDraft,
+  shouldResumePublishBundle,
+} from '../data/publishBundleDraft';
+import { enrichSelfSellerProduct, isCurrentUserSeller } from '../utils/sellerAvatar';
 
 interface AppContextValue {
   current: ScreenId;
@@ -75,20 +87,26 @@ interface AppContextValue {
   currentItem: Product;
   openDetail: (p: Product) => void;
   openSellerProfile: (sellerKey: string) => void;
-  loadProduct: (id: number) => Promise<void>;
+  loadProduct: (id: number) => Promise<LoadProductResult>;
+  mergeProductDetail: (product: Product) => void;
   favs: Set<number>;
   toggleFav: () => void;
   toggleFavoriteById: (listingId: number) => void;
   favCount: number;
   follows: Set<string>;
-  toggleFollow: (sellerKey: string) => void;
+  toggleFollow: (sellerKey: string, sellerUserId?: string, sellerName?: string) => void;
   isFollowingSeller: (sellerKey: string) => boolean;
+  isSelfSeller: (sellerKey: string, sellerUserId?: string, sellerName?: string) => boolean;
   followCount: number;
   homeTabKey: HomeTabKey;
   setHomeTabKey: (key: HomeTabKey) => void;
   homeCategory: ProductCatKey | null;
   setHomeCategory: (cat: ProductCatKey | null) => void;
   homeFeed: Product[];
+  homeFeedLoading: boolean;
+  homeFeedError: boolean;
+  reloadHomeFeed: () => void;
+  refreshCatalog: () => void;
   region: RegionSelection;
   regionLabelText: string;
   setRegion: (region: RegionSelection) => void;
@@ -100,18 +118,24 @@ interface AppContextValue {
   imageSearchResults: Product[] | null;
   imageSearchPreviewUri: string | null;
   imageSearchLoading: boolean;
+  imageSearchError: boolean;
   clearImageSearch: () => void;
   setImageSearchLoading: (loading: boolean) => void;
+  setImageSearchError: (failed: boolean) => void;
   setImageSearchSession: (items: Product[], previewUri: string, suggestedQuery: string) => void;
   chatTitle: string;
   chatConversationId: string | null;
   chatListing: ChatListingContext | null;
+  chatListingId: number | null;
+  chatCounterpartKey: string;
+  chatCounterpartAvatarUrl?: string;
   openChat: (params: {
     conversationId?: string;
     listingId?: number;
     counterpartName?: string;
     listingTitle?: string;
   }) => Promise<void>;
+  hydrateChatFromConversationId: (conversationId: string) => Promise<void>;
   paymentMethod: string;
   setPaymentMethod: (v: string) => void;
   paymentMethodId?: string;
@@ -119,9 +143,14 @@ interface AppContextValue {
   selectPaymentMethodById: (id: string) => void;
   deliveryMethod: string;
   setDeliveryMethod: (v: string) => void;
+  checkoutBundleItemId: string | null;
+  setCheckoutBundleItemId: (id: string | null) => void;
+  openOrderCheckout: (bundleItemId?: string) => void;
   cacheSize: string;
   clearCache: () => Promise<void>;
+  refreshCacheSize: () => Promise<void>;
   updateUser: (patch: Partial<AuthUser>) => void;
+  profileAvatarUrl?: string;
   activeTab: TabScreenId | null;
   user: AuthUser | null;
   isLoggedIn: boolean;
@@ -132,6 +161,10 @@ interface AppContextValue {
     phone: string;
     password: string;
     confirmPassword: string;
+    verificationCode: string;
+    avatarUri: string;
+    avatarMimeType?: string;
+    avatarFileName?: string;
   }) => Promise<{ error?: AuthErrorKey }>;
   logout: () => Promise<void>;
 }
@@ -153,8 +186,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadProductSeqRef = useRef(0);
+  const detailSummaryIdRef = useRef<number | null>(null);
+  const detailSummaryProductRef = useRef<Product | null>(null);
+  const bundleResumeCheckedRef = useRef(false);
+  const pendingChatConversationIdRef = useRef<string | null>(null);
   const [currentItem, setCurrentItem] = useState<Product>(defaultProducts[0]);
   const [products, setProducts] = useState<Product[]>(mockCatalogProducts());
+  const productsRef = useRef(products);
+  productsRef.current = products;
   const [favs, setFavs] = useState<Set<number>>(new Set());
   const [follows, setFollows] = useState<Set<string>>(new Set());
   const [homeTabKey, setHomeTabKey] = useState<HomeTabKey>('recommended');
@@ -165,18 +205,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [imageSearchResults, setImageSearchResults] = useState<Product[] | null>(null);
   const [imageSearchPreviewUri, setImageSearchPreviewUri] = useState<string | null>(null);
   const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  const [imageSearchError, setImageSearchError] = useState(false);
   const [chatTitle, setChatTitle] = useState('');
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [chatListing, setChatListing] = useState<ChatListingContext | null>(null);
+  const [chatListingId, setChatListingId] = useState<number | null>(null);
+  const [chatCounterpartKey, setChatCounterpartKey] = useState('');
+  const [chatCounterpartAvatarUrl, setChatCounterpartAvatarUrl] = useState<string | undefined>();
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState<string | undefined>();
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDto[]>([]);
   const [deliveryMethod, setDeliveryMethod] = useState('');
+  const [checkoutBundleItemId, setCheckoutBundleItemId] = useState<string | null>(null);
   const [cacheSize, setCacheSize] = useState('');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>();
 
-  const { items: homeFeed } = useFeed(region, homeTabKey, homeCategory);
+  const { items: homeFeed, loading: homeFeedLoading, error: homeFeedError, reload: reloadHomeFeed } = useFeed(
+    region,
+    homeTabKey,
+    homeCategory,
+  );
+  const catalogRevision = useCatalogRevision();
+
+  const refreshCatalog = useCallback(() => {
+    invalidateCatalog();
+  }, []);
 
   React.useEffect(() => {
     bootstrapAuth()
@@ -187,6 +242,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!authReady) return;
     fetchUserProfile(user, user != null).then((profile) => {
+      setProfileAvatarUrl(profile.avatarUrl);
+      if (user != null && profile.avatarUrl && profile.avatarUrl !== user.avatarUrl) {
+        setUser((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, avatarUrl: profile.avatarUrl };
+          void saveSession(next);
+          return next;
+        });
+      }
       if (user != null && (profile.language === 'en' || profile.language === 'zh')) {
         void setAppLanguage(profile.language);
       }
@@ -199,34 +263,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     bootstrapFollows(user != null).then(setFollows);
   }, [authReady, user]);
 
+  const applySelfAvatarToProducts = useCallback(
+    (items: Product[]): Product[] => {
+      if (!user?.id) return items;
+      const avatar = user.avatarUrl ?? profileAvatarUrl;
+      if (!avatar) return items;
+      return items.map((p) =>
+        isCurrentUserSeller(user, p.sellerUserId, p.sellerKey, p.seller)
+          ? { ...p, sellerAvatarUrl: avatar, sellerUserId: p.sellerUserId ?? user.id }
+          : p,
+      );
+    },
+    [user, profileAvatarUrl],
+  );
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+    const avatar = user.avatarUrl ?? profileAvatarUrl;
+    if (!avatar) return;
+
+    setProducts((prev) => applySelfAvatarToProducts(prev));
+    setCurrentItem((prev) => applySelfAvatarToProducts([prev])[0] ?? prev);
+  }, [user?.id, user?.avatarUrl, user?.nickname, profileAvatarUrl, applySelfAvatarToProducts]);
+
   React.useEffect(() => {
     if (homeFeed.length) {
-      setProducts((prev) => mergeProducts(prev, homeFeed));
+      setProducts((prev) => applySelfAvatarToProducts(mergeProducts(prev, homeFeed)));
     }
-  }, [homeFeed]);
+  }, [homeFeed, applySelfAvatarToProducts]);
 
   React.useEffect(() => {
     if (!authReady) return;
     listPaymentMethods(user != null).then(async (methods) => {
       setPaymentMethods(methods);
+      if (!methods.length) {
+        setPaymentMethodId(undefined);
+        setPaymentMethod('');
+        return;
+      }
       const selected = await bootstrapPaymentSelection(methods);
       if (selected) {
         setPaymentMethodId(selected.id);
         setPaymentMethod(selected.label);
+      } else {
+        setPaymentMethodId(undefined);
+        setPaymentMethod('');
       }
     });
   }, [authReady, user, i18n.language]);
 
   React.useEffect(() => {
-    setCacheSize(t('common.cacheDemoSize'));
-  }, [t, i18n.language]);
+    void getAppCacheSizeLabel().then(setCacheSize);
+  }, [i18n.language]);
 
   React.useEffect(() => {
     if (!authReady || favs.size === 0) return;
     fetchListingsByIds([...favs]).then((items) => {
-      if (items.length) setProducts((prev) => mergeProducts(prev, items));
+      if (items.length) {
+        setProducts((prev) => applySelfAvatarToProducts(mergeProducts(prev, items)));
+      }
     });
-  }, [authReady, favs, i18n.language]);
+  }, [authReady, favs, i18n.language, applySelfAvatarToProducts, catalogRevision]);
 
   const toast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -239,17 +336,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setImageSearchResults(null);
     setImageSearchPreviewUri(null);
     setImageSearchLoading(false);
+    setImageSearchError(false);
   }, []);
 
   React.useEffect(() => {
-    setDeliveryMethod(t('screens.order.pickup'));
+    setDeliveryMethod((prev) => prev || 'meetup');
+  }, []);
+
+  React.useEffect(() => {
     clearImageSearch();
-  }, [t, i18n.language, clearImageSearch]);
+  }, [i18n.language, clearImageSearch]);
 
   const setImageSearchSession = useCallback((items: Product[], previewUri: string, suggestedQuery: string) => {
     setImageSearchResults(items);
     setImageSearchPreviewUri(previewUri);
     setImageSearchLoading(false);
+    setImageSearchError(false);
     if (suggestedQuery) setSearchValue(suggestedQuery);
   }, []);
 
@@ -262,6 +364,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     router.push(href);
   }, []);
 
+  React.useEffect(() => {
+    if (!authReady || bundleResumeCheckedRef.current) return;
+    bundleResumeCheckedRef.current = true;
+    void loadPublishBundleDraft().then((draft) => {
+      if (!draft || !shouldResumePublishBundle(draft)) return;
+      nav('publishBundle');
+    });
+  }, [authReady, nav]);
+
   const openSearch = useCallback(() => {
     clearImageSearch();
     setSearchValue('');
@@ -270,6 +381,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const requireAuthNav = useCallback(
     (id: ScreenId) => {
+      if (!authReady) return;
       if (!user) {
         toast(t('toast.loginRequired'));
         nav('login');
@@ -277,7 +389,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       nav(id);
     },
-    [nav, t, toast, user],
+    [authReady, nav, t, toast, user],
+  );
+
+  const openOrderCheckout = useCallback(
+    (bundleItemId?: string) => {
+      setCheckoutBundleItemId(bundleItemId ?? null);
+      requireAuthNav('order');
+    },
+    [requireAuthNav],
   );
 
   const goBack = useCallback(() => {
@@ -289,24 +409,142 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadProduct = useCallback(
-    async (id: number) => {
-      const cached = resolveDetailProduct(id);
-      if (cached) setCurrentItem(cached);
-
-      const fetched = await fetchListingDetail(id);
-      if (fetched) {
-        setCurrentItem(fetched);
-        setProducts((prev) => mergeProducts(prev, [fetched]));
+    async (id: number): Promise<LoadProductResult> => {
+      const seq = ++loadProductSeqRef.current;
+      let networkFailed = false;
+      if (detailSummaryIdRef.current !== null && detailSummaryIdRef.current !== id) {
+        detailSummaryIdRef.current = null;
+        detailSummaryProductRef.current = null;
       }
-      recordListingView(id, user != null);
+      const cached = resolveDetailProduct(id);
+      if (cached && seq === loadProductSeqRef.current) {
+        setCurrentItem(enrichSelfSellerProduct(cached, user));
+      }
+
+      const summaryHint =
+        detailSummaryProductRef.current?.id === id ? detailSummaryProductRef.current : null;
+      const catalogHint = productsRef.current.find((p) => p.id === id);
+      const needsBundleMeta = isBundleListingProduct(cached ?? summaryHint ?? catalogHint ?? {});
+
+      if (needsBundleMeta && summaryHint) {
+        setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+        recordListingView(id, user != null);
+        void (async () => {
+          const fetched = await resolveListingDetail(id, user != null);
+          if (seq !== loadProductSeqRef.current) return;
+          if (fetched?.bundleMeta != null) {
+            const enriched = enrichSelfSellerProduct(fetched, user);
+            setCurrentItem(enriched);
+            setProducts((prev) => mergeProducts(prev, [enriched]));
+          }
+        })();
+        return 'ok';
+      }
+
+      let detail: Product | null | undefined;
+      const maxAttempts = needsBundleMeta ? 4 : 2;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (seq !== loadProductSeqRef.current) {
+          return 'error';
+        }
+        const fetched = await resolveListingDetail(id, user != null);
+        if (fetched === undefined) {
+          networkFailed = true;
+        }
+        if (fetched === null) {
+          detail = null;
+          break;
+        }
+        if (fetched && (!needsBundleMeta || fetched.bundleMeta != null)) {
+          detail = fetched;
+          break;
+        }
+        detail = fetched;
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+      }
+
+      if (seq !== loadProductSeqRef.current) {
+        return 'error';
+      }
+      if (detail?.bundleMeta != null || (detail && !needsBundleMeta)) {
+        detailSummaryIdRef.current = null;
+        detailSummaryProductRef.current = null;
+        const enriched = enrichSelfSellerProduct(detail, user);
+        setCurrentItem(enriched);
+        setProducts((prev) => mergeProducts(prev, [enriched]));
+        recordListingView(id, user != null);
+        return 'ok';
+      }
+      if (detail === null) {
+        if (user) {
+          const owned = await fetchMyListingDetail(id, true);
+          if (owned) {
+            detailSummaryIdRef.current = null;
+            detailSummaryProductRef.current = null;
+            const enriched = enrichSelfSellerProduct(owned, user);
+            setCurrentItem(enriched);
+            setProducts((prev) => mergeProducts(prev, [enriched]));
+            recordListingView(id, true);
+            return 'ok';
+          }
+        }
+        if (summaryHint || detailSummaryIdRef.current === id) {
+          detailSummaryIdRef.current = null;
+          detailSummaryProductRef.current = null;
+          if (summaryHint) {
+            setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+            recordListingView(id, user != null);
+            return 'ok';
+          }
+        }
+        detailSummaryIdRef.current = null;
+        detailSummaryProductRef.current = null;
+        return 'not_found';
+      }
+      if (cached?.bundleMeta != null) {
+        recordListingView(id, user != null);
+        return 'ok';
+      }
+      if (needsBundleMeta && (detailSummaryIdRef.current === id || summaryHint)) {
+        if (summaryHint) setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+        else if (detail) setCurrentItem(enrichSelfSellerProduct(detail, user));
+        recordListingView(id, user != null);
+        return 'ok';
+      }
+      if (detailSummaryIdRef.current === id || summaryHint) {
+        detailSummaryIdRef.current = null;
+        detailSummaryProductRef.current = null;
+        if (summaryHint) setCurrentItem(enrichSelfSellerProduct(summaryHint, user));
+        else if (detail) setCurrentItem(enrichSelfSellerProduct(detail, user));
+        recordListingView(id, user != null);
+        return 'ok';
+      }
+      return networkFailed ? 'error' : 'not_found';
     },
     [user],
   );
 
-  const openDetail = useCallback((p: Product) => {
-    setCurrentItem(p);
-    router.push(screenPath('detail', { productId: p.id }) as Href);
-  }, []);
+  const mergeProductDetail = useCallback(
+    (product: Product) => {
+      const enriched = enrichSelfSellerProduct(product, user);
+      setCurrentItem(enriched);
+      setProducts((prev) => mergeProducts(prev, [enriched]));
+    },
+    [user],
+  );
+
+  const openDetail = useCallback(
+    (p: Product) => {
+      detailSummaryIdRef.current = p.id;
+      const enriched = enrichSelfSellerProduct(p, user);
+      detailSummaryProductRef.current = enriched;
+      setCurrentItem(enriched);
+      router.push(screenPath('detail', { productId: enriched.id }) as Href);
+    },
+    [user],
+  );
 
   const openSellerProfile = useCallback((sellerKey: string) => {
     const sellerUserId = resolveSellerUserId(sellerKey);
@@ -315,6 +553,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const toggleFavoriteById = useCallback(
     async (listingId: number) => {
+      if (!user) {
+        toast(t('toast.loginRequired'));
+        nav('login');
+        return;
+      }
       const isFav = favs.has(listingId);
       const delta = isFav ? -1 : 1;
 
@@ -362,9 +605,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             ? { ...prev, favoriteCount: Math.max(0, (prev.favoriteCount ?? 0) - delta) }
             : prev,
         );
+        toast(t('toast.favoriteFailed'));
       }
     },
-    [favs, t, toast, user],
+    [favs, nav, t, toast, user],
   );
 
   const toggleFav = useCallback(() => {
@@ -376,19 +620,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [follows],
   );
 
+  const isSelfSeller = useCallback(
+    (sellerKey: string, sellerUserId?: string, sellerName?: string) =>
+      user != null && isCurrentUserSeller(user, sellerUserId, sellerKey, sellerName),
+    [user],
+  );
+
   const toggleFollow = useCallback(
-    async (sellerKey: string) => {
-      const userId = resolveSellerUserId(sellerKey);
+    async (sellerKey: string, sellerUserId?: string, sellerName?: string) => {
+      if (!authReady) return;
+      if (!user) {
+        toast(t('toast.loginRequired'));
+        nav('login');
+        return;
+      }
+      if (isCurrentUserSeller(user, sellerUserId, sellerKey, sellerName)) return;
+      const userId = sellerUserId ?? resolveSellerUserId(sellerKey);
       const isFollowing = follows.has(userId);
       try {
         const next = await setFollow(sellerKey, !isFollowing, user != null);
         setFollows(next);
         toast(t(isFollowing ? 'toast.unfollowedSeller' : 'toast.followedSeller'));
       } catch {
-        toast(t(isFollowing ? 'toast.unfollowedSeller' : 'toast.followedSeller'));
+        toast(t('toast.followFailed'));
       }
     },
-    [follows, t, toast, user],
+    [authReady, follows, nav, t, toast, user],
   );
 
   const setRegion = useCallback(
@@ -408,13 +665,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const clearCache = useCallback(async () => {
     try {
-      const nextSize = await clearAppCache(user != null);
-      setCacheSize(nextSize);
+      await clearAppCache(user != null);
+      clearImageSearch();
+      invalidateCatalog();
+      setCacheSize(await getAppCacheSizeLabel());
+      toast(t('toast.cacheCleared'));
     } catch {
-      setCacheSize('0 MB');
+      setCacheSize(await getAppCacheSizeLabel());
+      toast(t('toast.cacheClearFailed'));
     }
-    toast(t('toast.cacheCleared'));
-  }, [t, toast, user]);
+  }, [t, toast, user, clearImageSearch]);
+
+  const refreshCacheSize = useCallback(async () => {
+    setCacheSize(await getAppCacheSizeLabel());
+  }, []);
 
   const updateUser = useCallback((patch: Partial<AuthUser>) => {
     setUser((prev) => {
@@ -423,6 +687,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void saveSession(next);
       return next;
     });
+    if (patch.avatarUrl !== undefined) {
+      setProfileAvatarUrl(patch.avatarUrl);
+    }
   }, []);
 
   const selectPaymentMethodById = useCallback(
@@ -436,6 +703,56 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [paymentMethods],
   );
 
+  const applyChatSession = useCallback(
+    (
+      conversation: UiConversation,
+      listing: ChatListingContext | null,
+      listingId: number | null | undefined,
+      params?: { counterpartName?: string },
+    ) => {
+      setChatConversationId(conversation.id);
+      setChatTitle(params?.counterpartName ?? conversation.counterpartName);
+      setChatCounterpartKey(conversation.counterpartKey);
+      setChatCounterpartAvatarUrl(conversation.counterpartAvatarUrl);
+      setChatListing(listing);
+      setChatListingId(listing?.listingId ?? listingId ?? conversation.listingId ?? null);
+    },
+    [],
+  );
+
+  const resolveListingForChat = useCallback(
+    async (
+      conversation: UiConversation,
+      params: { listingId?: number; listingTitle?: string },
+    ): Promise<{ listing: ChatListingContext | null; listingId: number | null | undefined }> => {
+      let listing = await resolveChatListing(conversation, params, currentItem, products);
+      if (!listing) {
+        listing = chatListingFromConversation(conversation, products);
+      }
+      const listingId = params.listingId ?? conversation.listingId;
+      if (!listing && listingId != null) {
+        listing =
+          buildChatListingFromId(
+            listingId,
+            products,
+            params.listingTitle ?? conversation.listingTitle,
+          ) ??
+          chatListingFromConversation(conversation, products) ??
+          (conversation.listingTitle
+            ? {
+                listingId,
+                title: conversation.listingTitle,
+                imageUrl: conversation.listingImageUrl ?? '',
+                price: conversation.listingPrice ?? 0,
+                location: conversation.listingLocation ?? '',
+              }
+            : null);
+      }
+      return { listing, listingId };
+    },
+    [currentItem, products],
+  );
+
   const openChat = useCallback(
     async (params: {
       conversationId?: string;
@@ -443,6 +760,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       counterpartName?: string;
       listingTitle?: string;
     }) => {
+      if (!authReady) return;
       if (!user) {
         toast(t('toast.loginRequired'));
         nav('login');
@@ -450,17 +768,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const conversation = await openConversation(params, user != null);
-        const listing = await resolveChatListing(conversation, params, currentItem, products);
-        setChatConversationId(conversation.id);
-        setChatTitle(params.counterpartName ?? conversation.counterpartName);
-        setChatListing(listing);
+        const { listing, listingId } = await resolveListingForChat(conversation, params);
+        applyChatSession(conversation, listing, listingId, params);
         if (listing?.listingId) void loadProduct(listing.listingId);
-        nav('chat');
-      } catch {
-        toast(t('toast.sendFailed'));
+        router.push(screenPath('chat', { chatId: conversation.id }) as Href);
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'INVALID_STATE') {
+          toast(t('toast.listingUnavailable'));
+        } else {
+          toast(t('toast.chatLoadFailed'));
+        }
       }
     },
-    [nav, t, toast, user, currentItem, products, loadProduct],
+    [applyChatSession, authReady, nav, resolveListingForChat, t, toast, user, loadProduct],
+  );
+
+  const handleForegroundChatMessage = useCallback(
+    (conv: { counterpartName: string; lastMessage: string }) => {
+      toast(t('notifications.newMessageTitle', { name: conv.counterpartName }));
+    },
+    [t, toast],
+  );
+
+  useMessageNotifications(user != null, authReady, chatConversationId, handleForegroundChatMessage);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web') return;
+    return registerNotificationOpenHandler((conversationId) => {
+      if (!authReady || !user) {
+        pendingChatConversationIdRef.current = conversationId;
+        return;
+      }
+      void openChat({ conversationId });
+    });
+  }, [openChat, authReady, user]);
+
+  React.useEffect(() => {
+    if (!authReady || !user) return;
+    const pending = pendingChatConversationIdRef.current;
+    if (!pending) return;
+    pendingChatConversationIdRef.current = null;
+    void openChat({ conversationId: pending });
+  }, [authReady, user, openChat]);
+
+  const hydrateChatFromConversationId = useCallback(
+    async (conversationId: string) => {
+      if (!user) return;
+      if (chatConversationId === conversationId && chatTitle && (chatListing || chatListingId != null)) {
+        return;
+      }
+      try {
+        const conversations = await listConversations(user != null);
+        const existing = conversations.find((c) => c.id === conversationId);
+        const conversation =
+          existing ?? (await openConversation({ conversationId }, user != null));
+        const { listing, listingId } = await resolveListingForChat(conversation, {});
+        applyChatSession(conversation, listing, listingId);
+        if (listing?.listingId) void loadProduct(listing.listingId);
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'INVALID_STATE') {
+          toast(t('toast.listingUnavailable'));
+        } else {
+          toast(t('toast.chatLoadFailed'));
+        }
+      }
+    },
+    [
+      applyChatSession,
+      chatConversationId,
+      chatTitle,
+      chatListing,
+      chatListingId,
+      resolveListingForChat,
+      t,
+      toast,
+      user,
+      loadProduct,
+      mergeProductDetail,
+    ],
   );
 
   const login = useCallback(async (phone: string, password: string) => {
@@ -476,6 +861,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       phone: string;
       password: string;
       confirmPassword: string;
+      verificationCode: string;
+      avatarUri: string;
+      avatarMimeType?: string;
+      avatarFileName?: string;
     }) => {
       const result = await registerWithAuth(input);
       if ('error' in result) return { error: result.error };
@@ -488,9 +877,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await logoutWithAuth();
     setUser(null);
+    setProfileAvatarUrl(undefined);
     setChatConversationId(null);
     setChatTitle('');
     setChatListing(null);
+    setChatListingId(null);
+    setChatCounterpartKey('');
+    setChatCounterpartAvatarUrl(undefined);
+    setPaymentMethodId(undefined);
+    setPaymentMethod('');
+    setPaymentMethods([]);
     toast(t('toast.loggedOut'));
     router.replace(ROOT_PATH);
   }, [t, toast]);
@@ -512,6 +908,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openDetail,
       openSellerProfile,
       loadProduct,
+      mergeProductDetail,
       favs,
       toggleFav,
       toggleFavoriteById,
@@ -519,12 +916,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       follows,
       toggleFollow,
       isFollowingSeller,
+      isSelfSeller,
       followCount: follows.size,
       homeTabKey,
       setHomeTabKey,
       homeCategory,
       setHomeCategory,
       homeFeed,
+      homeFeedLoading,
+      homeFeedError,
+      reloadHomeFeed,
+      refreshCatalog,
       region,
       regionLabelText: regionLabel(region),
       setRegion,
@@ -536,13 +938,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       imageSearchResults,
       imageSearchPreviewUri,
       imageSearchLoading,
+      imageSearchError,
       clearImageSearch,
       setImageSearchLoading,
+      setImageSearchError,
       setImageSearchSession,
       chatTitle,
       chatConversationId,
       chatListing,
+      chatListingId,
+      chatCounterpartKey,
+      chatCounterpartAvatarUrl,
       openChat,
+      hydrateChatFromConversationId,
       paymentMethod,
       setPaymentMethod,
       paymentMethodId,
@@ -550,9 +958,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       selectPaymentMethodById,
       deliveryMethod,
       setDeliveryMethod,
+      checkoutBundleItemId,
+      setCheckoutBundleItemId,
+      openOrderCheckout,
       cacheSize,
       clearCache,
+      refreshCacheSize,
       updateUser,
+      profileAvatarUrl,
       activeTab,
       user,
       isLoggedIn: user != null,
@@ -575,15 +988,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openDetail,
       openSellerProfile,
       loadProduct,
+      mergeProductDetail,
       favs,
       toggleFav,
       toggleFavoriteById,
       follows,
       toggleFollow,
       isFollowingSeller,
+      isSelfSeller,
       homeTabKey,
       homeCategory,
       homeFeed,
+      homeFeedLoading,
+      homeFeedError,
+      reloadHomeFeed,
+      refreshCatalog,
       region,
       i18n.language,
       setRegion,
@@ -594,20 +1013,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       imageSearchResults,
       imageSearchPreviewUri,
       imageSearchLoading,
+      imageSearchError,
       clearImageSearch,
+      setImageSearchLoading,
+      setImageSearchError,
       setImageSearchSession,
       chatTitle,
       chatConversationId,
       chatListing,
+      chatListingId,
+      chatCounterpartKey,
+      chatCounterpartAvatarUrl,
       openChat,
+      hydrateChatFromConversationId,
       paymentMethod,
       paymentMethodId,
       paymentMethods,
       selectPaymentMethodById,
       deliveryMethod,
+      checkoutBundleItemId,
+      openOrderCheckout,
       cacheSize,
       clearCache,
+      refreshCacheSize,
       updateUser,
+      profileAvatarUrl,
       activeTab,
       user,
       authReady,

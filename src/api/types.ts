@@ -35,6 +35,7 @@ export interface ListingSummaryDto {
   tagKey: string;
   locationLabel: string;
   imageUrl: string;
+  images?: string[];
   seller: {
     id: string;
     nickname: string;
@@ -43,6 +44,7 @@ export interface ListingSummaryDto {
   };
   status: 'active' | 'draft' | 'sold' | 'inactive';
   createdAt: string;
+  favoriteCount?: number;
 }
 
 export interface ListingDetailDto extends ListingSummaryDto {
@@ -54,6 +56,10 @@ export interface ListingDetailDto extends ListingSummaryDto {
   viewCount?: number;
   favoriteCount?: number;
   bundleMeta?: BundleMetaDto;
+  purchaseAvailable?: boolean;
+  serviceIcon?: 'truck' | 'broom' | 'cameraService';
+  meetInPublic?: boolean;
+  escrowFee?: number;
 }
 
 export interface BundleItemDto {
@@ -72,6 +78,7 @@ export interface BundleMetaDto {
   allowSeparateSale: boolean;
   pickupWindow?: string;
   totalItems: number;
+  coverImageUrls?: string[];
   items: BundleItemDto[];
 }
 
@@ -127,6 +134,24 @@ export interface RegisterRequest {
   nickname: string;
   phone: string;
   password: string;
+  verificationCode: string;
+  avatarUrl?: string;
+}
+
+export interface SyncProfileRequest {
+  nickname: string;
+  phone?: string;
+  avatarUrl: string;
+}
+
+export interface SendRegisterCodeRequest {
+  phone: string;
+}
+
+export interface SendRegisterCodeResponse {
+  expiresIn: number;
+  resendAfter: number;
+  devCode?: string;
 }
 
 export interface OrderDto {
@@ -135,10 +160,16 @@ export interface OrderDto {
   listingTitle: string;
   listingImageUrl: string;
   seller: { id: string; nickname: string };
+  buyer?: { id: string; nickname: string; avatarUrl?: string };
   status: 'pendingPay' | 'pendingShip' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled';
   amount: number;
   escrowFee: number;
   currency: 'AUD';
+  deliveryMethod?: string;
+  paymentMethodId?: string;
+  bundleItemId?: string;
+  couponId?: string;
+  discountAmount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -147,6 +178,14 @@ export interface CreateOrderRequest {
   listingId: number;
   deliveryMethod: string;
   paymentMethodId?: string;
+  bundleItemId?: string;
+  couponId?: string;
+}
+
+export interface OrderReviewDto {
+  rating: number;
+  comment?: string;
+  createdAt: string;
 }
 
 export interface FavoriteDto {
@@ -164,9 +203,11 @@ export interface ConversationDto {
     price?: number;
     locationLabel?: string;
     currency?: 'AUD';
+    status?: 'active' | 'draft' | 'sold' | 'inactive';
   };
   lastMessage?: { text: string; sentAt: string };
   unreadCount: number;
+  markedAsUnread?: boolean;
 }
 
 export interface ChatMessageDto {
@@ -175,6 +216,7 @@ export interface ChatMessageDto {
   senderId: string;
   text: string;
   sentAt: string;
+  ackRead?: boolean;
 }
 
 export type NotificationCategory = 'system' | 'order' | 'follow';
@@ -262,6 +304,7 @@ export interface FollowDto {
   userId: string;
   nickname: string;
   subtitle?: string;
+  avatarUrl?: string;
   followedAt: string;
 }
 
@@ -272,10 +315,33 @@ export interface NotificationSettingsDto {
   marketing: boolean;
 }
 
+export interface TransactionReminderSettingsDto {
+  payAlerts: boolean;
+  shipAlerts: boolean;
+  receiveAlerts: boolean;
+  disputeAlerts: boolean;
+}
+
 export interface PrivacySettingsDto {
   findByPhone: boolean;
   showWechatBadge: boolean;
   personalization: boolean;
+}
+
+export interface DataExportDto {
+  exportedAt: string;
+  profile: AuthUserDto;
+  notificationSettings: NotificationSettingsDto;
+  privacySettings: PrivacySettingsDto;
+  transactionReminderSettings: TransactionReminderSettingsDto;
+  addresses: AddressDto[];
+  verification: {
+    phoneVerified: boolean;
+    wechatBound: boolean;
+    alipayBound: boolean;
+    identityVerified: boolean;
+    businessVerified: boolean;
+  };
 }
 
 export interface CreditProfileDto {
@@ -312,12 +378,19 @@ export interface CreateListingRequest {
   conditionKey?: string;
   tagKey?: string;
   locationLabel: string;
+  regionState?: string;
+  regionCity?: string;
   imageUrls: string[];
   pickupMethods?: string[];
-  bundleItems?: { title: string; sharePrice: number; separatePrice?: number; imageUrl?: string; imageUrls?: string[] }[];
+  bundleItems?: { id?: string; title: string; sharePrice: number; separatePrice?: number; imageUrl?: string; imageUrls?: string[] }[];
   pickupDeadline?: string;
   allowSeparateSale?: boolean;
   pickupWindow?: string;
+  serviceIcon?: 'truck' | 'broom' | 'cameraService';
+  status?: 'active' | 'draft';
+  escrowSupported?: boolean;
+  negotiable?: boolean;
+  meetInPublic?: boolean;
 }
 
 export interface UploadImageResponse {

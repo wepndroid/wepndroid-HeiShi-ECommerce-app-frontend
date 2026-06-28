@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  API_BASE_URL,
+  getApiBaseUrl,
   API_TIMEOUT_MS,
   AUTH_REFRESH_KEY,
   AUTH_TOKEN_KEY,
@@ -33,11 +33,19 @@ export interface ApiRequestOptions {
 }
 
 async function getAccessToken(): Promise<string | null> {
+  const { getSupabaseAccessToken, isSupabaseAuthConfigured } = await import('./supabase');
+  if (isSupabaseAuthConfigured()) {
+    const token = await getSupabaseAccessToken();
+    if (token) {
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+      return token;
+    }
+  }
   return AsyncStorage.getItem(AUTH_TOKEN_KEY);
 }
 
 function buildUrl(path: string, query?: ApiRequestOptions['query']) {
-  const url = new URL(path.startsWith('http') ? path : `${API_BASE_URL}${path}`);
+  const url = new URL(path.startsWith('http') ? path : `${getApiBaseUrl()}${path}`);
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
@@ -59,8 +67,12 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   if (auth) {
-    const token = await getAccessToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await getAccessToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {
+      // AsyncStorage / Supabase unavailable — continue as guest.
+    }
   }
 
   const controller = new AbortController();
@@ -81,7 +93,17 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     });
 
     const text = await response.text();
-    const payload = text ? (JSON.parse(text) as unknown) : null;
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text) as unknown;
+      } catch {
+        throw new ApiError(
+          response.ok ? 'Invalid JSON response' : `Request failed (${response.status})`,
+          response.status,
+        );
+      }
+    }
 
     if (!response.ok) {
       const err = payload as ApiErrorBody | null;
@@ -94,6 +116,10 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     }
 
     return payload as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    const aborted = err instanceof Error && err.name === 'AbortError';
+    throw new ApiError(aborted ? 'Request timed out' : 'Network request failed', 0, 'NETWORK_ERROR');
   } finally {
     clearTimeout(timeout);
   }
@@ -106,4 +132,15 @@ export async function setAuthTokens(accessToken: string, refreshToken?: string) 
 
 export async function clearAuthTokens() {
   await AsyncStorage.multiRemove([AUTH_TOKEN_KEY, AUTH_REFRESH_KEY]);
+}
+
+/** Headers for authenticated multipart uploads (native FileSystem.uploadAsync). */
+export async function getAuthRequestHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Accept-Language': getApiLanguage(),
+  };
+  const token = await getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }

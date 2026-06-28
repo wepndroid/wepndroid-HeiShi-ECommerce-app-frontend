@@ -37,12 +37,18 @@ export function useCreditProfile(isLoggedIn: boolean, authReady: boolean) {
     null,
   );
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
 
   const refresh = React.useCallback(() => {
     if (!authReady) return;
     setLoading(true);
+    setError(false);
     fetchCreditProfile(isLoggedIn)
       .then(setCredit)
+      .catch(() => {
+        setCredit(null);
+        setError(true);
+      })
       .finally(() => setLoading(false));
   }, [authReady, isLoggedIn]);
 
@@ -56,7 +62,7 @@ export function useCreditProfile(isLoggedIn: boolean, authReady: boolean) {
     }, [refresh]),
   );
 
-  return { credit, loading, refresh };
+  return { credit, loading, error, refresh };
 }
 
 export function useReviewSummary(isLoggedIn: boolean, authReady: boolean) {

@@ -4,6 +4,7 @@ import { Text } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AppIcon } from './AppIcon';
 import { MAX_LISTING_PHOTOS } from '../services/mediaPicker';
+import { normalizeMediaUrl } from '../utils/mediaUrls';
 import { colors, fonts, radius } from '../theme';
 import {
   getPhotoGridThumbSize,
@@ -47,9 +48,11 @@ export function PhotoUploadGrid({
 
   return (
     <View style={[styles.grid, compact && styles.gridCompact, { gap: PHOTO_GRID_GAP }]}>
-      {imageUrls.map((uri, index) => (
+      {imageUrls.map((uri, index) => {
+        const displayUri = normalizeMediaUrl(uri) ?? uri;
+        return (
         <View key={`${uri}-${index}`} style={[styles.thumbWrap, slotStyle]}>
-          <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+          <Image source={{ uri: displayUri }} style={styles.thumb} resizeMode="cover" />
           {onRemove ? (
             <Pressable
               style={styles.removeBtn}
@@ -61,7 +64,8 @@ export function PhotoUploadGrid({
             </Pressable>
           ) : null}
         </View>
-      ))}
+        );
+      })}
       {canAdd ? (
         <Pressable style={[styles.addBtn, slotStyle]} onPress={onAdd} disabled={uploading}>
           {uploading ? (
@@ -115,7 +119,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: colors.brand2,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,

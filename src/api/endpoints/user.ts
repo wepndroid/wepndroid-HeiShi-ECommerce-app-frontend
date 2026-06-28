@@ -8,6 +8,7 @@ import type {
   PayoutMethodDto,
   PrivacySettingsDto,
   ReviewSummaryDto,
+  TransactionReminderSettingsDto,
   UserProfileUpdateRequest,
   PublicUserProfileDto,
   ListingSummaryDto,
@@ -65,6 +66,17 @@ export const userApi = {
     }>('/users/me/verification');
   },
 
+  /** POST /users/me/verification/bind */
+  bindVerification(type: 'wechat' | 'alipay' | 'identity' | 'business') {
+    return apiRequest<{
+      phoneVerified: boolean;
+      wechatBound: boolean;
+      alipayBound: boolean;
+      identityVerified: boolean;
+      businessVerified: boolean;
+    }>('/users/me/verification/bind', { method: 'POST', body: { type } });
+  },
+
   /** GET /users/:id/profile — public seller profile */
   getPublicProfile(userId: string) {
     return apiRequest<PublicUserProfileDto>(`/users/${encodeURIComponent(userId)}/profile`);
@@ -93,6 +105,19 @@ export const paymentsApi = {
     return apiRequest<PaymentMethodDto>('/payments/methods', { method: 'POST', body });
   },
 
+  /** DELETE /payments/methods/:id */
+  removePaymentMethod(methodId: string) {
+    return apiRequest<void>(`/payments/methods/${methodId}`, { method: 'DELETE' });
+  },
+
+  /** PATCH /payments/methods/:id */
+  setDefaultPaymentMethod(methodId: string) {
+    return apiRequest<PaymentMethodDto>(`/payments/methods/${methodId}`, {
+      method: 'PATCH',
+      body: { isDefault: true },
+    });
+  },
+
   /** GET /payouts/methods */
   listPayoutMethods() {
     return apiRequest<PayoutMethodDto[]>('/payouts/methods');
@@ -101,6 +126,19 @@ export const paymentsApi = {
   /** POST /payouts/methods */
   addPayoutMethod(body: { type: PayoutMethodDto['type']; accountToken: string }) {
     return apiRequest<PayoutMethodDto>('/payouts/methods', { method: 'POST', body });
+  },
+
+  /** DELETE /payouts/methods/:id */
+  removePayoutMethod(methodId: string) {
+    return apiRequest<void>(`/payouts/methods/${methodId}`, { method: 'DELETE' });
+  },
+
+  /** PATCH /payouts/methods/:id */
+  setDefaultPayoutMethod(methodId: string) {
+    return apiRequest<PayoutMethodDto>(`/payouts/methods/${methodId}`, {
+      method: 'PATCH',
+      body: { isDefault: true },
+    });
   },
 };
 
@@ -125,9 +163,39 @@ export const settingsApi = {
     return apiRequest<PrivacySettingsDto>('/settings/privacy', { method: 'PATCH', body });
   },
 
+  /** GET /settings/transaction-reminders */
+  getTransactionReminderSettings() {
+    return apiRequest<TransactionReminderSettingsDto>('/settings/transaction-reminders');
+  },
+
+  /** PATCH /settings/transaction-reminders */
+  updateTransactionReminderSettings(body: Partial<TransactionReminderSettingsDto>) {
+    return apiRequest<TransactionReminderSettingsDto>('/settings/transaction-reminders', {
+      method: 'PATCH',
+      body,
+    });
+  },
+
   /** POST /settings/cache/clear */
   clearCache() {
     return apiRequest<{ freedBytes: number }>('/settings/cache/clear', { method: 'POST' });
+  },
+
+  /** GET /settings/data-export */
+  exportData() {
+    return apiRequest<import('../types').DataExportDto>('/settings/data-export');
+  },
+};
+
+export const pushTokenApi = {
+  /** POST /users/me/push-tokens */
+  register(body: { token: string; platform: 'android' | 'ios' | 'web' }) {
+    return apiRequest<void>('/users/me/push-tokens', { method: 'POST', body });
+  },
+
+  /** DELETE /users/me/push-tokens */
+  remove(body: { token: string }) {
+    return apiRequest<void>('/users/me/push-tokens', { method: 'DELETE', body });
   },
 };
 
@@ -160,5 +228,10 @@ export const safetyApi = {
   /** POST /safety/blocklist/:userId */
   blockUser(userId: string) {
     return apiRequest<void>(`/safety/blocklist/${userId}`, { method: 'POST' });
+  },
+
+  /** DELETE /safety/blocklist/:userId */
+  unblockUser(userId: string) {
+    return apiRequest<void>(`/safety/blocklist/${userId}`, { method: 'DELETE' });
   },
 };

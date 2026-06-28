@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Platform,
   Text as RNText,
   TextInput as RNTextInput,
   StyleSheet,
@@ -49,6 +50,7 @@ export function TextInput({ style, ...rest }: TextInputProps) {
     <RNTextInput
       style={[plainTextInput, style, isEn ? englishFontStyle(style) : null]}
       underlineColorAndroid="transparent"
+      {...(Platform.OS === 'android' ? { includeFontPadding: false } : null)}
       {...rest}
     />
   );

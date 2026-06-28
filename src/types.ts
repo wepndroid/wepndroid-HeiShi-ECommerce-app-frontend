@@ -2,6 +2,8 @@ import type { BundleMeta } from './data/bundle';
 
 export type ProductHeight = '' | 'tall' | 'short';
 
+export type LoadProductResult = 'ok' | 'not_found' | 'error';
+
 export type ProductCatKey =
   | 'digital'
   | 'home'
@@ -77,6 +79,8 @@ export interface Product {
   seller: string;
   /** Seller profile photo when provided by API; fallback generated from sellerKey. */
   sellerAvatarUrl?: string;
+  /** Backend user id for the seller — used to resolve the signed-in user's avatar. */
+  sellerUserId?: string;
   loc: string;
   height: ProductHeight;
   imageUrl: string;
@@ -94,6 +98,15 @@ export interface Product {
   favoriteCount?: number;
   listingType?: 'product' | 'service' | 'bundle';
   bundleMeta?: BundleMeta;
+  listingStatus?: 'active' | 'sold' | 'inactive' | 'draft';
+  purchaseAvailable?: boolean;
+  conditionKey?: string;
+  pickupMethodKeys?: string[];
+  serviceIcon?: 'truck' | 'broom' | 'cameraService';
+  escrowSupported?: boolean;
+  negotiable?: boolean;
+  meetInPublic?: boolean;
+  escrowFee?: number;
 }
 
 export type ChatMessage = {
@@ -112,12 +125,14 @@ export interface UiConversation {
   lastMessage: string;
   timeLabel: string;
   unreadCount: number;
+  markedAsUnread?: boolean;
   verified?: boolean;
   listingId?: number;
   listingTitle?: string;
   listingImageUrl?: string;
   listingPrice?: number;
   listingLocation?: string;
+  listingStatus?: 'active' | 'sold' | 'inactive' | 'draft';
 }
 
 /** Product/service context shown at the top of a chat thread. */
@@ -134,6 +149,10 @@ export interface UiChatMessage {
   id: string;
   text: string;
   side: 'left' | 'right';
+  sentAt: string;
+  senderId?: string;
+  /** True when the recipient has read an outgoing message (never set for incoming). */
+  ackRead: boolean;
 }
 
 /** Grouped inbox row on the messages tab (system / order / follow). */
@@ -163,8 +182,10 @@ export interface UiListing {
   id: number;
   title: string;
   imageUrl: string;
+  imageUrls?: string[];
+  listingType?: 'product' | 'service' | 'bundle';
   price: number;
-  status: 'active' | 'draft' | 'inactive';
+  status: 'active' | 'draft' | 'inactive' | 'sold';
 }
 
 export type OrderFilterKey =
@@ -174,7 +195,7 @@ export type OrderFilterKey =
   | 'pendingReceive'
   | 'pendingReview';
 
-export type OrderStatus = Exclude<OrderFilterKey, 'all'> | 'completed';
+export type OrderStatus = Exclude<OrderFilterKey, 'all'> | 'completed' | 'cancelled';
 
 export type DemoOrder = {
   id: number;
@@ -189,6 +210,13 @@ export interface UiOrder {
   title: string;
   imageUrl: string;
   sellerName: string;
+  buyerName?: string;
   amount: number;
   status: OrderStatus;
+  deliveryMethod?: string;
+  paymentMethodId?: string;
+  escrowFee?: number;
+  bundleItemId?: string;
+  couponId?: string;
+  discountAmount?: number;
 }

@@ -11,6 +11,7 @@ import type {
   BundleMetaDto,
 } from './types';
 import { parseBundleMeta } from '../data/bundle';
+import { collectMediaUrls, normalizeMediaUrl } from '../utils/mediaUrls';
 import type { Product, ProductCatKey, HomeTabKey, UiOrder, UiConversation, UiChatMessage, UiListing } from '../types';
 import type { LocalService } from '../data/services';
 
@@ -28,6 +29,7 @@ export function regionToFeedQuery(
 export function mapListingToProduct(dto: ListingSummaryDto): Product {
   const demoSellerKey =
     resolveDemoSellerKey(dto.id) ?? sellerKeyFromUserId(dto.seller.id) ?? dto.seller.id;
+  const images = collectMediaUrls(dto.images, dto.imageUrl);
   return {
     id: dto.id,
     price: dto.price,
@@ -35,29 +37,39 @@ export function mapListingToProduct(dto: ListingSummaryDto): Product {
     tagKey: dto.tagKey,
     sellerKey: demoSellerKey,
     seller: dto.seller.nickname,
-    sellerAvatarUrl: dto.seller.avatarUrl,
+    sellerAvatarUrl: normalizeMediaUrl(dto.seller.avatarUrl),
+    sellerUserId: dto.seller.id,
     loc: dto.locationLabel,
     height: '',
-    imageUrl: dto.imageUrl,
+    imageUrl: images[0] ?? normalizeMediaUrl(dto.imageUrl) ?? '',
+    imageUrls: images,
     apiTitle: dto.title,
     apiDesc: dto.description,
     apiVisual: dto.title,
     listingType: dto.type,
+    listingStatus: dto.status,
+    favoriteCount: dto.favoriteCount,
   };
 }
 
-function mapBundleMetaDto(dto?: BundleMetaDto | null) {
-  return parseBundleMeta(dto ?? null);
+function mapBundleMetaDto(dto?: BundleMetaDto | null, listingUrls?: string[]) {
+  return parseBundleMeta(dto ?? null, listingUrls);
 }
 
 export function mapDetailDtoToProduct(dto: ListingDetailDto): Product {
-  const images = dto.images?.length ? dto.images : dto.imageUrl ? [dto.imageUrl] : [];
+  const images = collectMediaUrls(dto.images, dto.imageUrl);
   return {
     ...mapListingToProduct(dto),
-    imageUrl: images[0] ?? dto.imageUrl,
-    imageUrls: images,
     favoriteCount: dto.favoriteCount ?? 0,
-    bundleMeta: mapBundleMetaDto(dto.bundleMeta) ?? undefined,
+    bundleMeta: mapBundleMetaDto(dto.bundleMeta, images) ?? undefined,
+    conditionKey: dto.conditionKey,
+    pickupMethodKeys: dto.pickupMethods,
+    purchaseAvailable: dto.purchaseAvailable ?? dto.status === 'active',
+    serviceIcon: dto.serviceIcon,
+    escrowSupported: dto.escrowSupported,
+    meetInPublic: dto.meetInPublic,
+    escrowFee: dto.escrowFee,
+    negotiable: dto.negotiable,
   };
 }
 
@@ -73,7 +85,7 @@ export function mapServiceDtoToLocalService(dto: LocalServiceDto): LocalService 
     descKey: '',
     area: dto.area,
     icon: dto.icon,
-    imageUrl: dto.imageUrl,
+    imageUrl: normalizeMediaUrl(dto.imageUrl) ?? dto.imageUrl ?? '',
     apiTitle: dto.title,
     apiDesc: dto.description,
     apiPriceLabel: `A$${dto.priceFrom}`,
@@ -92,7 +104,28 @@ export function mapListingToLocalizedFields(dto: ListingSummaryDto) {
 export function mergeProducts(existing: Product[], incoming: Product[]): Product[] {
   const map = new Map(existing.map((p) => [p.id, p]));
   for (const product of incoming) {
-    map.set(product.id, product);
+    const prev = map.get(product.id);
+    const prevCount = prev?.imageUrls?.length ?? 0;
+    const nextCount = product.imageUrls?.length ?? 0;
+    let merged: Product;
+    if (prev && prevCount > nextCount) {
+      merged = {
+        ...product,
+        imageUrls: prev.imageUrls,
+        imageUrl: prev.imageUrl ?? product.imageUrl,
+      };
+    } else {
+      merged = product;
+    }
+    if (prev?.bundleMeta && !merged.bundleMeta) {
+      merged = { ...merged, bundleMeta: prev.bundleMeta };
+    }
+    if (prev) {
+      if (product.purchaseAvailable !== undefined) {
+        merged = { ...merged, purchaseAvailable: product.purchaseAvailable };
+      }
+    }
+    map.set(product.id, merged);
   }
   return [...map.values()];
 }
@@ -102,10 +135,17 @@ export function mapOrderDtoToUiOrder(dto: OrderDto): UiOrder {
     id: dto.id,
     listingId: dto.listingId,
     title: dto.listingTitle,
-    imageUrl: dto.listingImageUrl,
+    imageUrl: normalizeMediaUrl(dto.listingImageUrl) ?? dto.listingImageUrl,
     sellerName: dto.seller.nickname,
+    buyerName: dto.buyer?.nickname,
     amount: dto.amount,
-    status: dto.status === 'cancelled' ? 'completed' : dto.status,
+    status: dto.status,
+    deliveryMethod: dto.deliveryMethod,
+    paymentMethodId: dto.paymentMethodId,
+    escrowFee: dto.escrowFee,
+    bundleItemId: dto.bundleItemId,
+    couponId: dto.couponId,
+    discountAmount: dto.discountAmount,
   };
 }
 
@@ -114,33 +154,52 @@ export function mapConversationDtoToUi(dto: ConversationDto): UiConversation {
     id: dto.id,
     counterpartName: dto.counterpart.nickname,
     counterpartKey: dto.counterpart.id,
-    counterpartAvatarUrl: dto.counterpart.avatarUrl,
+    counterpartAvatarUrl: normalizeMediaUrl(dto.counterpart.avatarUrl),
     lastMessage: dto.lastMessage?.text ?? '',
     timeLabel: dto.lastMessage?.sentAt ?? '',
     unreadCount: dto.unreadCount,
+    markedAsUnread: dto.markedAsUnread ?? false,
     listingId: dto.listing?.id,
     listingTitle: dto.listing?.title,
-    listingImageUrl: dto.listing?.imageUrl,
+    listingImageUrl: normalizeMediaUrl(dto.listing?.imageUrl),
     listingPrice: dto.listing?.price,
     listingLocation: dto.listing?.locationLabel,
+    listingStatus: dto.listing?.status,
   };
 }
 
 export function mapChatMessageDtoToUi(dto: ChatMessageDto, currentUserId?: string): UiChatMessage {
+  const ackRead =
+    dto.ackRead ??
+    (dto as ChatMessageDto & { ack_read?: boolean }).ack_read ??
+    false;
   return {
     id: dto.id,
     text: dto.text,
     side: currentUserId && dto.senderId === currentUserId ? 'right' : 'left',
+    sentAt: dto.sentAt,
+    senderId: dto.senderId,
+    ackRead,
   };
 }
 
 export function mapListingDtoToUiListing(dto: ListingSummaryDto): UiListing {
+  const images = collectMediaUrls(dto.images, dto.imageUrl);
   return {
     id: dto.id,
     title: dto.title,
-    imageUrl: dto.imageUrl,
+    imageUrl: images[0] ?? normalizeMediaUrl(dto.imageUrl) ?? dto.imageUrl,
+    imageUrls: images,
+    listingType: dto.type,
     price: dto.price,
-    status: dto.status === 'draft' ? 'draft' : dto.status === 'inactive' ? 'inactive' : 'active',
+    status:
+      dto.status === 'draft'
+        ? 'draft'
+        : dto.status === 'inactive'
+          ? 'inactive'
+          : dto.status === 'sold'
+            ? 'sold'
+            : 'active',
   };
 }
 

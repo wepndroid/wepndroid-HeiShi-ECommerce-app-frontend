@@ -130,7 +130,7 @@ export async function createLocalOrder(input: {
     sellerName: input.sellerName,
     amount: input.product.price,
     escrowFee: ESCROW_FEE,
-    status: 'pendingShip',
+    status: 'pendingPay',
     deliveryMethod: input.deliveryMethod,
   };
   await saveLocalOrderRecords([record, ...records]);
@@ -151,17 +151,26 @@ export async function updateLocalOrderStatus(orderId: number, status: OrderStatu
 export async function applyLocalOrderAction(
   orderId: number,
   currentStatus: OrderStatus,
-  action: 'pay' | 'remindShip' | 'confirmReceive',
+  action: 'pay' | 'ship' | 'remindShip' | 'confirmReceive' | 'submitReview' | 'cancel',
 ): Promise<OrderStatus> {
   let next = currentStatus;
   switch (action) {
     case 'pay':
       if (currentStatus === 'pendingPay') next = 'pendingShip';
       break;
+    case 'ship':
+      if (currentStatus === 'pendingShip') next = 'pendingReceive';
+      break;
     case 'remindShip':
       break;
     case 'confirmReceive':
       if (currentStatus === 'pendingReceive') next = 'pendingReview';
+      break;
+    case 'submitReview':
+      if (currentStatus === 'pendingReview') next = 'completed';
+      break;
+    case 'cancel':
+      if (currentStatus === 'pendingPay') next = 'cancelled';
       break;
   }
   await updateLocalOrderStatus(orderId, next);

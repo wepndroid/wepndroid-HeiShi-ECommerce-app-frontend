@@ -4,6 +4,7 @@ import {
   mapNotificationGroupDtoToUi,
 } from '../api/notificationMappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
+import { notifyInboxRefresh } from './messagesService';
 import {
   deleteLocalNotification,
   listLocalGroupNotifications,
@@ -11,17 +12,35 @@ import {
   markLocalGroupRead,
 } from '../data/notificationsLocal';
 import type { NotificationCategory, UiInboxNotification, UiNotificationGroup } from '../types';
+import type { NotificationSettingsDto } from '../api/types';
 
-export async function listNotificationGroups(isLoggedIn: boolean): Promise<UiNotificationGroup[]> {
+const CATEGORY_SETTING: Record<NotificationCategory, keyof NotificationSettingsDto> = {
+  system: 'intentAlerts',
+  order: 'reviewResults',
+  follow: 'marketing',
+};
+
+export function filterNotificationGroupsBySettings(
+  groups: UiNotificationGroup[],
+  settings: NotificationSettingsDto | null | undefined,
+): UiNotificationGroup[] {
+  if (!settings) return groups;
+  return groups.filter((group) => settings[CATEGORY_SETTING[group.category]] !== false);
+}
+
+export async function listNotificationGroups(
+  isLoggedIn: boolean,
+  settings?: NotificationSettingsDto | null,
+): Promise<UiNotificationGroup[]> {
   if (isLoggedIn) {
     try {
       const groups = await messagesApi.listNotificationGroups();
-      return groups.map(mapNotificationGroupDtoToUi);
+      return filterNotificationGroupsBySettings(groups.map(mapNotificationGroupDtoToUi), settings);
     } catch {
       if (!API_USE_MOCK_FALLBACK) return [];
     }
   }
-  return listLocalNotificationGroups();
+  return filterNotificationGroupsBySettings(await listLocalNotificationGroups(), settings);
 }
 
 export async function listGroupNotifications(
@@ -30,8 +49,16 @@ export async function listGroupNotifications(
 ): Promise<UiInboxNotification[]> {
   if (isLoggedIn) {
     try {
-      const result = await messagesApi.listGroupNotifications(category, { pageSize: 50 });
-      return result.items.map(mapInboxNotificationDtoToUi);
+      const items: UiInboxNotification[] = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && page <= 25) {
+        const result = await messagesApi.listGroupNotifications(category, { page, pageSize: 50 });
+        items.push(...result.items.map(mapInboxNotificationDtoToUi));
+        hasMore = result.hasMore;
+        page += 1;
+      }
+      return items;
     } catch {
       if (!API_USE_MOCK_FALLBACK) return [];
     }
@@ -43,12 +70,14 @@ export async function deleteNotification(notificationId: string, isLoggedIn: boo
   if (isLoggedIn) {
     try {
       await messagesApi.deleteNotification(notificationId);
+      notifyInboxRefresh();
       return;
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('delete_notification_failed');
     }
   }
   await deleteLocalNotification(notificationId);
+  notifyInboxRefresh();
 }
 
 export async function markNotificationGroupRead(
@@ -58,10 +87,12 @@ export async function markNotificationGroupRead(
   if (isLoggedIn) {
     try {
       await messagesApi.markGroupRead(category);
+      notifyInboxRefresh();
       return;
     } catch {
-      if (!API_USE_MOCK_FALLBACK) return;
+      if (!API_USE_MOCK_FALLBACK) throw new Error('mark_group_read_failed');
     }
   }
   await markLocalGroupRead(category);
+  notifyInboxRefresh();
 }

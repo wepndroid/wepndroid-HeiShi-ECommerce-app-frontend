@@ -146,3 +146,7 @@ export async function markLocalGroupRead(category: NotificationCategory): Promis
     items.map((item) => (item.category === category ? { ...item, unread: false } : item)),
   );
 }
+
+export async function clearLocalInboxCache(): Promise<void> {
+  await AsyncStorage.removeItem(STORAGE_KEY);
+}

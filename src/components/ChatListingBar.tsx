@@ -1,110 +1,142 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from './typography';
 import { useTranslation } from 'react-i18next';
-import { PillButton } from './UI';
+import { AmazingSurface } from './AmazingSurface';
+import { SellerAvatar } from './SellerAvatar';
 import { colors, fonts, radius } from '../theme';
 
-export function ChatListingBar({
-  imageUrl,
-  title,
-  priceLabel,
-  metaLine,
-  locationLine,
-  onBuyNow,
+/** Avatar + name for the chat title bar (top header). */
+export function ChatCounterpartTitle({
+  name,
+  sellerKey,
+  seller,
+  avatarUrl,
+  sellerUserId,
   onPress,
 }: {
-  imageUrl: string;
+  name: string;
+  sellerKey?: string;
+  seller?: string;
+  avatarUrl?: string;
+  sellerUserId?: string;
+  onPress?: () => void;
+}) {
+  const content = (
+    <View style={styles.titleIdentity}>
+      <SellerAvatar
+        sellerKey={sellerKey ?? ''}
+        seller={seller ?? name}
+        avatarUrl={avatarUrl}
+        sellerUserId={sellerUserId ?? sellerKey}
+        size={34}
+      />
+      <Text style={styles.titleName} numberOfLines={1}>
+        {name}
+      </Text>
+    </View>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button" style={styles.titlePressable}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  return content;
+}
+
+/** v7 product inquiry card — shown below the chat title bar. */
+export function ChatListingBar({
+  title,
+  priceLabel,
+  location,
+  onPress,
+}: {
   title: string;
   priceLabel: string;
-  metaLine: string;
-  locationLine: string;
-  onBuyNow: () => void;
+  location?: string;
   onPress?: () => void;
 }) {
   const { t } = useTranslation();
 
   const content = (
     <>
-      <Image
-        source={{ uri: imageUrl }}
-        style={styles.thumb}
-        resizeMode="cover"
-        accessibilityLabel={title}
-      />
-      <View style={styles.copy}>
-        <Text style={styles.price}>{priceLabel}</Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          {metaLine}
+      <Text style={styles.inquiryTitle} numberOfLines={2}>
+        {t('screens.chat.inquiryTitle', { title })}
+      </Text>
+      <Text style={styles.metaLine} numberOfLines={2}>
+        <Text style={styles.metaPrice}>{priceLabel}</Text>
+        <Text style={styles.metaRest}>
+          {t('screens.chat.listingMetaSuffix', { location: location ?? '' })}
         </Text>
-        <Text style={styles.location} numberOfLines={1}>
-          {locationLine}
-        </Text>
-      </View>
-      <PillButton
-        label={t('screens.chat.buyNow')}
-        variant="purchase"
-        onPress={onBuyNow}
-        style={styles.buyBtn}
-      />
+      </Text>
     </>
   );
 
   return (
-    <View style={styles.bar}>
+    <AmazingSurface style={styles.productCard} highlight={false} preserveShadow>
       {onPress ? (
-        <Pressable style={styles.row} onPress={onPress}>
+        <Pressable style={styles.productBlock} onPress={onPress} accessibilityRole="button">
           {content}
         </Pressable>
       ) : (
-        <View style={styles.row}>{content}</View>
+        <View style={styles.productBlock}>{content}</View>
       )}
-    </View>
+    </AmazingSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: '#ffffff',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 4,
+  titlePressable: {
+    maxWidth: '100%',
   },
-  row: {
+  titleIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: '100%',
   },
-  thumb: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.sm,
-    backgroundColor: colors.brand3,
-    flexShrink: 0,
+  titleName: {
+    fontSize: 15,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    flexShrink: 1,
   },
-  copy: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
+  productCard: {
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
-  price: {
-    fontSize: 16,
+  productBlock: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 5,
+  },
+  inquiryTitle: {
+    fontSize: 13,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  metaLine: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  metaPrice: {
     fontWeight: fonts.weights.bold,
     color: colors.red,
+    fontSize: 12,
+    lineHeight: 16,
   },
-  meta: {
-    fontSize: 11,
+  metaRest: {
+    fontWeight: fonts.weights.medium,
     color: colors.sub,
-  },
-  location: {
-    fontSize: 11,
-    color: colors.sub,
-  },
-  buyBtn: {
-    flexShrink: 0,
-    minWidth: 72,
-    paddingHorizontal: 12,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

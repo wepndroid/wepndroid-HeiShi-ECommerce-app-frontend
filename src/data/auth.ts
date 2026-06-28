@@ -5,6 +5,7 @@ export interface AuthUser {
   heishiId: string;
   nickname: string;
   phone: string;
+  avatarUrl?: string;
 }
 
 interface StoredAccount extends AuthUser {
@@ -31,7 +32,13 @@ export type AuthErrorKey =
   | 'passwordMismatch'
   | 'phoneTaken'
   | 'invalidCredentials'
-  | 'networkError';
+  | 'networkError'
+  | 'codeRequired'
+  | 'codeInvalid'
+  | 'codeExpired'
+  | 'codeRateLimit'
+  | 'avatarRequired'
+  | 'avatarUploadFailed';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);
@@ -58,6 +65,7 @@ function normalizeAuthUser(raw: AuthUser): AuthUser | null {
     heishiId: raw.heishiId ?? raw.id,
     nickname: raw.nickname,
     phone: raw.phone,
+    avatarUrl: raw.avatarUrl,
   };
 }
 
@@ -81,11 +89,32 @@ export async function saveSession(user: AuthUser | null) {
 }
 
 export function normalizePhone(phone: string) {
-  return phone.replace(/\s+/g, '');
+  const cleaned = phone.replace(/\s+/g, '');
+  if (cleaned.startsWith('+61')) return `0${cleaned.slice(3)}`;
+  if (cleaned.startsWith('61') && cleaned.length >= 11) return `0${cleaned.slice(2)}`;
+  return cleaned;
 }
 
 export function isValidPhone(phone: string) {
   return /^(\+?61|0)\d{8,10}$/.test(normalizePhone(phone));
+}
+
+export function validateRegisterPhoneStep(input: {
+  phone: string;
+}): AuthErrorKey | null {
+  const phone = normalizePhone(input.phone.trim());
+  if (!phone) return 'phoneRequired';
+  if (!isValidPhone(phone)) return 'phoneInvalid';
+  return null;
+}
+
+export function validateRegisterAvatarStep(avatarUri: string | null | undefined): AuthErrorKey | null {
+  if (!avatarUri?.trim()) return 'avatarRequired';
+  return null;
+}
+
+export function hasRegisterAvatar(avatarUri: string | null | undefined): boolean {
+  return validateRegisterAvatarStep(avatarUri) === null;
 }
 
 export function validateRegisterInput(input: {
@@ -93,15 +122,20 @@ export function validateRegisterInput(input: {
   phone: string;
   password: string;
   confirmPassword: string;
+  verificationCode: string;
+  avatarUri: string;
 }): AuthErrorKey | null {
-  const nickname = input.nickname.trim();
-  const phone = normalizePhone(input.phone.trim());
+  if (!input.nickname.trim()) return 'nicknameRequired';
+  const avatarError = validateRegisterAvatarStep(input.avatarUri);
+  if (avatarError) return avatarError;
+  const phoneStep = validateRegisterPhoneStep({ phone: input.phone });
+  if (phoneStep) return phoneStep;
   const password = input.password;
   const confirmPassword = input.confirmPassword;
+  const code = input.verificationCode.trim();
 
-  if (!nickname) return 'nicknameRequired';
-  if (!phone) return 'phoneRequired';
-  if (!isValidPhone(phone)) return 'phoneInvalid';
+  if (!code) return 'codeRequired';
+  if (code.length !== 6) return 'codeInvalid';
   if (!password) return 'passwordRequired';
   if (password.length < 6) return 'passwordShort';
   if (password !== confirmPassword) return 'passwordMismatch';
@@ -119,6 +153,8 @@ export async function registerAccount(input: {
   phone: string;
   password: string;
   confirmPassword: string;
+  verificationCode: string;
+  avatarUri: string;
 }): Promise<{ user: AuthUser } | { error: AuthErrorKey }> {
   const validationError = validateRegisterInput(input);
   if (validationError) return { error: validationError };
@@ -126,6 +162,9 @@ export async function registerAccount(input: {
   const nickname = input.nickname.trim();
   const phone = normalizePhone(input.phone.trim());
   const password = input.password;
+  const code = input.verificationCode.trim();
+
+  if (code !== '123456') return { error: 'codeInvalid' };
 
   const accounts = await readAccounts();
   if (accounts.some((a) => a.phone === phone)) return { error: 'phoneTaken' };

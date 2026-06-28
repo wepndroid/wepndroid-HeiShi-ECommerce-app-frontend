@@ -1,17 +1,124 @@
-import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInputProps, View } from 'react-native';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInputContentSizeChangeEventData,
+  TextInputProps,
+  View,
+} from 'react-native';
 import { Text, TextInput } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AmazingSurface } from './AmazingSurface';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts, formControls, iconTokens, radius, spacing, cardShadow } from '../theme';
+import { colors, fonts, formControls, iconTokens, messagesScreenTokens, multilineInitialHeight, publishScreenTokens, radius, spacing, shadows } from '../theme';
 import { AppIcon, AppIconName } from './AppIcon';
 import type { FormOptionDto } from '../api/types';
 import { formOptionLabel } from '../utils/formOptionLabel';
 import { filterNumericInput, numericKeyboardType, NumericInputKind } from '../utils/numericInput';
+import {
+  buildPickupDateOptions,
+  formatPickupDateLabel,
+  startOfToday,
+} from '../utils/pickupDate';
 
-export function FormCard({ children }: { children: React.ReactNode }) {
-  return <AmazingSurface style={styles.formCard}>{children}</AmazingSurface>;
+const FormFieldStyleContext = createContext(false);
+
+export function useFormFieldPill() {
+  return useContext(FormFieldStyleContext);
+}
+
+function GrowingMultilineField({
+  value,
+  onChangeText,
+  placeholder,
+  usePill,
+  flex,
+  keyboardType,
+  secureTextEntry,
+  autoCapitalize,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  usePill?: boolean;
+  /** Fill remaining horizontal space in label rows (default true). */
+  flex?: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  secureTextEntry?: boolean;
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+}) {
+  const minHeight = multilineInitialHeight;
+  const maxHeight = formControls.multilineMaxHeight;
+  const [inputHeight, setInputHeight] = useState(minHeight);
+
+  useEffect(() => {
+    if (!value) {
+      setInputHeight(minHeight);
+    }
+  }, [value, minHeight]);
+
+  const clampHeight = (height: number) =>
+    Math.min(maxHeight, Math.max(minHeight, Math.ceil(height)));
+
+  const handleContentSizeChange = (event: { nativeEvent: TextInputContentSizeChangeEventData }) => {
+    setInputHeight(clampHeight(event.nativeEvent.contentSize.height));
+  };
+
+  const isExpanded = inputHeight > minHeight;
+  const scrollEnabled = inputHeight >= maxHeight;
+
+  return (
+    <View
+      style={[
+        formControlStyles.box,
+        flex !== false && formControlStyles.boxFlex,
+        usePill && formControlStyles.boxPill,
+        formControlStyles.boxMultilineGrow,
+        { height: inputHeight, minHeight },
+      ]}
+    >
+      <TextInput
+        style={[
+          formControlStyles.inputMultilineBase,
+          isExpanded ? formControlStyles.inputMultilineGrow : formControlStyles.inputMultilineInitial,
+          scrollEnabled && formControlStyles.inputMultilineScroll,
+          { height: inputHeight, maxHeight },
+        ]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={formControls.placeholderColor}
+        multiline
+        numberOfLines={formControls.multilineInitialRows}
+        {...(Platform.OS === 'web' ? ({ rows: formControls.multilineInitialRows } as object) : null)}
+        scrollEnabled={scrollEnabled}
+        onContentSizeChange={handleContentSizeChange}
+        keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={false}
+        selectionColor={colors.brand2}
+      />
+    </View>
+  );
+}
+
+export function FormCard({
+  children,
+  roundedFields,
+}: {
+  children: React.ReactNode;
+  /** Pill-shaped single-line inputs/selects (publish forms). */
+  roundedFields?: boolean;
+}) {
+  return (
+    <FormFieldStyleContext.Provider value={!!roundedFields}>
+      <AmazingSurface style={styles.formCard}>{children}</AmazingSurface>
+    </FormFieldStyleContext.Provider>
+  );
 }
 
 export function FieldRow({
@@ -54,6 +161,7 @@ export function FieldInputRow({
   keyboardType,
   numericKind,
   onInvalidInput,
+  rounded,
 }: {
   icon?: AppIconName;
   label: string;
@@ -65,8 +173,12 @@ export function FieldInputRow({
   keyboardType?: TextInputProps['keyboardType'];
   numericKind?: NumericInputKind;
   onInvalidInput?: () => void;
+  /** Override pill rounding from FormCard context. */
+  rounded?: boolean;
 }) {
   const resolvedKeyboardType = numericKind ? numericKeyboardType(numericKind) : keyboardType;
+  const pillFromContext = useFormFieldPill();
+  const usePill = rounded ?? pillFromContext;
 
   const handleChangeText = (text: string) => {
     if (!numericKind) {
@@ -80,30 +192,52 @@ export function FieldInputRow({
     onChangeText(filtered);
   };
 
+  if (multiline) {
+    return (
+      <View style={[styles.field, styles.fieldMultiline]}>
+        {icon ? (
+          <View style={[styles.ficonWrap, styles.ficonWrapTop]}>
+            <AppIcon name={icon} size={18} color={formControls.iconColor} />
+          </View>
+        ) : null}
+        <Text style={[styles.label, styles.labelMultiline]} numberOfLines={1}>
+          {label}
+        </Text>
+        <GrowingMultilineField
+          value={value}
+          onChangeText={handleChangeText}
+          placeholder={placeholder}
+          usePill={usePill}
+          keyboardType={resolvedKeyboardType}
+        />
+        {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.field, multiline && styles.fieldMultiline]}>
+    <View style={styles.field}>
       {icon ? (
-        <View style={[styles.ficonWrap, multiline && styles.ficonWrapTop]}>
+        <View style={styles.ficonWrap}>
           <AppIcon name={icon} size={18} color={formControls.iconColor} />
         </View>
       ) : null}
-      <Text style={[styles.label, multiline && styles.labelMultiline]} numberOfLines={1}>
+      <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
       <View
         style={[
           formControlStyles.box,
           formControlStyles.boxFlex,
-          multiline && formControlStyles.boxMultiline,
+          usePill && formControlStyles.boxPill,
         ]}
       >
         <TextInput
-          style={[formControlStyles.input, multiline && formControlStyles.inputMultiline]}
+          style={formControlStyles.input}
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
           placeholderTextColor={formControls.placeholderColor}
-          multiline={multiline}
           keyboardType={resolvedKeyboardType}
           selectionColor={colors.brand2}
         />
@@ -122,6 +256,7 @@ export function FieldSelectRow({
   placeholder,
   loading,
   stacked,
+  rounded,
 }: {
   icon?: AppIconName;
   label: string;
@@ -131,9 +266,12 @@ export function FieldSelectRow({
   placeholder?: string;
   loading?: boolean;
   stacked?: boolean;
+  rounded?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
+  const pillFromContext = useFormFieldPill();
+  const usePill = rounded ?? pillFromContext;
   const selected = options.find((item) => item.key === selectedKey);
   const display = selected
     ? formOptionLabel(selected, i18n.language)
@@ -177,7 +315,7 @@ export function FieldSelectRow({
         <View style={styles.stackedField}>
           <Text style={styles.stackedLabel}>{label}</Text>
           <Pressable
-            style={[formControlStyles.box, formControlStyles.boxRow]}
+            style={[formControlStyles.box, formControlStyles.boxRow, usePill && formControlStyles.boxPill]}
             onPress={() => !loading && setOpen(true)}
             accessibilityRole="button"
           >
@@ -206,7 +344,14 @@ export function FieldSelectRow({
         <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-        <View style={[formControlStyles.box, formControlStyles.boxFlex, formControlStyles.boxRow]}>
+        <View
+          style={[
+            formControlStyles.box,
+            formControlStyles.boxFlex,
+            formControlStyles.boxRow,
+            usePill && formControlStyles.boxPill,
+          ]}
+        >
           <Text
             style={[formControlStyles.selectText, !selected && styles.selectPlaceholder]}
             numberOfLines={1}
@@ -221,8 +366,117 @@ export function FieldSelectRow({
   );
 }
 
-export function ListCard({ children }: { children: React.ReactNode }) {
-  return <AmazingSurface style={styles.listCard}>{children}</AmazingSurface>;
+export function FieldDateRow({
+  icon,
+  label,
+  value,
+  onChange,
+  placeholder,
+  minimumDate,
+  rounded,
+}: {
+  icon?: AppIconName;
+  label: string;
+  value: string;
+  onChange: (isoDate: string) => void;
+  placeholder?: string;
+  minimumDate?: Date;
+  rounded?: boolean;
+}) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const pillFromContext = useFormFieldPill();
+  const usePill = rounded ?? pillFromContext;
+  const minDate = minimumDate ?? startOfToday();
+  const dateOptions = useMemo(
+    () => buildPickupDateOptions(minDate, 365),
+    [minDate.getTime()],
+  );
+  const hasValue = Boolean(value.trim());
+  const display = hasValue
+    ? formatPickupDateLabel(value, i18n.language)
+    : placeholder ?? t('common.placeholders.selectDate');
+
+  const pickerModal = (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+      <Pressable style={styles.sheetBackdrop} onPress={() => setOpen(false)}>
+        <Pressable style={styles.sheetCard} onPress={(event) => event.stopPropagation()}>
+          <Text style={styles.sheetTitle}>{label}</Text>
+          <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+            {dateOptions.map((iso) => {
+              const active = iso === value;
+              return (
+                <Pressable
+                  key={iso}
+                  style={[styles.sheetOption, active && styles.sheetOptionActive]}
+                  onPress={() => {
+                    onChange(iso);
+                    setOpen(false);
+                  }}
+                >
+                  <Text style={[styles.sheetOptionText, active && styles.sheetOptionTextActive]}>
+                    {formatPickupDateLabel(iso, i18n.language)}
+                  </Text>
+                  {active ? <AppIcon name="check" size={16} color={colors.text} /> : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
+  return (
+    <>
+      <Pressable
+        style={styles.field}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        {icon ? (
+          <View style={styles.ficonWrap}>
+            <AppIcon name={icon} size={18} color={formControls.iconColor} />
+          </View>
+        ) : null}
+        <Text style={styles.label} numberOfLines={1}>
+          {label}
+        </Text>
+        <View
+          style={[
+            formControlStyles.box,
+            formControlStyles.boxFlex,
+            formControlStyles.boxRow,
+            usePill && formControlStyles.boxPill,
+          ]}
+        >
+          <Text
+            style={[formControlStyles.selectText, !hasValue && styles.selectPlaceholder]}
+            numberOfLines={1}
+          >
+            {display}
+          </Text>
+          <AppIcon name="chevronForward" size={16} color={formControls.chevronColor} />
+        </View>
+      </Pressable>
+      {pickerModal}
+    </>
+  );
+}
+
+export function ListCard({
+  children,
+  compact,
+}: {
+  children: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <AmazingSurface style={[styles.listCard, compact && styles.listCardCompact]}>
+      {children}
+    </AmazingSurface>
+  );
 }
 
 export function ListRow({
@@ -239,11 +493,26 @@ export function ListRow({
   const content = (
     <View style={[styles.listRow, border !== false && styles.listRowBorder]}>
       <View style={styles.listLeft}>{left}</View>
-      {right}
+      {right != null ? <View style={styles.listRight}>{right}</View> : null}
     </View>
   );
-  if (onPress) return <Pressable onPress={onPress}>{content}</Pressable>;
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+        style={({ pressed }) => (pressed ? styles.listRowPressed : undefined)}
+      >
+        {content}
+      </Pressable>
+    );
+  }
   return content;
+}
+
+/** Text column beside {@link ListIcon} — shrinks so trailing status/chevron does not overlap. */
+export function ListRowMain({ children }: { children: React.ReactNode }) {
+  return <View style={styles.listRowMain}>{children}</View>;
 }
 
 export function ListIcon({ name }: { name: AppIconName }) {
@@ -298,21 +567,32 @@ export function FieldInputStacked({
   return (
     <View style={styles.stackedField}>
       <Text style={styles.stackedLabel}>{label}</Text>
-      <View style={[formControlStyles.box, multiline && formControlStyles.boxMultiline]}>
-        <TextInput
-          style={[formControlStyles.input, multiline && formControlStyles.inputMultiline]}
+      {multiline ? (
+        <GrowingMultilineField
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={formControls.placeholderColor}
-          multiline={multiline}
-          secureTextEntry={secureTextEntry}
           keyboardType={resolvedKeyboardType}
+          secureTextEntry={secureTextEntry}
           autoCapitalize={autoCapitalize}
-          autoCorrect={false}
-          selectionColor={colors.brand2}
+          flex={false}
         />
-      </View>
+      ) : (
+        <View style={[formControlStyles.box]}>
+          <TextInput
+            style={formControlStyles.input}
+            value={value}
+            onChangeText={handleChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={formControls.placeholderColor}
+            secureTextEntry={secureTextEntry}
+            keyboardType={resolvedKeyboardType}
+            autoCapitalize={autoCapitalize}
+            autoCorrect={false}
+            selectionColor={colors.brand2}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -439,24 +719,33 @@ export function ShortcutGrid({
   items: { icon: AppIconName; label: string; onPress: () => void }[];
   compact?: boolean;
 }) {
+  const iconSize = compact ? 18 : 20;
+
   return (
-    <View style={styles.grid4}>
-      {items.map((item) => (
-        <AmazingSurface
-          key={item.label}
-          style={[styles.shortcut, compact && styles.shortcutCompact]}
-          onPress={item.onPress}
-        >
-          <AppIcon name={item.icon} size={compact ? 18 : 20} color={colors.text} />
-          <Text
-            style={[styles.shortcutLabel, compact && styles.shortcutLabelCompact]}
-            numberOfLines={2}
+    <AmazingSurface style={[styles.shortcutUnifiedCard, compact && styles.shortcutUnifiedCardCompact]} highlight={false}>
+      {items.map((item, index) => (
+        <React.Fragment key={item.label}>
+          {index > 0 ? <View style={styles.shortcutUnifiedDivider} /> : null}
+          <Pressable
+            style={({ pressed }) => [
+              styles.shortcutUnifiedItem,
+              compact && styles.shortcutUnifiedItemCompact,
+              pressed && styles.shortcutUnifiedItemPressed,
+            ]}
+            onPress={item.onPress}
+            accessibilityRole="button"
           >
-            {item.label}
-          </Text>
-        </AmazingSurface>
+            <AppIcon name={item.icon} size={iconSize} color={colors.text} />
+            <Text
+              style={[styles.shortcutLabel, compact && styles.shortcutLabelCompact]}
+              numberOfLines={2}
+            >
+              {item.label}
+            </Text>
+          </Pressable>
+        </React.Fragment>
       ))}
-    </View>
+    </AmazingSurface>
   );
 }
 
@@ -535,6 +824,7 @@ export function SettingSectionTitle({ title }: { title: string }) {
 /** Shared bordered control shell for inputs and selects (also used in bundle publish). */
 export const formControlStyles = StyleSheet.create({
   box: {
+    height: formControls.controlMinHeight,
     minHeight: formControls.controlMinHeight,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: formControls.borderColor,
@@ -548,7 +838,14 @@ export const formControlStyles = StyleSheet.create({
     minWidth: 0,
   },
   boxMultiline: {
-    minHeight: 56,
+    minHeight: formControls.controlMinHeight,
+  },
+  boxMultilineGrow: {
+    justifyContent: 'flex-start',
+    overflow: 'hidden',
+  },
+  boxPill: {
+    borderRadius: publishScreenTokens.inputRadius,
   },
   boxRow: {
     flexDirection: 'row',
@@ -557,18 +854,46 @@ export const formControlStyles = StyleSheet.create({
   },
   input: {
     fontSize: formControls.fontSize,
+    lineHeight: formControls.controlLineHeight,
     color: colors.text,
-    paddingVertical: 8,
+    paddingVertical: formControls.controlPaddingV,
     paddingHorizontal: 0,
+    ...(Platform.OS === 'web'
+      ? {
+          minHeight: formControls.controlLineHeight,
+          maxHeight: formControls.controlLineHeight,
+        }
+      : null),
   },
   inputMultiline: {
-    minHeight: 56,
+    minHeight: formControls.controlMinHeight,
     textAlignVertical: 'top',
+  },
+  inputMultilineBase: {
+    fontSize: formControls.fontSize,
+    lineHeight: formControls.controlLineHeight,
+    color: colors.text,
+    paddingHorizontal: 0,
+    margin: 0,
+  },
+  inputMultilineGrow: {
+    textAlignVertical: 'top',
+    paddingTop: formControls.multilinePaddingV,
+    paddingBottom: formControls.multilinePaddingV,
+  },
+  inputMultilineInitial: {
+    textAlignVertical: 'top',
+    paddingTop: formControls.multilinePaddingV,
+    paddingBottom: formControls.multilinePaddingV,
+  },
+  inputMultilineScroll: {
+    overflow: 'scroll',
   },
   selectText: {
     flex: 1,
     minWidth: 0,
     fontSize: formControls.fontSize,
+    lineHeight: formControls.controlLineHeight,
     color: colors.text,
   },
 });
@@ -723,12 +1048,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 12,
   },
+  listCardCompact: {
+    paddingVertical: messagesScreenTokens.listCardPaddingVertical,
+  },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
     gap: 12,
+  },
+  listRowPressed: {
+    opacity: 0.72,
   },
   listRowBorder: {
     borderBottomWidth: 1,
@@ -740,6 +1071,17 @@ const styles = StyleSheet.create({
     gap: 10,
     flex: 1,
     minWidth: 0,
+  },
+  listRowMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  listRight: {
+    flexShrink: 0,
+    maxWidth: '36%',
+    marginLeft: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   ico: {
     width: 28,
@@ -825,7 +1167,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.line,
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 12,
-    ...cardShadow,
+    ...shadows.card,
   },
   serviceCard: {
     borderRadius: radius.lg,
@@ -840,7 +1182,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: radius.md,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -876,29 +1218,37 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.medium,
     color: colors.sub,
   },
-  grid4: {
+  shortcutUnifiedCard: {
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'stretch',
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 4,
   },
-  shortcut: {
+  shortcutUnifiedCardCompact: {
+    paddingVertical: 10,
+  },
+  shortcutUnifiedItem: {
     flex: 1,
     minWidth: 0,
-    borderRadius: radius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 3,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    gap: 5,
+  },
+  shortcutUnifiedItemCompact: {
     gap: 4,
   },
-  shortcutCompact: {
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-    gap: 3,
+  shortcutUnifiedItemPressed: {
+    opacity: 0.72,
   },
-  shortcutIcon: {
-    fontSize: 18,
-    fontWeight: fonts.weights.bold,
-    marginBottom: 5,
-    color: '#8a5a00',
+  shortcutUnifiedDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.line,
+    alignSelf: 'stretch',
+    marginVertical: 6,
   },
   shortcutLabel: {
     fontSize: 11,
@@ -912,13 +1262,16 @@ const styles = StyleSheet.create({
     lineHeight: 13,
   },
   tableNote: {
-    borderRadius: 16,
+    borderRadius: radius.md,
     padding: 12,
     marginBottom: 10,
+    backgroundColor: colors.trustSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.trustBorder,
   },
   tableNoteText: {
     fontSize: 12,
-    color: '#888888',
+    color: colors.trustText,
     lineHeight: 19,
   },
   switch: {
@@ -930,18 +1283,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   switchOn: {
-    backgroundColor: colors.brand,
+    backgroundColor: colors.green,
   },
   switchKnob: {
     width: 20,
     height: 20,
     borderRadius: 10,
     backgroundColor: '#ffffff',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2.5,
-    elevation: 2,
+    ...shadows.knob,
     alignSelf: 'flex-start',
   },
   switchKnobOn: {

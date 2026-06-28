@@ -38,7 +38,9 @@ export function AmazingSurface({
           pointerEvents="none"
         />
       ) : null}
-      <View style={[styles.innerClip, { borderRadius: cornerRadius }]}>{children}</View>
+      <View style={[styles.innerClip, { borderRadius: cornerRadius }]} collapsable={false}>
+        {children}
+      </View>
     </>
   ) : (
     <>

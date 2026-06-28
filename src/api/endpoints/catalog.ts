@@ -16,10 +16,11 @@ export const catalogApi = {
     return apiRequest<ListingFormOptionsDto>('/catalog/form-options', { auth: false });
   },
 
-  /** GET /catalog/feed */
+  /** GET /catalog/feed — public; optional auth not required for browsing */
   getFeed(query: FeedQuery) {
     return apiRequest<Paginated<ListingSummaryDto>>('/catalog/feed', {
       query: query as Record<string, string | number | boolean | undefined | null>,
+      auth: false,
     });
   },
 
@@ -27,11 +28,15 @@ export const catalogApi = {
   search(query: SearchQuery) {
     return apiRequest<Paginated<ListingSummaryDto>>('/catalog/search', {
       query: query as Record<string, string | number | boolean | undefined | null>,
+      auth: false,
     });
   },
 
   /** POST /catalog/search/image */
-  searchByImage(formData: FormData, query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
+  searchByImage(
+    formData: FormData,
+    query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea' | 'page' | 'pageSize'>,
+  ) {
     return apiRequest<ImageSearchResponseDto>('/catalog/search/image', {
       method: 'POST',
       body: formData,
@@ -40,26 +45,29 @@ export const catalogApi = {
     });
   },
 
-  /** GET /catalog/listings/:id */
+  /** GET /catalog/listings/:id — auth required for seller to view own draft/inactive listings */
   getListing(id: number) {
-    return apiRequest<ListingDetailDto>(`/catalog/listings/${id}`);
+    return apiRequest<ListingDetailDto>(`/catalog/listings/${id}`, { auth: true });
   },
 
   /** GET /catalog/listings/:id/related */
-  getRelatedListings(id: number, query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
-    return apiRequest<Paginated<ListingSummaryDto>>(`/catalog/listings/${id}/related`, { query });
+  getRelatedListings(
+    id: number,
+    query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea' | 'page' | 'pageSize'>,
+  ) {
+    return apiRequest<Paginated<ListingSummaryDto>>(`/catalog/listings/${id}/related`, { query, auth: false });
   },
 
   /** GET /catalog/services */
-  getLocalServices(query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
-    return apiRequest<Paginated<LocalServiceDto>>('/catalog/services', { query });
+  getLocalServices(query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea' | 'page' | 'pageSize'>) {
+    return apiRequest<Paginated<LocalServiceDto>>('/catalog/services', { query, auth: false });
   },
 
   /** GET /catalog/suggestions */
   getSearchSuggestions(query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
-    return apiRequest<{ query: string; listingId: number; title: string; subtitle: string }[]>(
+    return apiRequest<{ query: string; listingId: number; title: string; subtitle: string; imageUrl?: string | null }[]>(
       '/catalog/suggestions',
-      { query },
+      { query, auth: false },
     );
   },
 };

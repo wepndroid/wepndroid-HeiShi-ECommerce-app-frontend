@@ -7,13 +7,20 @@ import { loadLocalHistory, recordLocalView } from '../data/history';
 export async function bootstrapFavorites(isLoggedIn: boolean): Promise<Set<number>> {
   if (isLoggedIn) {
     try {
-      const result = await favoritesApi.list({ pageSize: 100 });
-      const ids = new Set(result.items.map((item) => item.listingId));
+      const ids = new Set<number>();
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && page <= 25) {
+        const result = await favoritesApi.list({ page, pageSize: 100 });
+        result.items.forEach((item) => ids.add(item.listingId));
+        hasMore = result.hasMore;
+        page += 1;
+      }
       await saveLocalFavorites(ids);
       return ids;
     } catch {
       if (API_USE_MOCK_FALLBACK) return loadLocalFavorites();
-      return new Set();
+      return loadLocalFavorites();
     }
   }
   return loadLocalFavorites();
@@ -55,28 +62,51 @@ export async function recordListingView(listingId: number, isLoggedIn: boolean) 
 }
 
 export async function fetchHistoryListingIds(isLoggedIn: boolean): Promise<number[]> {
+  const localIds = await loadLocalHistory();
   if (isLoggedIn) {
     try {
-      const result = await historyApi.listViews({ pageSize: 50 });
-      return result.items.map((item) => item.listingId);
+      const ids: number[] = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && page <= 25) {
+        const result = await historyApi.listViews({ page, pageSize: 50 });
+        ids.push(...result.items.map((item) => item.listingId));
+        hasMore = result.hasMore;
+        page += 1;
+      }
+      const seen = new Set(ids);
+      for (const id of localIds) {
+        if (!seen.has(id)) {
+          ids.push(id);
+          seen.add(id);
+        }
+      }
+      return ids;
     } catch {
-      if (API_USE_MOCK_FALLBACK) return loadLocalHistory();
-      return [];
+      if (API_USE_MOCK_FALLBACK) return localIds;
+      return localIds.length ? localIds : [];
     }
   }
-  return loadLocalHistory();
+  return localIds;
 }
 
 export async function bootstrapFollows(isLoggedIn: boolean): Promise<Set<string>> {
   if (isLoggedIn) {
     try {
-      const result = await followsApi.list({ pageSize: 100 });
-      const ids = new Set(result.items.map((item) => resolveSellerUserId(item.userId)));
+      const ids = new Set<string>();
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && page <= 25) {
+        const result = await followsApi.list({ page, pageSize: 100 });
+        result.items.forEach((item) => ids.add(resolveSellerUserId(item.userId)));
+        hasMore = result.hasMore;
+        page += 1;
+      }
       await saveLocalFollows(ids);
       return ids;
     } catch {
       if (API_USE_MOCK_FALLBACK) return loadLocalFollows();
-      return new Set();
+      return loadLocalFollows();
     }
   }
   return loadLocalFollows();

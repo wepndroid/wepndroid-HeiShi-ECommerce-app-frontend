@@ -1,13 +1,28 @@
 import React from 'react';
 import { Image, ImageStyle, Pressable, StyleSheet, StyleProp, View, ViewStyle } from 'react-native';
 import { Text } from './typography';
-import { colors, fonts } from '../theme';
+import { AppIcon } from './AppIcon';
+import { colors, fonts, detailPageTokens } from '../theme';
 import { resolveSellerAvatarUrl } from '../utils/sellerAvatar';
+import { useSellerAvatarFallback } from '../hooks/useCurrentUserAvatar';
+
+const avatarFrameStyle = (size: number): ImageStyle => ({
+  width: size,
+  height: size,
+  borderRadius: size / 2,
+  backgroundColor: colors.surfaceMuted,
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: colors.line,
+  overflow: 'hidden',
+  flexShrink: 0,
+});
 
 export function SellerAvatar({
   sellerKey,
   seller,
   avatarUrl,
+  sellerUserId,
+  listingId,
   size = 20,
   style,
   onPress,
@@ -15,32 +30,40 @@ export function SellerAvatar({
   sellerKey: string;
   seller: string;
   avatarUrl?: string;
+  sellerUserId?: string;
+  listingId?: number;
   size?: number;
   style?: StyleProp<ImageStyle>;
   onPress?: () => void;
 }) {
-  const image = (
+  const selfAvatar = useSellerAvatarFallback(sellerUserId, sellerKey, seller);
+  const resolvedUri = resolveSellerAvatarUrl(
+    sellerKey,
+    seller,
+    avatarUrl,
+    size,
+    listingId,
+    selfAvatar,
+  );
+  const frameStyle = [avatarFrameStyle(size), style];
+
+  const avatar = resolvedUri ? (
     <Image
-      source={{ uri: resolveSellerAvatarUrl(sellerKey, seller, avatarUrl, size) }}
-      style={[
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: colors.brand3,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.line,
-          overflow: 'hidden',
-          flexShrink: 0,
-        },
-        style,
-      ]}
+      key={resolvedUri}
+      source={{ uri: resolvedUri }}
+      style={frameStyle}
       resizeMode="cover"
       accessibilityLabel={seller}
     />
+  ) : (
+    <View style={frameStyle} accessibilityLabel={seller}>
+      <View style={styles.placeholderInner}>
+        <AppIcon name="person" size={Math.max(12, Math.round(size * 0.45))} color={colors.sub} />
+      </View>
+    </View>
   );
 
-  if (!onPress) return image;
+  if (!onPress) return avatar;
 
   return (
     <Pressable
@@ -49,7 +72,7 @@ export function SellerAvatar({
       accessibilityRole="button"
       accessibilityLabel={seller}
     >
-      {image}
+      {avatar}
     </Pressable>
   );
 }
@@ -59,6 +82,8 @@ export function SellerAuthorRow({
   sellerKey,
   seller,
   avatarUrl,
+  sellerUserId,
+  listingId,
   subtitle,
   action,
   style,
@@ -67,6 +92,8 @@ export function SellerAuthorRow({
   sellerKey: string;
   seller: string;
   avatarUrl?: string;
+  sellerUserId?: string;
+  listingId?: number;
   subtitle?: string;
   action?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -78,6 +105,8 @@ export function SellerAuthorRow({
         sellerKey={sellerKey}
         seller={seller}
         avatarUrl={avatarUrl}
+        sellerUserId={sellerUserId}
+        listingId={listingId}
         size={46}
       />
       <View style={styles.authorCopy}>
@@ -108,6 +137,11 @@ export function SellerAuthorRow({
 }
 
 const styles = StyleSheet.create({
+  placeholderInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -125,14 +159,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   authorName: {
-    fontSize: 14,
+    fontSize: detailPageTokens.authorNameSize,
     fontWeight: fonts.weights.bold,
     color: colors.text,
   },
   authorSub: {
     marginTop: 2,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: detailPageTokens.authorSubSize,
+    lineHeight: 15,
     color: colors.sub,
   },
 });

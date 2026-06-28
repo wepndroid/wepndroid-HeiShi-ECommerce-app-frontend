@@ -155,6 +155,28 @@ export async function deleteLocalAddress(id: string): Promise<void> {
   await writeJson(ADDRESSES_KEY, next.length ? next : defaultAddresses());
 }
 
+export async function updateLocalAddress(
+  id: string,
+  patch: Partial<Omit<AddressDto, 'id'>>,
+): Promise<AddressDto> {
+  const rows = await loadLocalAddresses();
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) throw new Error('address_not_found');
+  const nextRows = rows.map((row) => {
+    if (row.id === id) {
+      return { ...row, ...patch, id: row.id };
+    }
+    if (patch.isDefault) {
+      return { ...row, isDefault: false };
+    }
+    return row;
+  });
+  await writeJson(ADDRESSES_KEY, nextRows);
+  const updated = nextRows.find((row) => row.id === id);
+  if (!updated) throw new Error('address_not_found');
+  return updated;
+}
+
 export async function loadLocalVerification(isLoggedIn: boolean) {
   if (!isLoggedIn) {
     return {

@@ -5,15 +5,18 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { ALL_AREAS, formatAreaLabel } from '../data/region';
 import { feedTitleKey, homeFilterForCategory } from '../hooks/useProductFilters';
-import { AppIcon } from '../components/AppIcon';
 import {
-  IconButton,
-  Logo,
+  MarketScreenHeader,
+  useInboxUnreadCount,
+} from '../components/MarketScreenHeader';
+import {
   ScreenScroll,
   SearchBar,
   SectionHead,
 } from '../components/UI';
 import { Banner, ProductFeed } from '../components/ProductUI';
+import { LoadingState, PillButton } from '../components/UI';
+import { homePromoBannerForLanguage } from '../assets/homeBanner';
 import {
   activeHomeCategoryKey,
   HOME_CATEGORY_SHORTCUTS,
@@ -21,7 +24,7 @@ import {
 } from '../components/HomeCategoryShortcutRow';
 import { HomeTabKey, ProductCatKey } from '../types';
 import { usePhotoSearch } from '../hooks/usePhotoSearch';
-import { colors, fonts, amazingStylePill } from '../theme';
+import { colors, fonts, homeScreenTokens } from '../theme';
 
 const HOME_TABS: HomeTabKey[] = [
   'recommended',
@@ -34,12 +37,16 @@ const HOME_TABS: HomeTabKey[] = [
 const CATS = HOME_CATEGORY_SHORTCUTS;
 
 export function HomeScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     nav,
+    requireAuthNav,
     openSearch,
     openDetail,
     homeFeed,
+    homeFeedLoading,
+    homeFeedError,
+    reloadHomeFeed,
     homeTabKey,
     setHomeTabKey,
     setHomeCategory,
@@ -48,7 +55,10 @@ export function HomeScreen() {
     regionLabelText,
     openRegionSheet,
     toast,
+    isLoggedIn,
+    authReady,
   } = useApp();
+  const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
   const searchByPhoto = usePhotoSearch();
 
   const titleKey = feedTitleKey(homeTabKey, region);
@@ -70,32 +80,13 @@ export function HomeScreen() {
 
   return (
     <ScreenScroll screenId="home">
-      <View style={styles.top}>
-        <View style={styles.topRow}>
-          <View style={styles.logoSlot}>
-            <Logo />
-          </View>
-          <Pressable style={styles.city} onPress={openRegionSheet}>
-            <AppIcon name="mapPin" size={14} color={colors.sub} />
-            <Text style={styles.cityText} numberOfLines={1}>
-              {regionLabelText} ▾
-            </Text>
-          </Pressable>
-          <View style={styles.topRight}>
-            <IconButton
-              icon="messages"
-              label={t('common.a11y.messages')}
-              dot
-              onPress={() => nav('messages')}
-            />
-            <IconButton
-              icon="settings"
-              label={t('common.a11y.settings')}
-              onPress={() => nav('settings')}
-            />
-          </View>
-        </View>
-      </View>
+      <MarketScreenHeader
+        regionLabelText={regionLabelText}
+        unreadCount={inboxUnreadCount}
+        onRegionPress={openRegionSheet}
+        onMessagesPress={() => requireAuthNav('messages')}
+        onSettingsPress={() => requireAuthNav('settings')}
+      />
 
       <SearchBar
         placeholder={t('home.searchPlaceholder')}
@@ -128,68 +119,45 @@ export function HomeScreen() {
         artwork
         title={t('home.bannerTitle')}
         subtitle={t('home.bannerSubtitle')}
+        artworkSource={homePromoBannerForLanguage(i18n.language)}
       />
 
       <SectionHead
         title={feedTitle}
         action={t('home.moreRecommend')}
         onAction={openSearch}
+        compact
       />
-      <ProductFeed
-        data={homeFeed}
-        onPress={openDetail}
-        emptyText={t('home.emptyFeed')}
-      />
+      {homeFeedLoading && homeFeed.length === 0 ? (
+        <LoadingState text={t('home.loadingFeed')} />
+      ) : (
+        <>
+          <ProductFeed
+            data={homeFeed}
+            onPress={openDetail}
+            emptyText={homeFeedError ? t('home.feedError') : t('home.emptyFeed')}
+          />
+          {homeFeedError ? (
+            <PillButton label={t('common.retry')} variant="light" full onPress={reloadHomeFeed} />
+          ) : null}
+        </>
+      )}
     </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  top: {
-    marginTop: 2,
-    marginBottom: 12,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  logoSlot: {
-    flexShrink: 0,
-  },
-  topRight: {
-    flexDirection: 'row',
-    gap: 8,
-    flexShrink: 0,
-  },
-  city: {
-    ...amazingStylePill,
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  cityText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: fonts.weights.medium,
-    color: colors.text,
-  },
   tabs: {
     paddingVertical: 2,
     marginBottom: 0,
   },
   tabItem: {
-    marginRight: 16,
+    marginRight: 14,
     paddingBottom: 4,
     alignItems: 'center',
   },
   tabText: {
-    fontSize: 14,
+    fontSize: homeScreenTokens.tabSize,
     color: colors.muted,
     fontWeight: fonts.weights.medium,
   },

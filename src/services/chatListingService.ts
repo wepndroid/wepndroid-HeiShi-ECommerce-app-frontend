@@ -27,6 +27,39 @@ export function chatListingToProduct(ctx: ChatListingContext): Product {
   };
 }
 
+export function buildChatListingFromId(
+  listingId: number,
+  products: Product[],
+  titleOverride?: string,
+): ChatListingContext | null {
+  const product = products.find((p) => p.id === listingId) ?? resolveDetailProduct(listingId);
+  if (!product) return null;
+  return fromProduct(product, titleOverride);
+}
+
+export function chatListingFromConversation(
+  conversation: UiConversation,
+  products: Product[],
+): ChatListingContext | null {
+  const listingId = conversation.listingId;
+  if (listingId == null) return null;
+
+  const fromCatalog = buildChatListingFromId(listingId, products, conversation.listingTitle);
+  if (fromCatalog) return fromCatalog;
+
+  if (conversation.listingTitle) {
+    return {
+      listingId,
+      title: conversation.listingTitle,
+      imageUrl: conversation.listingImageUrl ?? '',
+      price: conversation.listingPrice ?? 0,
+      location: conversation.listingLocation ?? '',
+    };
+  }
+
+  return null;
+}
+
 export async function resolveChatListing(
   conversation: UiConversation,
   params: { listingId?: number; listingTitle?: string },
@@ -60,5 +93,5 @@ export async function resolveChatListing(
     return fromProduct(fetched, params.listingTitle ?? conversation.listingTitle);
   }
 
-  return null;
+  return buildChatListingFromId(listingId, products, params.listingTitle ?? conversation.listingTitle);
 }

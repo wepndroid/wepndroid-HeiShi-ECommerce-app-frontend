@@ -1,4 +1,5 @@
 import { productImageUrls } from './productImages';
+import { normalizeMediaUrls } from '../utils/mediaUrls';
 
 export type BundleItemStatus = 'available' | 'onHold' | 'sold';
 
@@ -21,6 +22,8 @@ export interface BundleMeta {
   allowSeparateSale: boolean;
   pickupWindow?: string;
   totalItems: number;
+  /** Cover/preview photos from the bundle publish form (not item photos). */
+  coverImageUrls?: string[];
   items: BundleLineItem[];
 }
 
@@ -94,12 +97,13 @@ export function sumBundleShares(items: Pick<BundleLineItem, 'sharePrice'>[]): nu
 
 export function distributeEvenShares(items: BundleLineItem[], fullPrice: number): BundleLineItem[] {
   if (!items.length) return items;
-  const base = Math.floor((fullPrice / items.length) * 100) / 100;
-  let remainder = Math.round((fullPrice - base * items.length) * 100) / 100;
-  return items.map((item, index) => {
-    const extra = remainder >= 0.01 ? 0.01 : 0;
-    if (extra) remainder = Math.round((remainder - extra) * 100) / 100;
-    return { ...item, sharePrice: Math.round((base + (index === 0 ? extra : 0)) * 100) / 100 };
+  const totalCents = Math.round(fullPrice * 100);
+  const baseCents = Math.floor(totalCents / items.length);
+  let extra = totalCents - baseCents * items.length;
+  return items.map((item) => {
+    const cents = baseCents + (extra > 0 ? 1 : 0);
+    if (extra > 0) extra -= 1;
+    return { ...item, sharePrice: cents / 100 };
   });
 }
 
@@ -110,6 +114,7 @@ export function buildBundleMeta(
     pickupDeadline?: string;
     allowSeparateSale?: boolean;
     pickupWindow?: string;
+    coverImageUrls?: string[];
   } = {},
 ): BundleMeta {
   return {
@@ -118,43 +123,98 @@ export function buildBundleMeta(
     allowSeparateSale: options.allowSeparateSale ?? true,
     pickupWindow: options.pickupWindow,
     totalItems: items.length,
+    coverImageUrls: options.coverImageUrls?.filter(Boolean),
     items,
   };
 }
 
-export function parseBundleMeta(raw: unknown): BundleMeta | null {
+/** Infer cover/preview URLs for legacy bundles that merged cover + item photos in listing.images. */
+export function inferBundleCoverImageUrls(
+  listingUrls: string[],
+  items: BundleLineItem[],
+): string[] {
+  const listing = normalizeMediaUrls(listingUrls);
+  if (!listing.length) return [];
+
+  const itemPhotos = items.flatMap((item) => normalizeMediaUrls(bundleItemImageUrls(item)));
+  if (!itemPhotos.length) return listing;
+
+  const itemSet = new Set(itemPhotos);
+  const exclusive = listing.filter((url) => !itemSet.has(url));
+  if (exclusive.length === listing.length) return listing;
+
+  const naiveCoverLen = Math.max(listing.length - itemPhotos.length, 1);
+  const covers = listing.slice(0, naiveCoverLen);
+  if (
+    covers.length < listing.length &&
+    itemSet.has(listing[covers.length]) &&
+    !covers.includes(listing[covers.length])
+  ) {
+    covers.push(listing[covers.length]);
+  }
+  if (covers.length) return covers;
+  return exclusive.length ? exclusive : [listing[0]];
+}
+
+export function parseBundleMeta(raw: unknown, listingUrls?: string[]): BundleMeta | null {
   if (!raw || typeof raw !== 'object') return null;
   const data = raw as Partial<BundleMeta>;
-  if (!Array.isArray(data.items) || typeof data.fullPrice !== 'number') return null;
+  if (!Array.isArray(data.items)) return null;
+  const fullPrice = Number(data.fullPrice);
+  if (!Number.isFinite(fullPrice)) return null;
   const items = data.items
     .filter((item) => item && typeof item === 'object')
-    .map((item) => {
+    .map((item, index) => {
       const row = item as Partial<BundleLineItem>;
-      const imageUrls = Array.isArray(row.imageUrls)
-        ? row.imageUrls.filter((url): url is string => typeof url === 'string' && Boolean(url))
-        : typeof row.imageUrl === 'string' && row.imageUrl
-          ? [row.imageUrl]
-          : [];
+      const imageUrls = normalizeMediaUrls(
+        Array.isArray(row.imageUrls)
+          ? row.imageUrls.filter((url): url is string => typeof url === 'string' && Boolean(url))
+          : typeof row.imageUrl === 'string' && row.imageUrl
+            ? [row.imageUrl]
+            : [],
+      );
+      const title = String(row.title ?? '').trim();
       return {
         id: String(row.id ?? createBundleLineItem().id),
-        title: String(row.title ?? '').trim(),
+        title,
         sharePrice: Number(row.sharePrice) || 0,
         separatePrice: row.separatePrice != null ? Number(row.separatePrice) : undefined,
         imageUrls,
         imageUrl: imageUrls[0],
         status: (row.status as BundleItemStatus) ?? 'available',
       };
-    })
-    .filter((item) => item.title);
-  if (!items.length) return null;
+    });
+  let coverImageUrls = normalizeMediaUrls(
+    Array.isArray(data.coverImageUrls)
+      ? data.coverImageUrls.filter((url): url is string => typeof url === 'string' && Boolean(url))
+      : [],
+  );
+  if (!coverImageUrls.length && listingUrls?.length) {
+    coverImageUrls = items.length
+      ? inferBundleCoverImageUrls(listingUrls, items)
+      : normalizeMediaUrls(listingUrls);
+  }
   return {
-    fullPrice: data.fullPrice,
+    fullPrice,
     pickupDeadline: data.pickupDeadline,
     allowSeparateSale: data.allowSeparateSale ?? true,
     pickupWindow: data.pickupWindow,
     totalItems: data.totalItems ?? items.length,
+    coverImageUrls,
     items,
   };
+}
+
+export function isBundleListingProduct(product: {
+  listingType?: string;
+  tagKey?: string;
+  bundleMeta?: BundleMeta | null;
+}): boolean {
+  return (
+    product.listingType === 'bundle' ||
+    product.tagKey === 'bundleSet' ||
+    (product.bundleMeta?.items?.length ?? 0) > 0
+  );
 }
 
 export function demoBundleMeta(): BundleMeta {
@@ -175,12 +235,15 @@ export function demoBundleMeta(): BundleMeta {
       status: item.status,
     })),
     BUNDLE_FULL_PRICE,
-    { allowSeparateSale: true, pickupDeadline: '2026-06-28' },
+    { allowSeparateSale: true, pickupDeadline: '2026-06-28', coverImageUrls: [productImageUrls[5]] },
   );
 }
 
 export function bundleMetaToLineItems(meta: BundleMeta): BundleLineItem[] {
-  return meta.items.map((item) => ({ ...item }));
+  return meta.items.map((item) => ({
+    ...item,
+    ...patchBundleItemImages(normalizeMediaUrls(bundleItemImageUrls(item))),
+  }));
 }
 
 export function getSoldBundleShareFromMeta(meta: BundleMeta): number {
@@ -189,8 +252,18 @@ export function getSoldBundleShareFromMeta(meta: BundleMeta): number {
     .reduce((sum, item) => sum + item.sharePrice, 0);
 }
 
+export function getReservedBundleShareFromMeta(meta: BundleMeta): number {
+  return meta.items
+    .filter((item) => item.status === 'sold' || item.status === 'onHold')
+    .reduce((sum, item) => sum + item.sharePrice, 0);
+}
+
 export function getRemainingBundlePriceFromMeta(meta: BundleMeta): number {
-  return meta.fullPrice - getSoldBundleShareFromMeta(meta);
+  return meta.fullPrice - getReservedBundleShareFromMeta(meta);
+}
+
+export function bundleHasOnHoldItemsFromMeta(meta: BundleMeta): boolean {
+  return meta.items.some((item) => item.status === 'onHold');
 }
 
 export function bundleHasSoldItemsFromMeta(meta: BundleMeta): boolean {

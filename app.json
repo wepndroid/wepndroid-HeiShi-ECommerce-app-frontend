@@ -16,6 +16,14 @@
     "android": {
       "package": "com.heishi.mvp",
       "versionCode": 1,
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VISUAL_USER_SELECTED",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,10 +36,24 @@
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
     },
+    "extra": {
+      "eas": {
+        "projectId": "8f4c2b1a-3d5e-4f6a-9b0c-1d2e3f4a5b6c"
+      }
+    },
     "plugins": [
       "expo-localization",
       "expo-router",
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#F5C518",
+          "defaultChannel": "chat-messages",
+          "sounds": []
+        }
+      ],
       [
         "expo-image-picker",
         {

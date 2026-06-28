@@ -150,9 +150,85 @@ function Test-PortListening {
   return [bool](netstat -ano | Select-String ":$Port\s.*LISTENING")
 }
 
+function Test-ApiHealth {
+  param([int]$Port)
+  try {
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/health" -UseBasicParsing -TimeoutSec 2
+    return $response.StatusCode -eq 200
+  } catch {
+    return $false
+  }
+}
+
+function Get-EnvApiPort {
+  $preferred = 8000
+  $url = $env:EXPO_PUBLIC_API_URL
+  if (-not $url) {
+    $envFile = Join-Path $ProjectRoot ".env"
+    if (Test-Path $envFile) {
+      $line = Get-Content $envFile | Where-Object { $_ -match '^EXPO_PUBLIC_API_URL=' } | Select-Object -First 1
+      if ($line -match '=(.+)$') { $url = $Matches[1].Trim() }
+    }
+  }
+  if ($url -match ':(\d+)/') {
+    return [int]$Matches[1]
+  }
+  return $preferred
+}
+
+function Resolve-DevApiPort {
+  param([int]$Preferred = (Get-EnvApiPort))
+  if (Test-ApiHealth $Preferred) { return $Preferred }
+
+  if (Test-PortListening $Preferred) {
+    Write-Host "Port $Preferred is in use but /health failed (stale process). Trying 8001..."
+    if (Test-ApiHealth 8001) { return 8001 }
+    return 8001
+  }
+
+  if (Test-ApiHealth 8001) { return 8001 }
+  if ($Preferred -ne 8000 -and (Test-ApiHealth 8000)) { return 8000 }
+  return $Preferred
+}
+
+function Get-LdPlayerForwardPorts {
+  param([int]$MetroPort = 8081)
+  Resolve-DevApiPort | Out-Null
+  return @($MetroPort, 8082, 8000, 8001) | Sort-Object -Unique
+}
+
+function Ensure-DevBackend {
+  param([int]$ApiPort = (Resolve-DevApiPort))
+  if (Test-ApiHealth $ApiPort) { return $ApiPort }
+
+  $BackendRoot = Join-Path (Split-Path $ProjectRoot -Parent) "Backend"
+  Write-Host "Backend not detected on port $ApiPort. Starting FastAPI..."
+  $python = Join-Path $BackendRoot ".venv\Scripts\python.exe"
+  if (-not (Test-Path $python)) {
+    $python = "python"
+  }
+  Start-Process powershell -ArgumentList @(
+    "-NoExit",
+    "-Command",
+    "cd '$BackendRoot'; & '$python' -m uvicorn app.main:app --reload --host 0.0.0.0 --port $ApiPort"
+  ) | Out-Null
+  Start-Sleep -Seconds 4
+  if (-not (Test-ApiHealth $ApiPort)) {
+    throw "Backend still unreachable at http://127.0.0.1:$ApiPort/health. Close stale terminals on port 8000 and retry."
+  }
+  return $ApiPort
+}
+
+function Set-DevApiEnv {
+  param([int]$ApiPort = (Resolve-DevApiPort))
+  $env:EXPO_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort/v1"
+  $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "false"
+  return $ApiPort
+}
+
 function Set-MetroPortForward {
   param(
-    [int[]]$Ports = @(8081, 8082, 8000),
+    [int[]]$Ports = (Get-LdPlayerForwardPorts),
     [switch]$RequireMetro
   )
   Remove-DuplicateLdPlayerAdbEndpoints
@@ -181,7 +257,7 @@ function Repair-LdPlayerDevConnection {
     [switch]$RestartApp
   )
   Connect-LdPlayer -Port $Port
-  Set-MetroPortForward -Ports @($MetroPort, 8082, 8000)
+  Set-MetroPortForward -Ports (Get-LdPlayerForwardPorts -MetroPort $MetroPort)
   $metroOk = Test-MetroFromDevice -MetroPort $MetroPort -WarnOnly
   if ($RestartApp -and $metroOk) {
     Restart-LdPlayerApp

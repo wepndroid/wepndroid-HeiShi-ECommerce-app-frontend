@@ -19,12 +19,18 @@ export function useOrders(
 ) {
   const [orders, setOrders] = React.useState<UiOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
 
   const refresh = React.useCallback(() => {
     if (!authReady) return;
     setLoading(true);
+    setError(false);
     listOrders(filter, isLoggedIn, products, resolveTitle, resolveSeller)
       .then(setOrders)
+      .catch(() => {
+        setOrders([]);
+        setError(true);
+      })
       .finally(() => setLoading(false));
   }, [authReady, filter, isLoggedIn, products, resolveTitle, resolveSeller, i18n.language]);
 
@@ -43,15 +49,13 @@ export function useOrders(
       const action = orderActionForStatus(order.status);
       if (!action) return order.status;
       const nextStatus = await performOrderAction(order, action, isLoggedIn);
-      setOrders((prev) =>
-        prev.map((row) => (row.id === order.id ? { ...row, status: nextStatus } : row)),
-      );
+      refresh();
       return nextStatus;
     },
-    [isLoggedIn],
+    [isLoggedIn, refresh],
   );
 
-  return { orders, loading, refresh, runAction };
+  return { orders, loading, error, refresh, runAction };
 }
 
 export function actionForStatus(status: UiOrder['status']): OrderAction | null {

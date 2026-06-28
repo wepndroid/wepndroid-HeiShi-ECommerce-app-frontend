@@ -73,3 +73,15 @@ export function serviceMatchesCategory(service: LocalService, catKey: ProductCat
   if (catKey === 'beauty') return service.icon === 'cameraService';
   return false;
 }
+
+export function resolveServiceIcon(serviceTypeKey: string): LocalService['icon'] {
+  if (serviceTypeKey === 'cleaning') return 'broom';
+  if (serviceTypeKey === 'photography') return 'cameraService';
+  return 'truck';
+}
+
+export function serviceTypeKeyFromIcon(icon?: string): string {
+  if (icon === 'broom') return 'cleaning';
+  if (icon === 'cameraService') return 'photography';
+  return 'moving';
+}

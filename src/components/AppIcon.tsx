@@ -68,8 +68,11 @@ export type AppIconName =
   | 'store'
   | 'toolbox'
   | 'check'
+  | 'checkmark'
+  | 'checkmarkDone'
   | 'chevronBack'
   | 'chevronForward'
+  | 'close'
   | 'trash'
   | 'home'
   | 'compass'
@@ -155,8 +158,11 @@ const ICONS: Record<AppIconName, IconDef> = {
   store: { set: 'ion', name: 'storefront-outline' },
   toolbox: { set: 'ion', name: 'construct-outline' },
   check: { set: 'ion', name: 'checkmark-circle' },
+  checkmark: { set: 'ion', name: 'checkmark' },
+  checkmarkDone: { set: 'ion', name: 'checkmark-done' },
   chevronBack: { set: 'ion', name: 'chevron-back' },
   chevronForward: { set: 'ion', name: 'chevron-forward' },
+  close: { set: 'ion', name: 'close' },
   trash: { set: 'ion', name: 'trash-outline' },
   home: { set: 'ion', name: 'home-outline' },
   compass: { set: 'ion', name: 'compass-outline' },

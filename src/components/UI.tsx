@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NO_NAV_SCREENS } from '../data/productsNav';
 import { AmazingSurface } from './AmazingSurface';
 import { MarqueePlaceholder } from './MarqueeText';
-import { colors, fonts, formControls, iconTokens, emptyStateTokens, loadingStateTokens, badgeTokens, radius, searchBarSurface, spacing, typography } from '../theme';
+import { colors, fonts, formControls, iconTokens, emptyStateTokens, loadingStateTokens, badgeTokens, radius, searchBarSurface, searchBarTokens, spacing, typography, detailPageTokens, homeScreenTokens, profileScreenTokens, sectionHeadTokens, navBarShadow } from '../theme';
 import { useApp } from '../context/AppContext';
 import { ScreenId, TabScreenId } from '../types';
 import { AppIcon, AppIconName } from './AppIcon';
@@ -52,7 +52,7 @@ export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
             <Pressable key={item.id} style={styles.navItemPublish} onPress={() => requireAuthNav(item.id)}>
               <View style={styles.publishCircle}>
                 <View style={styles.publishCircleIconWrap} pointerEvents="none">
-                  <AppIcon name={item.icon} size={20} color={colors.phoneBorder} />
+                  <AppIcon name={item.icon} size={18} color={colors.phoneBorder} />
                 </View>
                 <Text style={styles.publishCircleLabel} numberOfLines={1}>
                   {t(item.labelKey)}
@@ -62,7 +62,11 @@ export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
           );
         }
         return (
-          <Pressable key={item.id} style={styles.navItem} onPress={() => nav(item.id)}>
+          <Pressable
+            key={item.id}
+            style={styles.navItem}
+            onPress={() => (item.id === 'messages' ? requireAuthNav('messages') : nav(item.id))}
+          >
             <AppIcon name={item.icon} size={22} color={active ? colors.brand2 : colors.text} />
             <Text style={[styles.navLabel, active && styles.navLabelActive]} numberOfLines={1}>
               {t(item.labelKey)}
@@ -128,23 +132,32 @@ export function ScreenScroll({
         paddingBottom: contentBottomInset > 0 ? contentBottomInset : baseBottom,
       }}
       showsVerticalScrollIndicator={false}
+      removeClippedSubviews={false}
     >
       {children}
     </ScrollView>
   );
 }
 
-export function Logo({ size = 30 }: { size?: number }) {
+export function Logo({
+  width = homeScreenTokens.logoWidth,
+  size,
+}: {
+  /** Logo width in px (default header size). */
+  width?: number;
+  /** Optional fixed height (e.g. login/about); width derived from aspect ratio. */
+  size?: number;
+}) {
   const { i18n } = useTranslation();
   const isZh = i18n.language.startsWith('zh');
-  const height = size;
-  const width = height * LOGO_ASPECT;
+  const logoHeight = size ?? width / LOGO_ASPECT;
+  const logoWidth = size != null ? size * LOGO_ASPECT : width;
 
   return (
     <View style={styles.logoWrap}>
       <Image
         source={isZh ? LOGO_ZH : LOGO_EN}
-        style={{ width, height }}
+        style={{ width: logoWidth, height: logoHeight }}
         resizeMode="contain"
         accessibilityRole="image"
         accessibilityLabel={isZh ? '嘿市' : 'HeyMarket'}
@@ -158,14 +171,20 @@ export function IconButton({
   label,
   onPress,
   dot,
+  badgeCount,
   active,
 }: {
   icon?: AppIconName;
   label?: string;
   onPress?: () => void;
   dot?: boolean;
+  badgeCount?: number;
   active?: boolean;
 }) {
+  const showBadge = badgeCount != null && badgeCount > 0;
+  const badgeLabel =
+    badgeCount != null && badgeCount > 99 ? '99+' : String(badgeCount ?? '');
+
   return (
     <Pressable
       style={[styles.iconbtn, active && styles.iconbtnActive]}
@@ -177,7 +196,15 @@ export function IconButton({
       ) : (
         <Text style={[styles.iconbtnText, active && styles.iconbtnTextActive]}>{label}</Text>
       )}
-      {dot ? <View style={styles.dot} /> : null}
+      {showBadge ? (
+        <View style={styles.iconBadge}>
+          <Text style={styles.iconBadgeText} numberOfLines={1}>
+            {badgeLabel}
+          </Text>
+        </View>
+      ) : dot ? (
+        <View style={styles.dot} />
+      ) : null}
     </Pressable>
   );
 }
@@ -196,16 +223,42 @@ export function TitleBar({
   center,
   left,
   right,
+  compact,
 }: {
   title?: string;
-  center?: string;
+  center?: React.ReactNode;
   left?: React.ReactNode;
   right?: React.ReactNode;
+  /** Smaller centered title (e.g. publish hub). */
+  compact?: boolean;
 }) {
+  if (center != null) {
+    return (
+      <View style={styles.titlebar}>
+        <View style={styles.titlebarSlot}>{left ?? <View style={styles.titlebarSlotSpacer} />}</View>
+        <View style={styles.titlebarCenterWrap}>
+          {typeof center === 'string' ? (
+            <Text
+              style={[styles.titlebarCenter, compact && styles.titlebarCenterCompact]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {center}
+            </Text>
+          ) : (
+            center
+          )}
+        </View>
+        <View style={[styles.titlebarSlot, styles.titlebarSlotRight]}>
+          {right ?? <View style={styles.titlebarSlotSpacer} />}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.titlebar}>
       {left ?? (title ? <Text style={styles.titlebarH1}>{title}</Text> : <BackButton />)}
-      {center ? <Text style={styles.titlebarCenter}>{center}</Text> : null}
       {right ?? (title ? null : <View style={{ width: 38 }} />)}
     </View>
   );
@@ -290,23 +343,47 @@ export function SectionHead({
   action,
   subtitle,
   onAction,
+  compact,
+  plain,
+  connectTop,
 }: {
   title: string;
   action?: string;
   subtitle?: string;
   onAction?: () => void;
+  compact?: boolean;
+  /** Smaller, regular-weight title (e.g. profile section labels). */
+  plain?: boolean;
+  /** Omit top margin when spacing is provided by the block above. */
+  connectTop?: boolean;
 }) {
   return (
-    <View style={[styles.sectionHead, subtitle && styles.sectionHeadStacked]}>
+    <View
+      style={[
+        styles.sectionHead,
+        subtitle && styles.sectionHeadStacked,
+        connectTop && styles.sectionHeadConnectTop,
+      ]}
+    >
       <View style={styles.sectionHeadMain}>
-        <Text style={styles.sectionTitle} numberOfLines={subtitle ? undefined : 1}>
+        <Text
+          style={[
+            styles.sectionTitle,
+            compact && styles.sectionTitleCompact,
+            plain && styles.sectionTitlePlain,
+          ]}
+          numberOfLines={subtitle ? undefined : 1}
+        >
           {title}
         </Text>
         {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
       </View>
       {action ? (
         <Pressable onPress={onAction} style={styles.sectionActionWrap} disabled={!onAction}>
-          <Text style={styles.sectionAction} numberOfLines={onAction ? 1 : 2}>
+          <Text
+            style={[styles.sectionAction, compact && styles.sectionActionCompact]}
+            numberOfLines={onAction ? 1 : 2}
+          >
             {action}
           </Text>
         </Pressable>
@@ -315,10 +392,26 @@ export function SectionHead({
   );
 }
 
-export function Badge({ text, compact }: { text: string; compact?: boolean }) {
+export function Badge({
+  text,
+  compact,
+  fontSize,
+}: {
+  text: string;
+  compact?: boolean;
+  fontSize?: number;
+}) {
   return (
     <View style={[styles.badge, compact && styles.badgeCompact]}>
-      <Text style={[styles.badgeText, compact && styles.badgeTextCompact]}>{text}</Text>
+      <Text
+        style={[
+          styles.badgeText,
+          compact && styles.badgeTextCompact,
+          fontSize != null && { fontSize },
+        ]}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
@@ -327,21 +420,43 @@ export function Notice({
   text,
   action,
   onAction,
+  whiteAction,
+  onPress,
+  chevron,
+  flush,
 }: {
   text: string;
   action?: string;
   onAction?: () => void;
+  /** White pill for action (e.g. messages enable). Default: brand yellow. */
+  whiteAction?: boolean;
+  onPress?: () => void;
+  /** Trailing chevron (v7 chat-safe banner). */
+  chevron?: boolean;
+  /** Remove default bottom margin (stacked layouts). */
+  flush?: boolean;
 }) {
-  return (
-    <View style={styles.notice}>
-      <Text style={[styles.noticeText, styles.noticeTextFlex]}>{text}</Text>
+  const body = (
+    <View style={[styles.notice, flush && styles.noticeFlush]}>
+      <Text style={[styles.noticeText, styles.noticeTextFlex]} numberOfLines={3}>
+        {text}
+      </Text>
       {action ? (
-        <Pressable style={styles.noticeBtn} onPress={onAction}>
-          <Text style={styles.noticeBtnText}>{action}</Text>
+        <Pressable style={[styles.noticeBtn, whiteAction && styles.noticeBtnWhite]} onPress={onAction}>
+          <Text style={[styles.noticeBtnText, whiteAction && styles.noticeBtnTextRegular]}>{action}</Text>
         </Pressable>
       ) : null}
+      {chevron ? <Text style={styles.noticeChevron}>›</Text> : null}
     </View>
   );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button">
+        {body}
+      </Pressable>
+    );
+  }
+  return body;
 }
 
 export function EmptyState({ text }: { text: string }) {
@@ -400,6 +515,7 @@ export function PillButton({
   style,
   full,
   flex,
+  disabled,
 }: {
   label: string;
   icon?: AppIconName;
@@ -408,6 +524,7 @@ export function PillButton({
   style?: ViewStyle;
   full?: boolean;
   flex?: boolean;
+  disabled?: boolean;
 }) {
   const layoutStyle = flex ? styles.pillbtnFlex : undefined;
   const variantStyle =
@@ -446,6 +563,7 @@ export function PillButton({
         style,
       ]}
       onPress={onPress}
+      disabled={disabled}
     >
       {icon ? <AppIcon name={icon} size={18} color={iconColor} /> : null}
       <Text style={textStyle} numberOfLines={1}>
@@ -469,11 +587,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
-    elevation: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    ...navBarShadow,
   },
   bottomRow: {
     flex: 1,
@@ -503,21 +617,21 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.bold,
   },
   publishCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.brand,
-    borderWidth: 4,
+    borderWidth: 3,
     borderColor: colors.paper,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 4,
+    paddingBottom: 3,
     paddingHorizontal: 3,
-    marginTop: -22,
+    marginTop: -18,
     marginBottom: 2,
   },
   publishCircleIconWrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -583,6 +697,24 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.red,
   },
+  iconBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  iconBadgeText: {
+    fontSize: 10,
+    fontWeight: fonts.weights.bold,
+    color: '#FFFFFF',
+    lineHeight: 12,
+  },
   back: {
     width: 34,
     height: 34,
@@ -608,15 +740,36 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   titlebarCenter: {
-    position: 'absolute',
-    left: '50%',
-    transform: [{ translateX: -50 }],
     fontSize: typography.section,
     fontWeight: fonts.weights.bold,
     color: colors.text,
+    textAlign: 'center',
+  },
+  titlebarCenterWrap: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  titlebarSlot: {
+    width: 38,
+    minWidth: 38,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  titlebarSlotRight: {
+    alignItems: 'flex-end',
+  },
+  titlebarSlotSpacer: {
+    width: 34,
+    height: 34,
+  },
+  titlebarCenterCompact: {
+    fontSize: sectionHeadTokens.feedTitleSize,
   },
   search: {
-    height: 36,
+    height: searchBarTokens.height,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -632,17 +785,20 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: formControls.fontSize,
+    fontSize: searchBarTokens.fontSize,
+    lineHeight: searchBarTokens.lineHeight,
     color: colors.text,
   },
   searchInputText: {
-    fontSize: formControls.fontSize,
+    fontSize: searchBarTokens.fontSize,
+    lineHeight: searchBarTokens.lineHeight,
     color: colors.text,
   },
   searchInputField: {
     flex: 1,
     minWidth: 0,
-    fontSize: formControls.fontSize,
+    fontSize: searchBarTokens.fontSize,
+    lineHeight: searchBarTokens.lineHeight,
     color: colors.text,
     padding: 0,
     margin: 0,
@@ -651,13 +807,13 @@ const styles = StyleSheet.create({
   },
   searchPlaceholder: {
     color: colors.searchHint,
-    fontSize: formControls.fontSize,
-    lineHeight: 16,
+    fontSize: searchBarTokens.fontSize,
+    lineHeight: searchBarTokens.lineHeight,
   },
   searchBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: searchBarTokens.btnSize,
+    height: searchBarTokens.btnSize,
+    borderRadius: searchBarTokens.btnSize / 2,
     backgroundColor: colors.phoneBorder,
     alignItems: 'center',
     justifyContent: 'center',
@@ -667,10 +823,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 10,
-    marginBottom: 8,
+    marginTop: sectionHeadTokens.marginTop,
+    marginBottom: sectionHeadTokens.marginBottom,
     marginHorizontal: 0,
     gap: 8,
+  },
+  sectionHeadConnectTop: {
+    marginTop: 0,
   },
   sectionHeadStacked: {
     alignItems: 'flex-start',
@@ -683,6 +842,13 @@ const styles = StyleSheet.create({
     fontSize: typography.section,
     fontWeight: fonts.weights.bold,
     color: colors.text,
+  },
+  sectionTitleCompact: {
+    fontSize: sectionHeadTokens.feedTitleSize,
+  },
+  sectionTitlePlain: {
+    fontSize: profileScreenTokens.sectionTitleSize,
+    fontWeight: '400',
   },
   sectionSubtitle: {
     marginTop: 2,
@@ -701,6 +867,9 @@ const styles = StyleSheet.create({
     fontWeight: fonts.weights.medium,
     textAlign: 'right',
   },
+  sectionActionCompact: {
+    fontSize: sectionHeadTokens.feedActionSize,
+  },
   badge: {
     alignSelf: 'flex-start',
     borderRadius: badgeTokens.radius,
@@ -715,8 +884,8 @@ const styles = StyleSheet.create({
     color: badgeTokens.text,
   },
   badgeCompact: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    paddingHorizontal: 3,
+    paddingVertical: 0,
   },
   badgeTextCompact: {
     fontSize: typography.nav,
@@ -726,7 +895,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   notice: {
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.trustSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.trustBorder,
     borderRadius: radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -735,8 +906,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+  noticeFlush: {
+    marginBottom: 0,
+  },
   noticeText: {
-    color: colors.text,
+    color: colors.trustText,
     fontSize: typography.bodySm,
     fontWeight: fonts.weights.medium,
     lineHeight: 16,
@@ -747,10 +921,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
+  noticeBtnWhite: {
+    backgroundColor: colors.paper,
+  },
   noticeBtnText: {
     fontWeight: fonts.weights.bold,
     fontSize: typography.bodySm,
     color: colors.text,
+  },
+  noticeBtnTextRegular: {
+    fontWeight: '400',
+  },
+  noticeChevron: {
+    flexShrink: 0,
+    fontSize: 16,
+    lineHeight: 16,
+    color: colors.trustText,
+    fontWeight: fonts.weights.bold,
+    paddingLeft: 4,
   },
   emptyState: {
     borderStyle: 'dashed',
@@ -791,7 +979,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radius.sm,
-    backgroundColor: colors.brand3,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },

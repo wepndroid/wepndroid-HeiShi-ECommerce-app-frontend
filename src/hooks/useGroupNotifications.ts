@@ -26,7 +26,9 @@ export function useGroupNotifications(
 
   React.useEffect(() => {
     if (!category || !authReady) return;
-    void markNotificationGroupRead(category, isLoggedIn).then(refresh);
+    void markNotificationGroupRead(category, isLoggedIn)
+      .then(refresh)
+      .catch(() => refresh());
   }, [authReady, category, isLoggedIn, refresh]);
 
   useFocusEffect(

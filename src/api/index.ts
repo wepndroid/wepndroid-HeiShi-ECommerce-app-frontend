@@ -1,4 +1,4 @@
-export { API_BASE_URL, API_USE_MOCK_FALLBACK } from './config';
+export { getApiBaseUrl, resolveApiBaseUrl, API_USE_MOCK_FALLBACK } from './config';
 export { ApiError, apiRequest, clearAuthTokens, setAuthTokens } from './client';
 export * from './types';
 export * from './mappers';

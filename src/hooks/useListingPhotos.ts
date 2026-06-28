@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MAX_LISTING_PHOTOS, pickImagesFromLibrary } from '../services/mediaPicker';
+import { ApiError } from '../api/client';
 import { uploadListingImage } from '../services/listingsService';
 
 export function useListingPhotos(
@@ -14,6 +15,10 @@ export function useListingPhotos(
 
   const addPhotosFromLibrary = useCallback(async () => {
     if (uploading) return;
+    if (!isLoggedIn) {
+      onToast(t('toast.loginRequired'));
+      return;
+    }
     const remaining = maxPhotos - imageUrls.length;
     const replaceSingle = maxPhotos === 1 && imageUrls.length >= 1;
 
@@ -45,6 +50,18 @@ export function useListingPhotos(
     } catch (error) {
       if (error instanceof Error && error.message === 'permission_denied') {
         onToast(t('toast.mediaPermissionDenied'));
+      } else if (error instanceof Error && error.message === 'LISTING_UPLOAD_REQUIRES_AUTH') {
+        onToast(t('toast.loginRequired'));
+      } else if (error instanceof ApiError) {
+        if (error.status === 401) {
+          onToast(t('toast.loginRequired'));
+        } else if (error.code === 'VALIDATION_ERROR' || error.status === 400) {
+          onToast(t('toast.uploadFailed'));
+        } else {
+          onToast(t('toast.uploadFailed'));
+        }
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        onToast(t('toast.uploadFailed'));
       } else {
         onToast(t('toast.uploadFailed'));
       }

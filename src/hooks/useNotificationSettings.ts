@@ -5,8 +5,13 @@ import {
   fetchNotificationSettings,
   patchNotificationSettings,
 } from '../services/settingsService';
+import { notifyInboxRefresh } from '../services/messagesService';
 
-export function useNotificationSettings(isLoggedIn: boolean, authReady: boolean) {
+export function useNotificationSettings(
+  isLoggedIn: boolean,
+  authReady: boolean,
+  onSaveFailed?: () => void,
+) {
   const [settings, setSettings] = React.useState<NotificationSettingsDto | null>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -36,11 +41,13 @@ export function useNotificationSettings(isLoggedIn: boolean, authReady: boolean)
       try {
         const next = await patchNotificationSettings(isLoggedIn, { [key]: nextValue });
         setSettings(next);
+        notifyInboxRefresh();
       } catch {
         setSettings(settings);
+        onSaveFailed?.();
       }
     },
-    [isLoggedIn, settings],
+    [isLoggedIn, onSaveFailed, settings],
   );
 
   return { settings, loading, toggle };
