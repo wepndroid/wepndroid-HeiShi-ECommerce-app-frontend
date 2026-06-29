@@ -6,6 +6,7 @@ import type {
   CreditProfileDto,
   PayoutMethodDto,
   ReviewSummaryDto,
+  ReceivedReviewDto,
   UserProfileUpdateRequest,
 } from '../api/types';
 import type { AuthUser } from './auth';
@@ -67,6 +68,9 @@ const DEFAULT_CREDIT: CreditProfileDto = {
 const DEFAULT_REVIEW: ReviewSummaryDto = {
   score: 4.9,
   pendingCount: 0,
+  receivedCount: 26,
+  buyerScore: 4.8,
+  buyerReceivedCount: 8,
 };
 
 function mockPayoutMethodsLocalized(): PayoutMethodDto[] {
@@ -196,6 +200,45 @@ export function mockCreditProfile(): CreditProfileDto {
 
 export function mockReviewSummary(): ReviewSummaryDto {
   return DEFAULT_REVIEW;
+}
+
+export function mockReceivedReviews(): ReceivedReviewDto[] {
+  return [
+    {
+      id: 'demo-review-1',
+      orderId: 1,
+      rating: 5,
+      comment: i18n.t('reviewDefaults.sampleComment1'),
+      criteria: {
+        quality: 5,
+        communication: 5,
+        trustement: 5,
+      },
+      createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+      listingTitle: i18n.t('reviewDefaults.sampleListing1'),
+      listingImageUrl: '',
+      listingId: 1,
+      reviewerNickname: i18n.t('reviewDefaults.sampleBuyer1'),
+      reviewerRole: 'buyer',
+    },
+    {
+      id: 'demo-review-2',
+      orderId: 2,
+      rating: 4,
+      comment: i18n.t('reviewDefaults.sampleComment2'),
+      criteria: {
+        quality: 4,
+        communication: 5,
+        trustement: 4,
+      },
+      createdAt: new Date(Date.now() - 86400000 * 12).toISOString(),
+      listingTitle: i18n.t('reviewDefaults.sampleListing2'),
+      listingImageUrl: '',
+      listingId: 2,
+      reviewerNickname: i18n.t('reviewDefaults.sampleBuyer2'),
+      reviewerRole: 'buyer',
+    },
+  ];
 }
 
 export function mockPayoutMethods(): PayoutMethodDto[] {

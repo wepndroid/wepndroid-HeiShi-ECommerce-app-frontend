@@ -39,6 +39,7 @@ export type AppIconName =
   | 'broom'
   | 'cameraService'
   | 'star'
+  | 'starFilled'
   | 'ticket'
   | 'mic'
   | 'book'
@@ -129,6 +130,7 @@ const ICONS: Record<AppIconName, IconDef> = {
   broom: { set: 'mci', name: 'broom' },
   cameraService: { set: 'ion', name: 'camera-outline' },
   star: { set: 'ion', name: 'star-outline' },
+  starFilled: { set: 'ion', name: 'star' },
   ticket: { set: 'ion', name: 'ticket-outline' },
   mic: { set: 'ion', name: 'mic-outline' },
   book: { set: 'ion', name: 'book-outline' },

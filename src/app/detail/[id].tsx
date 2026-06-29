@@ -6,7 +6,7 @@ import { EmptyState, LoadingState, PillButton } from '../../components/UI';
 import { DetailScreen } from '../../screens/DetailScreens';
 
 export default function DetailRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, context } = useLocalSearchParams<{ id: string; context?: string | string[] }>();
   const { loadProduct, currentItem } = useApp();
   const { t } = useTranslation();
   const [missing, setMissing] = useState(false);
@@ -20,6 +20,11 @@ export default function DetailRoute() {
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : null;
   }, [id]);
+
+  const orderContext = useMemo(() => {
+    const raw = Array.isArray(context) ? context[0] : context;
+    return raw === 'order';
+  }, [context]);
 
   const runLoad = () => {
     if (productId == null) return;
@@ -68,5 +73,5 @@ export default function DetailRoute() {
     return <LoadingState />;
   }
 
-  return <DetailScreen />;
+  return <DetailScreen orderContext={orderContext} />;
 }

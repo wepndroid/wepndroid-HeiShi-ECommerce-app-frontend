@@ -1006,9 +1006,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   sheetCard: {
-    backgroundColor: colors.paper,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
     maxHeight: '62%',
     paddingTop: 14,
     paddingBottom: 24,

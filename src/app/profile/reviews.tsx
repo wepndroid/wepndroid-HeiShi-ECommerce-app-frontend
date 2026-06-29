@@ -1,1 +1,1 @@
-export { ReviewManageScreen as default } from '../../screens/SettingsScreens';
+export { ReviewManageScreen as default } from '../../screens/ReviewManageScreen';

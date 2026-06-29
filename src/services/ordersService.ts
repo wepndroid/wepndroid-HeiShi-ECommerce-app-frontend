@@ -2,12 +2,14 @@ import { ordersApi } from '../api';
 import { ApiError } from '../api/client';
 import { mapOrderDtoToUiOrder } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
-import type { CreateOrderRequest, OrderDto } from '../api/types';
+import type { CreateOrderRequest, OrderDto, PendingReviewOrderDto } from '../api/types';
+import { fetchPendingReviewOrders } from './userService';
 import {
   applyLocalOrderAction,
   createLocalOrder,
   listLocalOrders,
 } from '../data/ordersLocal';
+import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
 
@@ -353,15 +355,14 @@ export async function cancelOrder(order: UiOrder, isLoggedIn: boolean): Promise<
 
 export async function submitOrderReview(
   order: UiOrder,
-  rating: number,
+  payload: { criteria: ReviewCriteriaDto; comment: string },
   isLoggedIn: boolean,
-  comment?: string,
 ): Promise<OrderStatus> {
   if (isLoggedIn) {
     try {
-      await ordersApi.submitReview(order.id, { rating, comment });
+      await ordersApi.submitReview(order.id, payload);
       invalidateCatalog();
-      return 'completed';
+      return order.status === 'pendingReview' ? 'pendingReview' : 'completed';
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('order_action_failed');
     }
@@ -374,6 +375,10 @@ export async function submitOrderReview(
 export async function fetchOrderReview(orderId: number, isLoggedIn: boolean) {
   if (!isLoggedIn) throw new Error('login_required');
   return ordersApi.getReview(orderId);
+}
+
+export async function listPendingReviewOrders(isLoggedIn: boolean): Promise<PendingReviewOrderDto[]> {
+  return fetchPendingReviewOrders(isLoggedIn);
 }
 
 export function orderActionForStatus(status: OrderStatus): OrderAction | null {

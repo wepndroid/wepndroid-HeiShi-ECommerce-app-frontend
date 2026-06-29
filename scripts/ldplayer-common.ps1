@@ -178,6 +178,7 @@ function Get-EnvApiPort {
 
 function Resolve-DevApiPort {
   param([int]$Preferred = (Get-EnvApiPort))
+  Repair-StaleApiPort -Port 8000 | Out-Null
   if (Test-ApiHealth $Preferred) { return $Preferred }
 
   if (Test-PortListening $Preferred) {
@@ -189,6 +190,61 @@ function Resolve-DevApiPort {
   if (Test-ApiHealth 8001) { return 8001 }
   if ($Preferred -ne 8000 -and (Test-ApiHealth 8000)) { return 8000 }
   return $Preferred
+}
+
+function Get-ListeningPid {
+  param([int]$Port)
+  $line = netstat -ano | Select-String ":$Port\s.*LISTENING" | Select-Object -First 1
+  if ($line -match '\s(\d+)\s*$') { return [int]$Matches[1] }
+  return $null
+}
+
+function Repair-StaleApiPort {
+  param([int]$Port = 8000)
+  if (-not (Test-PortListening $Port)) { return $false }
+  if (Test-ApiHealth $Port) { return $false }
+
+  $listenPid = Get-ListeningPid -Port $Port
+  if ($listenPid) {
+    Write-Host "Port $Port wedged (health failed). Stopping PID $listenPid ..."
+    cmd /c "taskkill /F /PID $listenPid /T 2>nul" | Out-Null
+    Start-Sleep -Seconds 2
+    if (Test-ApiHealth $Port) {
+      Write-Host "Port $Port recovered after stopping stale process."
+      return $true
+    }
+  }
+  return $false
+}
+
+function Sync-DevApiEnvFiles {
+  param([int]$ApiPort)
+  $frontendEnv = Join-Path $ProjectRoot ".env"
+  @(
+    "EXPO_PUBLIC_API_URL=http://127.0.0.1:$ApiPort/v1",
+    "EXPO_PUBLIC_API_MOCK_FALLBACK=false"
+  ) | Set-Content -Path $frontendEnv -Encoding utf8
+  Write-Host "Synced Frontend .env -> port $ApiPort"
+
+  $backendRoot = Join-Path (Split-Path $ProjectRoot -Parent) "Backend"
+  $backendEnv = Join-Path $backendRoot ".env"
+  if (-not (Test-Path $backendEnv)) { return }
+
+  $lines = Get-Content $backendEnv
+  $found = $false
+  $updated = foreach ($line in $lines) {
+    if ($line -match '^BASE_URL=') {
+      $found = $true
+      "BASE_URL=http://127.0.0.1:$ApiPort"
+    } else {
+      $line
+    }
+  }
+  if (-not $found) {
+    $updated = @("BASE_URL=http://127.0.0.1:$ApiPort") + $lines
+  }
+  $updated | Set-Content -Path $backendEnv -Encoding utf8
+  Write-Host "Synced Backend .env BASE_URL -> port $ApiPort"
 }
 
 function Get-LdPlayerForwardPorts {
@@ -221,6 +277,7 @@ function Ensure-DevBackend {
 
 function Set-DevApiEnv {
   param([int]$ApiPort = (Resolve-DevApiPort))
+  Sync-DevApiEnvFiles -ApiPort $ApiPort
   $env:EXPO_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort/v1"
   $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "false"
   return $ApiPort

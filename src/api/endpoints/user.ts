@@ -8,6 +8,8 @@ import type {
   PayoutMethodDto,
   PrivacySettingsDto,
   ReviewSummaryDto,
+  ReceivedReviewDto,
+  PendingReviewOrderDto,
   TransactionReminderSettingsDto,
   UserProfileUpdateRequest,
   PublicUserProfileDto,
@@ -53,6 +55,16 @@ export const userApi = {
   /** GET /users/me/reviews/summary */
   getReviewSummary() {
     return apiRequest<ReviewSummaryDto>('/users/me/reviews/summary');
+  },
+
+  /** GET /users/me/reviews/pending */
+  listPendingReviews() {
+    return apiRequest<PendingReviewOrderDto[]>('/users/me/reviews/pending');
+  },
+
+  /** GET /users/me/reviews/received */
+  listReceivedReviews(params?: { page?: number; pageSize?: number; role?: 'seller' | 'buyer' }) {
+    return apiRequest<Paginated<ReceivedReviewDto>>('/users/me/reviews/received', { query: params });
   },
 
   /** GET /users/me/verification */

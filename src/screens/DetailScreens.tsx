@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { ConfirmPaymentButton } from '../components/ConfirmPaymentButton';
+import { useCheckoutPicker } from '../context/CheckoutPickerContext';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { resolveListingDetail } from '../services/catalogService';
 import { checkoutOrder, clearStalePendingPayForListing, userCanChatOnListing } from '../services/ordersService';
 import { listCoupons } from '../services/couponsService';
-import type { CouponDto } from '../api/types';
 import { ApiError } from '../api/client';
 import { useCatalogRevision } from '../utils/catalogSync';
 import { ESCROW_FEE } from '../hooks/useProductFilters';
@@ -50,7 +50,7 @@ import { usePhotoSearch } from '../hooks/usePhotoSearch';
 import { demoBundleMeta, bundleHasOnHoldItemsFromMeta, getRemainingBundlePriceFromMeta, isBundleListingProduct } from '../data/bundle';
 import { BUNDLE_DETAIL_ID } from '../data/detailProducts';
 import { BundleDetailSummary, BundleItemDetailCard } from '../components/BundleUI';
-import { colors, fonts, iconTokens, radius, detailPageTokens } from '../theme';
+import { colors, fonts, iconTokens, radius, detailPageTokens, spacing } from '../theme';
 import type { UiOrder } from '../types';
 
 export function SearchScreen() {
@@ -185,7 +185,7 @@ export function SearchScreen() {
   );
 }
 
-export function DetailScreen() {
+export function DetailScreen({ orderContext = false }: { orderContext?: boolean }) {
   const { t } = useTranslation();
   const {
     nav,
@@ -208,7 +208,7 @@ export function DetailScreen() {
   } = useApp();
   const item = useLocalizedProduct(currentItem);
   const { items: related, loadError: relatedLoadError, reload: reloadRelated } = useRelatedListings(
-    currentItem.id,
+    orderContext ? null : currentItem.id,
     region,
   );
   const isFav = favs.has(currentItem.id);
@@ -333,14 +333,19 @@ export function DetailScreen() {
 
   return (
     <View style={styles.detailShell}>
-      <ScreenScroll screenId="detail" contentBottomInset={stickyBarInset}>
+      <ScreenScroll
+        screenId="detail"
+        contentBottomInset={orderContext ? spacing.screenBottomNoNav : stickyBarInset}
+      >
       <TitleBar
         right={
-          <IconButton
-            icon={isFav ? 'heart' : 'heartOutline'}
-            onPress={isSelf ? undefined : toggleFav}
-            active={isFav}
-          />
+          orderContext ? undefined : (
+            <IconButton
+              icon={isFav ? 'heart' : 'heartOutline'}
+              onPress={isSelf ? undefined : toggleFav}
+              active={isFav}
+            />
+          )
         }
       />
       {isBundleListing ? (
@@ -409,9 +414,9 @@ export function DetailScreen() {
             <DetailCard key={bundleItem.id}>
               <BundleItemDetailCard
                 item={bundleItem}
-                allowSeparateSale={bundleMeta.allowSeparateSale}
+                allowSeparateSale={orderContext ? false : bundleMeta.allowSeparateSale}
                 onBuySeparate={() => openOrderCheckout(bundleItem.id)}
-                buyDisabled={isSelf || bundleItem.status !== 'available'}
+                buyDisabled={orderContext || isSelf || bundleItem.status !== 'available'}
               />
             </DetailCard>
           ))}
@@ -433,42 +438,47 @@ export function DetailScreen() {
           )}
         </DetailCard>
       ) : null}
-      <DetailCard>
-        <SellerAuthorRow
-          sellerKey={currentItem.sellerKey}
-          seller={item.seller}
-          avatarUrl={currentItem.sellerAvatarUrl}
-          sellerUserId={currentItem.sellerUserId}
-          listingId={currentItem.id}
-          subtitle={t('screens.detail.sellerMeta')}
-          onPress={() => openSellerProfile(currentItem.sellerKey)}
-          action={
-            <PillButton
-              label={isFollowing ? t('common.following') : t('common.follow')}
-              variant={isFollowing ? 'brand' : 'light'}
-              onPress={
-                isSelf ? undefined : () => void toggleFollow(currentItem.sellerKey, currentItem.sellerUserId, item.seller)
-              }
-              disabled={isSelf}
-              style={followPillStyle}
-            />
-          }
-        />
-      </DetailCard>
-      <DetailCard>
-        <Text style={styles.cardH3}>{t('screens.detail.tradeProtection')}</Text>
-        <Text style={styles.detailDesc}>{t('screens.detail.tradeProtectionBody')}</Text>
-      </DetailCard>
-      <SectionHead title={t('screens.detail.related')} action={t('screens.detail.relatedHint')} compact />
-      {relatedLoadError ? (
+      {!orderContext ? (
         <>
-          <EmptyState text={t('screens.detail.relatedLoadFailed')} />
-          <PillButton label={t('common.retry')} variant="light" full onPress={reloadRelated} />
+          <DetailCard>
+            <SellerAuthorRow
+              sellerKey={currentItem.sellerKey}
+              seller={item.seller}
+              avatarUrl={currentItem.sellerAvatarUrl}
+              sellerUserId={currentItem.sellerUserId}
+              listingId={currentItem.id}
+              subtitle={t('screens.detail.sellerMeta')}
+              onPress={() => openSellerProfile(currentItem.sellerKey)}
+              action={
+                <PillButton
+                  label={isFollowing ? t('common.following') : t('common.follow')}
+                  variant={isFollowing ? 'brand' : 'light'}
+                  onPress={
+                    isSelf ? undefined : () => void toggleFollow(currentItem.sellerKey, currentItem.sellerUserId, item.seller)
+                  }
+                  disabled={isSelf}
+                  style={followPillStyle}
+                />
+              }
+            />
+          </DetailCard>
+          <DetailCard>
+            <Text style={styles.cardH3}>{t('screens.detail.tradeProtection')}</Text>
+            <Text style={styles.detailDesc}>{t('screens.detail.tradeProtectionBody')}</Text>
+          </DetailCard>
+          <SectionHead title={t('screens.detail.related')} action={t('screens.detail.relatedHint')} compact />
+          {relatedLoadError ? (
+            <>
+              <EmptyState text={t('screens.detail.relatedLoadFailed')} />
+              <PillButton label={t('common.retry')} variant="light" full onPress={reloadRelated} />
+            </>
+          ) : (
+            <ProductGrid data={related} onPress={openDetail} />
+          )}
         </>
-      ) : (
-        <ProductGrid data={related} onPress={openDetail} />
-      )}
+      ) : null}
       </ScreenScroll>
+      {!orderContext ? (
       <StickyActions fixed>
         <DetailBottomBar
           leading={
@@ -519,6 +529,7 @@ export function DetailScreen() {
           }
         />
       </StickyActions>
+      ) : null}
     </View>
   );
 }
@@ -530,9 +541,8 @@ export function OrderScreen() {
     toast,
     currentItem,
     paymentMethod,
-    paymentMethods,
     paymentMethodId,
-    selectPaymentMethodById,
+    refreshPaymentMethods,
     deliveryMethod,
     setDeliveryMethod,
     isLoggedIn,
@@ -543,6 +553,14 @@ export function OrderScreen() {
     setCheckoutBundleItemId,
   } = useApp();
   useAuthGuard();
+  const {
+    coupons,
+    selectedCouponId,
+    setSelectedCouponId,
+    setCoupons,
+    openPaymentPicker,
+    openCouponPicker,
+  } = useCheckoutPicker();
   const { options } = useFormOptions();
   const item = useLocalizedProduct(currentItem);
   const bundleMeta = currentItem.bundleMeta ?? null;
@@ -564,8 +582,6 @@ export function OrderScreen() {
       : isBundleListing && bundleMeta
         ? getRemainingBundlePriceFromMeta(bundleMeta)
         : currentItem.price;
-  const [coupons, setCoupons] = useState<CouponDto[]>([]);
-  const [selectedCouponId, setSelectedCouponId] = useState<string | null>(null);
   const selectedCoupon = selectedCouponId
     ? coupons.find((row) => row.id === selectedCouponId) ?? null
     : null;
@@ -591,8 +607,15 @@ export function OrderScreen() {
       (!isSeparateCheckout && listingPurchasable && currentItem.purchaseAvailable === true));
   const total = itemPayable + checkoutEscrowFee;
   const [submitting, setSubmitting] = useState(false);
-  const deliveryLabel = findOptionLabel(options.deliveryMethods, deliveryMethod, i18n.language);
+  const deliveryLabel =
+    findOptionLabel(options.pickupMethods, deliveryMethod, i18n.language) ||
+    findOptionLabel(options.deliveryMethods, deliveryMethod, i18n.language);
   const catalogRevision = useCatalogRevision();
+
+  useEffect(() => {
+    const sellerMethod = currentItem.pickupMethodKeys?.[0];
+    if (sellerMethod) setDeliveryMethod(sellerMethod);
+  }, [currentItem.id, currentItem.pickupMethodKeys, setDeliveryMethod]);
 
   const prepareCheckout = useCallback(() => {
     if (!isLoggedIn || !currentItem.id) {
@@ -612,7 +635,8 @@ export function OrderScreen() {
   useFocusEffect(
     useCallback(() => {
       prepareCheckout();
-    }, [prepareCheckout]),
+      if (isLoggedIn) void refreshPaymentMethods();
+    }, [prepareCheckout, isLoggedIn, refreshPaymentMethods]),
   );
 
   useEffect(() => {
@@ -640,63 +664,6 @@ export function OrderScreen() {
     t,
     toast,
   ]);
-
-  const showCouponPicker = () => {
-    const available = coupons.filter((row) => row.status === 'available');
-    if (!available.length) {
-      toast(t('screens.order.couponEmpty'));
-      return;
-    }
-    Alert.alert(
-      t('screens.order.coupon'),
-      undefined,
-      [
-        {
-          text: t('screens.order.couponNone'),
-          onPress: () => applyCouponSelection(null),
-        },
-        ...available.map((coupon) => ({
-          text: `${t('common.currencyPrefix')}${coupon.amount} · ${coupon.description}`,
-          onPress: () => applyCouponSelection(coupon.id),
-        })),
-        { text: t('common.cancel'), style: 'cancel' as const },
-      ],
-    );
-  };
-
-  const applyCouponSelection = (couponId: string | null) => {
-    setSelectedCouponId(couponId);
-  };
-
-  const showDeliveryPicker = () => {
-    if (!options.deliveryMethods.length) {
-      toast(t('toast.selectDelivery'));
-      return;
-    }
-    Alert.alert(
-      t('screens.order.delivery'),
-      undefined,
-      options.deliveryMethods.map((option) => ({
-        text: i18n.language.startsWith('zh') ? option.labelZh : option.labelEn,
-        onPress: () => setDeliveryMethod(option.key),
-      })),
-    );
-  };
-
-  const showPaymentPicker = () => {
-    if (!paymentMethods.length) {
-      toast(t('toast.selectPayment'));
-      return;
-    }
-    Alert.alert(
-      t('screens.order.payment'),
-      undefined,
-      paymentMethods.map((method) => ({
-        text: method.label,
-        onPress: () => selectPaymentMethodById(method.id),
-      })),
-    );
-  };
 
   const handleCheckout = async () => {
     if (submitting || !canPurchase) return;
@@ -791,8 +758,6 @@ export function OrderScreen() {
               </View>
             </View>
           }
-          right={<AppIcon name="chevronForward" size={16} color="#bbbbbb" />}
-          onPress={showDeliveryPicker}
         />
         {checkoutEscrowFee > 0 ? (
           <ListRow
@@ -828,7 +793,7 @@ export function OrderScreen() {
             </View>
           }
           right={<AppIcon name="chevronForward" size={16} color="#bbbbbb" />}
-          onPress={showCouponPicker}
+          onPress={openCouponPicker}
         />
         <ListRow
           left={
@@ -836,12 +801,14 @@ export function OrderScreen() {
               <AppIcon name="pay" size={iconTokens.sizes.sm} color={iconTokens.accent} />
               <View>
                 <Text style={styles.listMain}>{t('screens.order.payment')}</Text>
-                <Text style={styles.listSub}>{paymentMethod}</Text>
+                <Text style={styles.listSub}>
+                  {paymentMethod || t('common.placeholders.selectOption')}
+                </Text>
               </View>
             </View>
           }
           right={<AppIcon name="chevronForward" size={16} color="#bbbbbb" />}
-          onPress={showPaymentPicker}
+          onPress={openPaymentPicker}
           border={false}
         />
       </ListCard>

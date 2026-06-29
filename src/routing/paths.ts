@@ -87,6 +87,7 @@ export const NO_NAV_PATH_PREFIXES = [
   '/profile/orders',
   '/profile/credit',
   '/profile/reviews',
+  '/profile/review',
   '/help',
   '/safety',
   '/safety/blocklist',
@@ -110,10 +111,11 @@ export function normalizePathname(pathname: string): string {
 
 export function screenPath(
   screen: ScreenId,
-  params?: { productId?: number; sellerUserId?: string; chatId?: string },
+  params?: { productId?: number; sellerUserId?: string; chatId?: string; context?: 'order' },
 ): string {
   if (screen === 'detail' && params?.productId != null) {
-    return `${ROUTE_PATHS.detail}/${params.productId}`;
+    const base = `${ROUTE_PATHS.detail}/${params.productId}`;
+    return params.context === 'order' ? `${base}?context=order` : base;
   }
   if (screen === 'sellerProfile' && params?.sellerUserId) {
     return `${ROUTE_PATHS.sellerProfile}/${encodeURIComponent(params.sellerUserId)}`;

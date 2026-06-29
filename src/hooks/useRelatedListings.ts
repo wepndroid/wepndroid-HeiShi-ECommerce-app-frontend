@@ -5,7 +5,7 @@ import { fetchRelatedListings } from '../services/catalogService';
 import type { Product } from '../types';
 import { useCatalogRevision } from '../utils/catalogSync';
 
-export function useRelatedListings(listingId: number, region: RegionSelection) {
+export function useRelatedListings(listingId: number | null, region: RegionSelection) {
   const [items, setItems] = React.useState<Product[]>([]);
   const [loadError, setLoadError] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
@@ -16,6 +16,11 @@ export function useRelatedListings(listingId: number, region: RegionSelection) {
   }, []);
 
   React.useEffect(() => {
+    if (listingId == null) {
+      setItems([]);
+      setLoadError(false);
+      return;
+    }
     let cancelled = false;
     setLoadError(false);
     fetchRelatedListings(listingId, region).then(({ items: related, failed }) => {

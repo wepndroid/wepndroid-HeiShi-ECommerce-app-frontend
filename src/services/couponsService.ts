@@ -1,6 +1,7 @@
 import { couponsApi } from '../api';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import type { CouponDto } from '../api/types';
+import { mockCoupons } from '../data/coupons';
 
 export async function listCoupons(isLoggedIn: boolean): Promise<CouponDto[]> {
   if (isLoggedIn) {
@@ -17,8 +18,10 @@ export async function listCoupons(isLoggedIn: boolean): Promise<CouponDto[]> {
       return items;
     } catch {
       if (!API_USE_MOCK_FALLBACK) return [];
+      return mockCoupons();
     }
   }
+  if (API_USE_MOCK_FALLBACK) return mockCoupons();
   return [];
 }
 

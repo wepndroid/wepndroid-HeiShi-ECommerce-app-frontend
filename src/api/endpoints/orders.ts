@@ -1,5 +1,6 @@
 import { apiRequest } from '../client';
-import type { CreateOrderRequest, OrderDto, Paginated } from '../types';
+import type { ReviewCriteriaDto } from '../data/reviewCriteria';
+import type { CreateOrderRequest, OrderDto, OrderReviewDto, Paginated } from '../types';
 
 export const ordersApi = {
   /** GET /orders?status= */
@@ -58,13 +59,13 @@ export const ordersApi = {
   },
 
   /** POST /orders/:id/review */
-  submitReview(id: number, body: { rating: number; comment?: string }) {
+  submitReview(id: number, body: { criteria: ReviewCriteriaDto; comment: string }) {
     return apiRequest<void>(`/orders/${id}/review`, { method: 'POST', body });
   },
 
   /** GET /orders/:id/review */
   getReview(id: number) {
-    return apiRequest<import('../types').OrderReviewDto>(`/orders/${id}/review`);
+    return apiRequest<OrderReviewDto>(`/orders/${id}/review`);
   },
 
   /** POST /orders/:id/cancel */

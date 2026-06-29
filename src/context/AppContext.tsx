@@ -85,7 +85,7 @@ interface AppContextValue {
   toastVisible: boolean;
   products: Product[];
   currentItem: Product;
-  openDetail: (p: Product) => void;
+  openDetail: (p: Product, options?: { orderContext?: boolean }) => void;
   openSellerProfile: (sellerKey: string) => void;
   loadProduct: (id: number) => Promise<LoadProductResult>;
   mergeProductDetail: (product: Product) => void;
@@ -143,6 +143,7 @@ interface AppContextValue {
   paymentMethodId?: string;
   paymentMethods: PaymentMethodDto[];
   selectPaymentMethodById: (id: string) => void;
+  refreshPaymentMethods: () => Promise<PaymentMethodDto[]>;
   deliveryMethod: string;
   setDeliveryMethod: (v: string) => void;
   checkoutBundleItemId: string | null;
@@ -558,12 +559,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const openDetail = useCallback(
-    (p: Product) => {
+    (p: Product, options?: { orderContext?: boolean }) => {
       detailSummaryIdRef.current = p.id;
       const enriched = enrichSelfSellerProduct(p, user);
       detailSummaryProductRef.current = enriched;
       setCurrentItem(enriched);
-      router.push(screenPath('detail', { productId: enriched.id }) as Href);
+      router.push(
+        screenPath('detail', {
+          productId: enriched.id,
+          ...(options?.orderContext ? { context: 'order' } : {}),
+        }) as Href,
+      );
     },
     [user],
   );
@@ -724,6 +730,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     },
     [paymentMethods],
   );
+
+  const refreshPaymentMethods = useCallback(async () => {
+    if (!authReady) return [];
+    const methods = await listPaymentMethods(user != null);
+    setPaymentMethods(methods);
+    if (!methods.length) {
+      setPaymentMethodId(undefined);
+      setPaymentMethod('');
+      return methods;
+    }
+    const currentId = paymentMethodId;
+    if (currentId && methods.some((m) => m.id === currentId)) {
+      const match = methods.find((m) => m.id === currentId);
+      if (match) setPaymentMethod(match.label);
+      return methods;
+    }
+    const selected = await bootstrapPaymentSelection(methods);
+    if (selected) {
+      setPaymentMethodId(selected.id);
+      setPaymentMethod(selected.label);
+    }
+    return methods;
+  }, [authReady, paymentMethodId, user]);
 
   const applyChatSession = useCallback(
     (
@@ -986,6 +1015,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       paymentMethodId,
       paymentMethods,
       selectPaymentMethodById,
+      refreshPaymentMethods,
       deliveryMethod,
       setDeliveryMethod,
       checkoutBundleItemId,
@@ -1061,6 +1091,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       paymentMethodId,
       paymentMethods,
       selectPaymentMethodById,
+      refreshPaymentMethods,
       deliveryMethod,
       checkoutBundleItemId,
       openOrderCheckout,

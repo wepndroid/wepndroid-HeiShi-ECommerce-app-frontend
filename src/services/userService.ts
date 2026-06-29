@@ -8,6 +8,8 @@ import type {
   PayoutMethodDto,
   PublicUserProfileDto,
   ReviewSummaryDto,
+  ReceivedReviewDto,
+  PendingReviewOrderDto,
   UserProfileUpdateRequest,
 } from '../api/types';
 import type { AuthUser } from '../data/auth';
@@ -24,6 +26,7 @@ import {
   mockCreditProfile,
   mockPayoutMethods,
   mockReviewSummary,
+  mockReceivedReviews,
   saveLocalProfile,
 } from '../data/userLocal';
 
@@ -183,6 +186,37 @@ export async function fetchReviewSummary(isLoggedIn: boolean): Promise<ReviewSum
     return mockReviewSummary();
   }
   throw new Error('review_summary_failed');
+}
+
+export async function fetchReceivedReviews(
+  isLoggedIn: boolean,
+  role: 'seller' | 'buyer' = 'seller',
+  page = 1,
+  pageSize = 20,
+): Promise<ReceivedReviewDto[]> {
+  if (isLoggedIn) {
+    try {
+      const result = await userApi.listReceivedReviews({ page, pageSize, role });
+      return result.items;
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('received_reviews_failed');
+    }
+  }
+  if (API_USE_MOCK_FALLBACK || !isLoggedIn) {
+    return role === 'seller' ? mockReceivedReviews() : [];
+  }
+  throw new Error('received_reviews_failed');
+}
+
+export async function fetchPendingReviewOrders(isLoggedIn: boolean): Promise<PendingReviewOrderDto[]> {
+  if (isLoggedIn) {
+    try {
+      return await userApi.listPendingReviews();
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('pending_reviews_failed');
+    }
+  }
+  return [];
 }
 
 export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMethodDto[]> {

@@ -7,27 +7,10 @@ import { usePublicUserProfile } from '../hooks/usePublicUserProfile';
 import { sellerKeyFromUserId } from '../data/catalogDemo';
 import { DetailCard } from '../components/FormUI';
 import { ProductGrid } from '../components/ProductUI';
-import { AppIcon } from '../components/AppIcon';
+import { StarRating } from '../components/StarRating';
 import { Notice, LoadingState, PillButton, ScreenScroll, SectionHead, TitleBar, BackButton, followPillStyle } from '../components/UI';
 import { SellerAvatar } from '../components/SellerAvatar';
 import { colors, fonts, radius } from '../theme';
-
-function StarRating({ rating }: { rating: number }) {
-  const filled = Math.round(rating);
-  return (
-    <View style={styles.stars}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <AppIcon
-          key={star}
-          name="star"
-          size={14}
-          color={star <= filled ? colors.brand2 : colors.line}
-        />
-      ))}
-      <Text style={styles.ratingValue}>{rating.toFixed(1)}</Text>
-    </View>
-  );
-}
 
 function VerificationBadge({ label, active }: { label: string; active: boolean }) {
   if (!active) return null;
@@ -81,7 +64,7 @@ export function SellerProfileScreen({ userId }: { userId: string }) {
             <Text style={styles.name}>{profile.nickname}</Text>
             {profile.city ? <Text style={styles.city}>{profile.city}</Text> : null}
             {profile.reviewCount > 0 ? (
-              <StarRating rating={profile.rating} />
+              <StarRating rating={profile.rating} style={styles.stars} />
             ) : (
               <Text style={styles.noReviews}>{t('screens.sellerProfile.noReviews')}</Text>
             )}
@@ -160,16 +143,7 @@ const styles = StyleSheet.create({
     color: colors.sub,
   },
   stars: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
     marginTop: 6,
-  },
-  ratingValue: {
-    marginLeft: 6,
-    fontSize: 13,
-    fontWeight: fonts.weights.bold,
-    color: colors.brand2,
   },
   reviewLine: {
     marginTop: 2,

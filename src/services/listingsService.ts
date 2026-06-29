@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { listingsApi } from '../api';
 import { ApiError, getAuthRequestHeaders } from '../api/client';
-import { getApiBaseUrl } from '../api/config';
+import { resolveApiBaseUrl } from '../api/config';
 import {
   mapDetailDtoToProduct,
   mapListingDtoToUiListing,
@@ -84,7 +84,7 @@ function parseNativeUploadBody(body: string, status: number): string {
 
 async function uploadImageViaNative(fileUri: string, mimeType: string): Promise<string> {
   const headers = await assertUploadAuthHeaders();
-  const result = await FileSystem.uploadAsync(`${getApiBaseUrl()}/uploads/images`, fileUri, {
+  const result = await FileSystem.uploadAsync(`${resolveApiBaseUrl()}/uploads/images`, fileUri, {
     uploadType: FileSystem.FileSystemUploadType.MULTIPART,
     fieldName: 'file',
     mimeType,
@@ -127,6 +127,19 @@ async function uploadImageToServer(
 
   if (Platform.OS === 'web') {
     return uploadImageViaFetch(prepared.uri, prepared.fileName, normalizedMime);
+  }
+
+  // LDPlayer / Android: fetch multipart is more reliable than FileSystem.uploadAsync.
+  if (Platform.OS === 'android') {
+    try {
+      return await uploadImageViaFetch(prepared.uri, prepared.fileName, normalizedMime);
+    } catch (fetchError) {
+      try {
+        return await uploadImageViaNative(prepared.uri, normalizedMime);
+      } catch {
+        throw fetchError;
+      }
+    }
   }
 
   try {

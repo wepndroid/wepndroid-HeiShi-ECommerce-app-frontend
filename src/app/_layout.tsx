@@ -5,6 +5,8 @@ import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { AppProvider } from '../context/AppContext';
+import { CheckoutPickerProvider } from '../context/CheckoutPickerContext';
+import { CheckoutPickerHost } from '../components/CheckoutPickerHost';
 import { RegionSheet } from '../components/RegionSheet';
 import { BottomNav, Toast } from '../components/UI';
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold, useFonts } from '../components/typography';
@@ -23,6 +25,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
       </BlurTargetView>
       {showNav ? <BottomNav blurTarget={blurTargetRef} /> : null}
       <RegionSheet />
+      <CheckoutPickerHost />
       <Toast />
     </View>
   );
@@ -42,12 +45,14 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AppProvider>
+        <CheckoutPickerProvider>
         <SafeAreaView style={styles.root} edges={['top']}>
           <AppShell>
             <Stack screenOptions={{ headerShown: false, animation: 'none' }} />
           </AppShell>
           <StatusBar style="dark" />
         </SafeAreaView>
+        </CheckoutPickerProvider>
       </AppProvider>
     </SafeAreaProvider>
   );

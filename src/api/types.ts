@@ -187,6 +187,11 @@ export interface CreateOrderRequest {
 export interface OrderReviewDto {
   rating: number;
   comment?: string;
+  criteria?: {
+    quality: number;
+    communication: number;
+    trustement: number;
+  };
   createdAt: string;
 }
 
@@ -357,6 +362,37 @@ export interface CreditProfileDto {
 export interface ReviewSummaryDto {
   score: number;
   pendingCount: number;
+  receivedCount: number;
+  buyerScore: number;
+  buyerReceivedCount: number;
+}
+
+export interface PendingReviewOrderDto {
+  orderId: number;
+  listingId: number;
+  listingTitle: string;
+  listingImageUrl: string;
+  amount: number;
+  counterpartNickname: string;
+  reviewRole: 'buyer' | 'seller';
+}
+
+export interface ReceivedReviewDto {
+  id: string;
+  orderId: number;
+  rating: number;
+  comment?: string;
+  criteria?: {
+    quality: number;
+    communication: number;
+    trustement: number;
+  };
+  createdAt: string;
+  listingTitle: string;
+  listingImageUrl: string;
+  listingId: number;
+  reviewerNickname: string;
+  reviewerRole: 'buyer' | 'seller';
 }
 
 export interface LocalServiceDto {

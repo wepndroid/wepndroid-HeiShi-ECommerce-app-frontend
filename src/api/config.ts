@@ -50,13 +50,9 @@ export function resolveApiBaseUrl(): string {
   return envApiBaseUrl() ?? PRODUCTION_API;
 }
 
-let nativeApiBaseUrlCache: string | null = null;
-
-/** Base URL for HeyMarket REST API. Always fresh on web; cached on native. */
+/** Base URL for HeyMarket REST API. Resolved at call time (Metro env / LDPlayer port can change). */
 export function getApiBaseUrl(): string {
-  if (Platform.OS === 'web') return resolveApiBaseUrl();
-  if (!nativeApiBaseUrlCache) nativeApiBaseUrlCache = resolveApiBaseUrl();
-  return nativeApiBaseUrlCache;
+  return resolveApiBaseUrl();
 }
 
 /** @deprecated Prefer getApiBaseUrl() — kept for older imports. */

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
@@ -13,7 +13,7 @@ import { useHistoryProducts } from '../hooks/useHistory';
 import { useMyListings } from '../hooks/useMyListings';
 import { useSellerOrders } from '../hooks/useSellerOrders';
 import { useOrders } from '../hooks/useOrders';
-import { fetchOrderReview, releaseSalesOrder, sellerActionForStatus, submitOrderReview } from '../services/ordersService';
+import { releaseSalesOrder, sellerActionForStatus } from '../services/ordersService';
 import { regionProducts } from '../hooks/useProductFilters';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { ListCard, TableNote } from '../components/FormUI';
@@ -184,18 +184,18 @@ function sellerOrderDisplay(
         statusTitle: t('common.completed'),
         statusSub: t('screens.sold.waitReview'),
         statusColor: '#999999',
-        secondaryLabel: null,
-        secondaryToastKey: 'toast.shipped',
-        secondaryIsBrand: false,
+        secondaryLabel: t('screens.orders.submitReview'),
+        secondaryToastKey: 'toast.reviewSubmitted',
+        secondaryIsBrand: true,
       };
     case 'completed':
       return {
         statusTitle: t('common.completed'),
         statusSub: t('screens.sold.buyerConfirmed'),
         statusColor: '#999999',
-        secondaryLabel: null,
-        secondaryToastKey: 'toast.shipped',
-        secondaryIsBrand: false,
+        secondaryLabel: t('screens.orders.viewReview'),
+        secondaryToastKey: 'toast.viewReview',
+        secondaryIsBrand: true,
       };
     default:
       return {
@@ -339,41 +339,11 @@ export function OrdersScreen() {
   const handleSecondaryAction = async (order: (typeof visibleOrders)[number]) => {
     const display = orderDisplay(order.status, t);
     if (order.status === 'pendingReview') {
-      Alert.alert(
-        t('screens.orders.reviewTitle'),
-        t('screens.orders.reviewPrompt'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          ...([5, 4, 3, 2, 1] as const).map((stars) => ({
-            text: t('screens.orders.reviewStars', { count: stars }),
-            onPress: () => {
-              void (async () => {
-                try {
-                  await submitOrderReview(order, stars, isLoggedIn);
-                  toast(t('toast.reviewSubmitted'));
-                  refresh();
-                } catch {
-                  toast(t('toast.orderActionFailed'));
-                }
-              })();
-            },
-          })),
-        ],
-      );
+      router.push(`/profile/review/${order.id}` as Href);
       return;
     }
     if (order.status === 'completed') {
-      try {
-        const review = await fetchOrderReview(order.id, isLoggedIn);
-        Alert.alert(
-          t('screens.orders.reviewTitle'),
-          review.comment?.trim()
-            ? t('screens.orders.reviewDetail', { stars: review.rating, comment: review.comment })
-            : t('screens.orders.reviewStarsOnly', { count: review.rating }),
-        );
-      } catch {
-        toast(t('toast.reviewNotFound'));
-      }
+      router.push(`/profile/review/${order.id}?mode=view` as Href);
       return;
     }
     if (!display.secondaryLabel) return;
@@ -503,6 +473,16 @@ export function SoldScreen() {
     }
   };
 
+  const handleSellerSecondary = (order: UiOrder) => {
+    if (order.status === 'pendingReview') {
+      router.push(`/profile/review/${order.id}` as Href);
+      return;
+    }
+    if (order.status === 'completed') {
+      router.push(`/profile/review/${order.id}?mode=view` as Href);
+    }
+  };
+
   return (
     <ScreenScroll screenId="sold">
       <TitleBar center={t('screens.sold.title')} />
@@ -557,9 +537,11 @@ export function SoldScreen() {
                 })
               }
               onSecondary={
-                display.secondaryLabel && actionHandler
+                display.secondaryLabel && sellerAction
                   ? () => void actionHandler(order)
-                  : undefined
+                  : display.secondaryLabel
+                    ? () => handleSellerSecondary(order)
+                    : undefined
               }
             />
           );

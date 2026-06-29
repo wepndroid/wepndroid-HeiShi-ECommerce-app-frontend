@@ -28,6 +28,8 @@ export const colors = {
   purchase: '#FF5000',
   blue: '#108EE9',
   stage: '#EBEEEF',
+  /** Empty / unfilled star rating fill */
+  starEmpty: '#bcc5d3',
   phoneBorder: '#111111',
   searchFill: '#FFFFFF',
   searchHint: '#9C9C9D',
@@ -45,6 +47,8 @@ export const radius = {
   amazing: 8,
   pill: 999,
   phone: 38,
+  /** Bottom sheet top corners — aligned with v7 sheet but slightly tighter than 28dp demo HTML */
+  bottomSheet: 20,
 };
 
 /** 16dp gutter; 56dp bottom nav */

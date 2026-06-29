@@ -279,9 +279,6 @@ export function RegionSheet() {
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
     paddingHorizontal: 14,
     paddingTop: 18,
     paddingBottom: 28,

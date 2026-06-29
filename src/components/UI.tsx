@@ -1,4 +1,4 @@
-import React, { RefObject } from 'react';
+import React, { RefObject, useEffect, useRef } from 'react';
 import {
   Animated,
   ActivityIndicator,
@@ -549,6 +549,27 @@ export function DismissibleModal({
   statusBarTranslucent?: boolean;
 }) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const blockBackdropCloseRef = useRef(false);
+  const resolvedStatusBarTranslucent = statusBarTranslucent ?? placement === 'bottom';
+  // Transparent Android modals with animationType="slide" often size to content height,
+  // leaving a gap above the system nav bar — use none/fade at the Modal layer instead.
+  const resolvedAnimationType =
+    placement === 'bottom' && animationType === 'slide' ? 'none' : animationType;
+
+  useEffect(() => {
+    if (!visible) return;
+    blockBackdropCloseRef.current = true;
+    const timer = setTimeout(() => {
+      blockBackdropCloseRef.current = false;
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [visible]);
+
+  const handleBackdropPress = () => {
+    if (blockBackdropCloseRef.current) return;
+    onClose();
+  };
 
   if (placement === 'fill') {
     return (
@@ -562,7 +583,7 @@ export function DismissibleModal({
         <View style={styles.dismissModalFillRoot} pointerEvents="box-none">
           <Pressable
             style={styles.dismissModalFillBackdrop}
-            onPress={onClose}
+            onPress={handleBackdropPress}
             accessibilityRole="button"
             accessibilityLabel={t('common.closeModal')}
           />
@@ -570,6 +591,36 @@ export function DismissibleModal({
             {children}
           </View>
         </View>
+      </Modal>
+    );
+  }
+
+  if (placement === 'bottom') {
+    return (
+      <Modal
+        visible={visible}
+        transparent
+        animationType={resolvedAnimationType}
+        onRequestClose={onClose}
+        statusBarTranslucent={resolvedStatusBarTranslucent}
+      >
+        <Pressable
+          style={styles.dismissModalBottomBackdrop}
+          onPress={handleBackdropPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.closeModal')}
+        >
+          <Pressable style={[styles.dismissModalCardStop, contentStyle]} onPress={() => undefined}>
+            <View
+              style={[
+                styles.dismissModalBottomSheetSurface,
+                { paddingBottom: insets.bottom },
+              ]}
+            >
+              {children}
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     );
   }
@@ -583,12 +634,8 @@ export function DismissibleModal({
       statusBarTranslucent={statusBarTranslucent}
     >
       <Pressable
-        style={[
-          styles.dismissModalBackdropPress,
-          placement === 'bottom' && styles.dismissModalBackdropBottom,
-          placement === 'center' && styles.dismissModalBackdropCenter,
-        ]}
-        onPress={onClose}
+        style={[styles.dismissModalBackdropPress, styles.dismissModalBackdropCenter]}
+        onPress={handleBackdropPress}
         accessibilityRole="button"
         accessibilityLabel={t('common.closeModal')}
       >
@@ -1094,6 +1141,17 @@ const styles = StyleSheet.create({
   dismissModalBackdropCenter: {
     justifyContent: 'center',
     paddingHorizontal: 24,
+  },
+  dismissModalBottomBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  dismissModalBottomSheetSurface: {
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.bottomSheet,
+    borderTopRightRadius: radius.bottomSheet,
+    overflow: 'hidden',
   },
   dismissModalCardStop: {
     width: '100%',

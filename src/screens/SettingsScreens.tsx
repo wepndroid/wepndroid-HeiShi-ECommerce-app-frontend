@@ -21,7 +21,7 @@ import { shareUserDataExport } from '../services/settingsService';
 import { fetchReports, unblockUser, type SafetyReportRow } from '../services/safetyService';
 import { usePaymentMethodsSettings, usePayoutMethods } from '../hooks/usePaymentSettings';
 import { usePrivacySettings } from '../hooks/usePrivacySettings';
-import { useCreditProfile, useReviewSummary, useVerificationStatus } from '../hooks/useTrustProfile';
+import { useCreditProfile, useVerificationStatus } from '../hooks/useTrustProfile';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useAvatarUpload } from '../hooks/useAvatarUpload';
 import type { VerificationStatus } from '../services/userService';
@@ -484,14 +484,14 @@ export function EditProfileScreen() {
   return (
     <SimplePage screenId="editProfile" title={t('screens.editProfile.title')}>
       <DetailCard>
-        <Pressable
-          style={styles.profileTop}
-          onPress={() => void handlePickAvatar()}
-          disabled={uploading}
-          accessibilityRole="button"
-          accessibilityLabel={t('screens.editProfile.changeAvatar')}
-        >
-          <View style={styles.profileAvatar}>
+        <View style={styles.profileTop}>
+          <Pressable
+            style={styles.profileAvatar}
+            onPress={() => void handlePickAvatar()}
+            disabled={uploading}
+            accessibilityRole="button"
+            accessibilityLabel={t('screens.editProfile.changeAvatar')}
+          >
             {displayAvatarUrl ? (
               <Image
                 key={displayAvatarUrl}
@@ -506,12 +506,12 @@ export function EditProfileScreen() {
                 <ActivityIndicator color={colors.brand} />
               </View>
             ) : null}
-          </View>
-          <View>
+          </Pressable>
+          <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{profile?.nickname ?? user?.nickname ?? t('common.guest')}</Text>
             <Text style={styles.profileSub}>{t('screens.editProfile.changeAvatar')}</Text>
           </View>
-        </Pressable>
+        </View>
       </DetailCard>
       <FormCard>
         <FieldInputStacked
@@ -1661,45 +1661,6 @@ export function CreditProfileScreen() {
   );
 }
 
-export function ReviewManageScreen() {
-  const { t } = useTranslation();
-  useAuthGuard();
-  const { toast, isLoggedIn, authReady } = useApp();
-  const { summary } = useReviewSummary(isLoggedIn, authReady);
-
-  return (
-    <SimplePage screenId="reviewManage" title={t('screens.reviewManage.title')}>
-      <DetailCard>
-        <View style={styles.profileTop}>
-          <View style={styles.profileAvatar}><AppIcon name="review" size={28} color={colors.text} /></View>
-          <View>
-            <Text style={styles.profileName}>
-              {summary ? String(summary.score) : t('screens.reviewManage.score')}
-            </Text>
-            <Text style={styles.profileSub}>{t('screens.reviewManage.summary')}</Text>
-          </View>
-        </View>
-      </DetailCard>
-      <PillButton
-        label={
-          summary?.pendingCount
-            ? t('screens.reviewManage.pendingCount', { count: summary.pendingCount })
-            : t('screens.reviewManage.pending')
-        }
-        variant="brand"
-        full
-        onPress={() => {
-          if (summary?.pendingCount) {
-            router.push('/profile/orders?filter=pendingReview');
-          } else {
-            toast(t('toast.noPendingReview'));
-          }
-        }}
-      />
-    </SimplePage>
-  );
-}
-
 export {
   MyListingsScreen,
   FavoritesScreen,
@@ -1742,6 +1703,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  profileInfo: {
+    flex: 1,
+    minWidth: 0,
   },
   profileAvatar: {
     width: 68,

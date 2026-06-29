@@ -13,6 +13,7 @@ import { useFavoriteProducts } from '../hooks/useFavoriteProducts';
 import { useHistoryProducts } from '../hooks/useHistory';
 import { useCoupons } from '../hooks/useCoupons';
 import { useFeed } from '../hooks/useFeed';
+import { useReviewSummary } from '../hooks/useTrustProfile';
 import { feedTitleKey } from '../hooks/useProductFilters';
 import { ALL_AREAS, formatAreaLabel } from '../data/region';
 import { AppIcon } from '../components/AppIcon';
@@ -22,6 +23,7 @@ import { Banner, ProductFeed } from '../components/ProductUI';
 import { profilePageBannerForLanguage } from '../assets/profileBanner';
 import { ShortcutGrid } from '../components/FormUI';
 import { AmazingSurface } from '../components/AmazingSurface';
+import { StarRating, roundRatingDisplay } from '../components/StarRating';
 import { colors, fonts, profileScreenTokens, radius } from '../theme';
 
 export { MessagesScreen } from './MessagesScreen';
@@ -56,6 +58,7 @@ export function ProfileScreen() {
   );
   const { items: recommendedFeed } = useFeed(region, 'recommended', null);
   const salesToShipCount = useSellerPendingShipCount(true, authReady);
+  const { summary: reviewSummary } = useReviewSummary(true, authReady);
   const recommendedProducts = useMemo(
     () => recommendedFeed.slice(0, PROFILE_RECOMMEND_LIMIT),
     [recommendedFeed],
@@ -132,34 +135,36 @@ export function ProfileScreen() {
       />
       <AmazingSurface style={styles.profileCard} preserveShadow highlight={false}>
         <View style={styles.profileTop}>
-          <Pressable
-            style={[
-              styles.profileAvatar,
-              !hasCustomAvatar && styles.profileAvatarPlaceholder,
-            ]}
-            onPress={() => void handlePickAvatar()}
-            disabled={uploading}
-            accessibilityRole="button"
-            accessibilityLabel={t('screens.editProfile.changeAvatar')}
-          >
-            {user && hasCustomAvatar ? (
-              <Image
-                key={displayAvatarUrl}
-                source={{ uri: displayAvatarUrl! }}
-                style={styles.profileAvatarImage}
-                resizeMode="cover"
-              />
-            ) : user ? (
-              <AppIcon name="person" size={22} color={colors.text} />
-            ) : (
-              <AppIcon name="person" size={22} color={colors.text} />
-            )}
-            {uploading ? (
-              <View style={styles.avatarOverlay}>
-                <ActivityIndicator color={colors.brand} />
-              </View>
-            ) : null}
-          </Pressable>
+          <View style={styles.profileAvatarWrap}>
+            <Pressable
+              style={[
+                styles.profileAvatar,
+                !hasCustomAvatar && styles.profileAvatarPlaceholder,
+              ]}
+              onPress={() => void handlePickAvatar()}
+              disabled={uploading}
+              accessibilityRole="button"
+              accessibilityLabel={t('screens.editProfile.changeAvatar')}
+            >
+              {user && hasCustomAvatar ? (
+                <Image
+                  key={displayAvatarUrl}
+                  source={{ uri: displayAvatarUrl! }}
+                  style={styles.profileAvatarImage}
+                  resizeMode="cover"
+                />
+              ) : user ? (
+                <AppIcon name="person" size={22} color={colors.text} />
+              ) : (
+                <AppIcon name="person" size={22} color={colors.text} />
+              )}
+              {uploading ? (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color={colors.brand} />
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
           <View style={styles.profileInfo}>
             {user ? (
               <>
@@ -172,6 +177,43 @@ export function ProfileScreen() {
                 <Text style={styles.profileSub} numberOfLines={1}>
                   {profileSubline}
                 </Text>
+                <Pressable
+                  style={styles.ratingRow}
+                  onPress={() => nav('reviewManage')}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('screens.profile.reviewManage')}
+                >
+                  <View style={styles.ratingBlock}>
+                    <View style={styles.ratingHeader}>
+                      <Text style={styles.ratingLabel}>
+                        {t('screens.profile.ratingLabel')}
+                      </Text>
+                      <Text style={styles.ratingValue}>
+                        {roundRatingDisplay(
+                          reviewSummary && reviewSummary.receivedCount > 0
+                            ? reviewSummary.score
+                            : 0,
+                        ).toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.ratingStarsRow}>
+                      <StarRating
+                        rating={
+                          reviewSummary && reviewSummary.receivedCount > 0
+                            ? reviewSummary.score
+                            : 0
+                        }
+                        showValue={false}
+                      />
+                      <View style={styles.reviewCountBadge}>
+                        <AppIcon name="messages" size={14} color={colors.muted} />
+                        <Text style={styles.reviewCountValue}>
+                          {reviewSummary?.receivedCount ?? 0}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
               </>
             ) : null}
           </View>
@@ -348,9 +390,15 @@ const styles = StyleSheet.create({
   authBtn: {
     flex: 1,
   },
-  profileAvatar: {
+  profileAvatarWrap: {
     width: profileScreenTokens.avatarSize,
     height: profileScreenTokens.avatarSize,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  },
+  profileAvatar: {
+    width: '100%',
+    height: '100%',
     borderRadius: profileScreenTokens.avatarSize / 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -382,6 +430,48 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: profileScreenTokens.idLineSize,
     lineHeight: 14,
+  },
+  ratingRow: {
+    marginTop: 6,
+  },
+  ratingBlock: {
+    gap: 4,
+  },
+  ratingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  ratingLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.sub,
+    fontWeight: fonts.weights.medium,
+  },
+  ratingValue: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: fonts.weights.bold,
+    color: colors.red,
+  },
+  ratingStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  reviewCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  reviewCountValue: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
   },
   stats: {
     flexDirection: 'row',
