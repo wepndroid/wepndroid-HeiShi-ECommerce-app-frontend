@@ -1,12 +1,14 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
+import { useCheckoutStore } from '../store/checkoutStore';
 import { useCheckoutPicker } from '../context/CheckoutPickerContext';
 import { CouponSheet } from './CouponSheet';
 import { PaymentMethodSheet } from './PaymentMethodSheet';
 
 /** Renders checkout pickers at app shell level (same layer as RegionSheet) for reliable Android modals. */
 export function CheckoutPickerHost() {
-  const { paymentMethods, paymentMethodId, selectPaymentMethodById } = useApp();
+  const paymentMethods = useCheckoutStore((s) => s.paymentMethods);
+  const paymentMethodId = useCheckoutStore((s) => s.paymentMethodId);
+  const selectPaymentMethodById = useCheckoutStore((s) => s.selectPaymentMethodById);
   const {
     coupons,
     selectedCouponId,

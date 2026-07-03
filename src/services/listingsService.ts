@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { listingsApi } from '../api';
-import { ApiError, getAuthRequestHeaders } from '../api/client';
+import { ApiError, getAuthRequestHeaders, isNetworkError } from '../api/client';
 import { resolveApiBaseUrl } from '../api/config';
 import {
   mapDetailDtoToProduct,
@@ -14,11 +14,14 @@ import type { Product } from '../types';
 import { prepareMediaForUpload } from './mediaPicker';
 import { normalizeMediaUrl } from '../utils/mediaUrls';
 import { isPersistedAvatarUrl } from '../utils/sellerAvatar';
+import { demoMyListings } from '../data/myListingsDemo';
 import {
   createLocalListing,
   createLocalResaleDraft,
   deleteLocalListing,
   listLocalListings,
+  updateLocalListingPrice,
+  updateLocalListingStatus,
 } from '../data/listingsLocal';
 import type { UiListing } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
@@ -172,8 +175,18 @@ export async function uploadListingImage(
 ): Promise<string> {
   if (!isLoggedIn) throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
   const headers = await getAuthRequestHeaders();
-  if (!headers.Authorization) throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
-  return uploadImageToServer(localUri, mimeType, fileName);
+  if (!headers.Authorization) {
+    // Mock/offline demo session has no bearer token — keep the picked local URI.
+    if (API_USE_MOCK_FALLBACK) return localUri;
+    throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
+  }
+  try {
+    return await uploadImageToServer(localUri, mimeType, fileName);
+  } catch (err) {
+    // Backend unreachable in mock dev — compose the listing with the local URI.
+    if (API_USE_MOCK_FALLBACK && isNetworkError(err)) return localUri;
+    throw err;
+  }
 }
 
 function assertPersistedListingImages(imageUrls: string[]): void {
@@ -187,14 +200,21 @@ export async function publishListing(
   isLoggedIn: boolean,
 ): Promise<UiListing> {
   if (isLoggedIn) {
-    if (body.status !== 'draft') {
+    // On a real backend, images must be uploaded first. In mock dev, local URIs are fine.
+    if (body.status !== 'draft' && !API_USE_MOCK_FALLBACK) {
       assertPersistedListingImages(body.imageUrls);
     }
     try {
       const dto = await listingsApi.create(body);
       invalidateCatalog();
       return mapListingDtoToUiListing(dto);
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && !isNetworkError(err)) {
+        if (err.code === 'IDENTITY_REQUIRED') throw new Error('identity_required');
+        if (err.code === 'BLOCKED_CONTENT') throw new Error('blocked_content');
+        throw err;
+      }
+      // Network error (backend unreachable): fall through to the local mock create below.
       if (!API_USE_MOCK_FALLBACK) throw new Error('publish_failed');
     }
   }
@@ -299,6 +319,22 @@ export async function updateListing(
           throw new Error('listing_edit_blocked');
         }
       }
+      if (API_USE_MOCK_FALLBACK) {
+        if (body.price != null) {
+          const local = await updateLocalListingPrice(listingId, body.price);
+          if (local) {
+            invalidateCatalog();
+            return local;
+          }
+        }
+        if (body.status === 'active' || body.status === 'draft') {
+          const local = await updateLocalListingStatus(listingId, body.status);
+          if (local) {
+            invalidateCatalog();
+            return local;
+          }
+        }
+      }
       if (!API_USE_MOCK_FALLBACK) throw new Error('update_failed');
     }
   }
@@ -321,13 +357,20 @@ export async function getMyListings(
         hasMore = result.hasMore;
         page += 1;
       }
-      return items;
+      return items.length > 0 ? items : mergeDemoMyListings(status);
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('listings_load_failed');
+      return mergeDemoMyListings(status);
     }
   }
 
-  return listLocalListings(status);
+  const local = await listLocalListings(status);
+  return local.length > 0 ? local : mergeDemoMyListings(status);
+}
+
+function mergeDemoMyListings(status: 'active' | 'draft' | 'inactive' | undefined): UiListing[] {
+  if (!API_USE_MOCK_FALLBACK) return [];
+  return demoMyListings(status);
 }
 
 export async function getSoldListings(isLoggedIn: boolean): Promise<UiListing[]> {

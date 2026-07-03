@@ -2,7 +2,12 @@ import React, { useMemo } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { useRegionStore } from '../store/regionStore';
+import { useFavoritesStore } from '../store/favoritesStore';
+import { nav, openSearch, requireAuthNav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import { useAvatarUpload } from '../hooks/useAvatarUpload';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useSessionAvatarUrl } from '../hooks/useCurrentUserAvatar';
@@ -32,19 +37,13 @@ const PROFILE_RECOMMEND_LIMIT = 6;
 
 export function ProfileScreen() {
   const { t, i18n } = useTranslation();
-  const {
-    nav,
-    requireAuthNav,
-    user,
-    authReady,
-    toast,
-    region,
-    openDetail,
-    openSearch,
-    followCount,
-    updateUser,
-    favs,
-  } = useApp();
+  const user = useAuthStore((s) => s.user);
+  const authReady = useAuthStore((s) => s.authReady);
+  const updateUser = useAuthStore((s) => s.updateUser);
+  const region = useRegionStore((s) => s.region);
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const followCount = useFavoritesStore((s) => s.follows.size);
+  const favs = useFavoritesStore((s) => s.favs);
   const inboxUnreadCount = useInboxUnreadCount(true, authReady);
   const { profile, save } = useUserProfile(user, authReady);
   const { pickAndUpload, uploading } = useAvatarUpload(true);

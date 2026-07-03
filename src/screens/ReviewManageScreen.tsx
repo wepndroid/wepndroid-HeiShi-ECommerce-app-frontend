@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../components/typography';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import {
   usePendingReviewOrders,
@@ -207,7 +208,10 @@ function ReceivedReviewCard({
 export function ReviewManageScreen() {
   const { t, i18n } = useTranslation();
   useAuthGuard();
-  const { isLoggedIn, authReady, openDetail, products } = useApp();
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const products = useCatalogStore((s) => s.products);
   const [receivedRole, setReceivedRole] = useState<ReceivedRole>('seller');
   const { summary, loading: summaryLoading } = useReviewSummary(isLoggedIn, authReady);
   const { orders: pendingOrders, loading: pendingLoading } = usePendingReviewOrders(

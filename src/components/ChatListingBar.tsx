@@ -1,10 +1,12 @@
-import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from './typography';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AmazingSurface } from './AmazingSurface';
 import { SellerAvatar } from './SellerAvatar';
-import { colors, fonts, radius } from '../theme';
+import { AppIcon } from './AppIcon';
+import { colors, fonts, formControls, radius } from '../theme';
+import { filterNumericInput, numericKeyboardType } from '../utils/numericInput';
 
 /** Avatar + name for the chat title bar (top header). */
 export function ChatCounterpartTitle({
@@ -52,39 +54,128 @@ export function ChatCounterpartTitle({
 export function ChatListingBar({
   title,
   priceLabel,
+  price,
+  currencyPrefix,
   location,
   onPress,
+  canEditPrice,
+  onSavePrice,
+  onInvalidPrice,
 }: {
   title: string;
   priceLabel: string;
+  price?: number;
+  currencyPrefix?: string;
   location?: string;
   onPress?: () => void;
+  canEditPrice?: boolean;
+  onSavePrice?: (newPrice: number) => Promise<void>;
+  onInvalidPrice?: () => void;
 }) {
   const { t } = useTranslation();
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [draftPrice, setDraftPrice] = useState('');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const showPriceEditor = Boolean(canEditPrice && onSavePrice && price != null && currencyPrefix);
 
-  const content = (
-    <>
-      <Text style={styles.inquiryTitle} numberOfLines={2}>
-        {t('screens.chat.inquiryTitle', { title })}
+  useEffect(() => {
+    if (!editingPrice && price != null) {
+      setDraftPrice(String(price));
+    }
+  }, [editingPrice, price]);
+
+  const handlePriceAction = useCallback(async () => {
+    if (!showPriceEditor || savingPrice) return;
+    if (!editingPrice) {
+      setDraftPrice(String(price));
+      setEditingPrice(true);
+      return;
+    }
+    const parsed = Number.parseFloat(draftPrice);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      onInvalidPrice?.();
+      return;
+    }
+    setSavingPrice(true);
+    try {
+      await onSavePrice!(parsed);
+      setEditingPrice(false);
+    } finally {
+      setSavingPrice(false);
+    }
+  }, [draftPrice, editingPrice, onInvalidPrice, onSavePrice, price, savingPrice, showPriceEditor]);
+
+  const titleBlock = (
+    <Text style={styles.inquiryTitle} numberOfLines={2}>
+      {t('screens.chat.inquiryTitle', { title })}
+    </Text>
+  );
+
+  const priceBlock = showPriceEditor ? (
+    <View style={styles.priceRow}>
+      <View style={styles.priceEditor}>
+        <Text style={styles.metaPrice}>{currencyPrefix}</Text>
+        {editingPrice ? (
+          <View style={styles.priceInputBox}>
+            <TextInput
+              style={styles.priceInput}
+              value={draftPrice}
+              onChangeText={(raw) => {
+                const { value, rejected } = filterNumericInput(raw, 'decimal');
+                if (rejected) onInvalidPrice?.();
+                setDraftPrice(value);
+              }}
+              keyboardType={numericKeyboardType('decimal')}
+              placeholder={t('screens.chat.pricePlaceholder')}
+              placeholderTextColor={formControls.placeholderColor}
+              autoFocus
+              selectTextOnFocus
+            />
+          </View>
+        ) : (
+          <Text style={styles.metaPrice}>{price}</Text>
+        )}
+      </View>
+      <Pressable
+        style={styles.priceAction}
+        onPress={() => void handlePriceAction()}
+        disabled={savingPrice}
+        accessibilityRole="button"
+        accessibilityLabel={
+          editingPrice ? t('screens.chat.savePrice') : t('screens.chat.editPrice')
+        }
+      >
+        {savingPrice ? (
+          <ActivityIndicator size="small" color={colors.text} />
+        ) : (
+          <AppIcon name={editingPrice ? 'archive' : 'edit'} size={18} color={colors.text} />
+        )}
+      </Pressable>
+      <Text style={styles.metaRest} numberOfLines={1}>
+        {t('screens.chat.listingMetaSuffix', { location: location ?? '' })}
       </Text>
-      <Text style={styles.metaLine} numberOfLines={2}>
-        <Text style={styles.metaPrice}>{priceLabel}</Text>
-        <Text style={styles.metaRest}>
-          {t('screens.chat.listingMetaSuffix', { location: location ?? '' })}
-        </Text>
+    </View>
+  ) : (
+    <Text style={styles.metaLine} numberOfLines={2}>
+      <Text style={styles.metaPrice}>{priceLabel}</Text>
+      <Text style={styles.metaRest}>
+        {t('screens.chat.listingMetaSuffix', { location: location ?? '' })}
       </Text>
-    </>
+    </Text>
   );
 
   return (
     <AmazingSurface style={styles.productCard} highlight={false} preserveShadow>
-      {onPress ? (
-        <Pressable style={styles.productBlock} onPress={onPress} accessibilityRole="button">
-          {content}
-        </Pressable>
-      ) : (
-        <View style={styles.productBlock}>{content}</View>
-      )}
+      <View style={styles.productBlock}>
+        {onPress ? (
+          <Pressable onPress={onPress} accessibilityRole="button">
+            {titleBlock}
+          </Pressable>
+        ) : (
+          titleBlock
+        )}
+        {priceBlock}
+      </View>
     </AmazingSurface>
   );
 }
@@ -127,6 +218,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
+  priceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  priceEditor: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 1,
+  },
+  priceInputBox: {
+    minWidth: 72,
+    maxWidth: 120,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.sm,
+    backgroundColor: colors.paper,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  priceInput: {
+    fontSize: 12,
+    fontWeight: fonts.weights.bold,
+    color: colors.red,
+    padding: 0,
+    minHeight: 20,
+  },
+  priceAction: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   metaPrice: {
     fontWeight: fonts.weights.bold,
     color: colors.red,
@@ -138,5 +264,6 @@ const styles = StyleSheet.create({
     color: colors.sub,
     fontSize: 12,
     lineHeight: 16,
+    flexShrink: 1,
   },
 });

@@ -1,23 +1,39 @@
 import React from 'react';
 import { useFocusEffect } from 'expo-router';
 import i18n from '../i18n';
-import type { OrderFilterKey, UiOrder } from '../types';
+import type { Product, OrderFilterKey, UiOrder } from '../types';
 import { listSalesOrders, releaseSalesOrder, shipSalesOrder } from '../services/ordersService';
 
 export function useSellerOrders(
   filter: OrderFilterKey,
   isLoggedIn: boolean,
   authReady: boolean,
+  products: Product[],
+  resolveTitle: (product: Product) => string,
+  resolveSeller: (product: Product) => string,
 ) {
   const [orders, setOrders] = React.useState<UiOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
 
+  const productsRef = React.useRef(products);
+  productsRef.current = products;
+  const resolveTitleRef = React.useRef(resolveTitle);
+  resolveTitleRef.current = resolveTitle;
+  const resolveSellerRef = React.useRef(resolveSeller);
+  resolveSellerRef.current = resolveSeller;
+
   const refresh = React.useCallback(() => {
     if (!authReady) return;
     setLoading(true);
     setError(false);
-    listSalesOrders(filter, isLoggedIn)
+    listSalesOrders(
+      filter,
+      isLoggedIn,
+      productsRef.current,
+      resolveTitleRef.current,
+      resolveSellerRef.current,
+    )
       .then(setOrders)
       .catch(() => {
         setOrders([]);

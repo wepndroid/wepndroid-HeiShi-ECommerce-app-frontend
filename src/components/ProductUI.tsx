@@ -10,7 +10,7 @@ import { Product } from '../types';
 import type { LocalService } from '../data/services';
 import { useLocalizedProducts } from '../hooks/useLocalizedProduct';
 import { splitProductMasonryColumns } from '../utils/masonryColumns';
-import { useApp } from '../context/AppContext';
+import { useFavoritesStore } from '../store/favoritesStore';
 import { colors, fonts, productCardTokens, profileScreenTokens, radius, serviceCardTokens, shadows, PRODUCT_CARD_RADIUS } from '../theme';
 import { homePromoBannerForLanguage } from '../assets/homeBanner';
 import { bannerArtworkAspectRatio } from '../assets/bannerAspect';
@@ -33,7 +33,8 @@ export function ProductCard({
   const { t } = useTranslation();
   const { width: screenWidth } = useWindowDimensions();
   const imageSize = useMemo(() => getProductCardImageSize(screenWidth), [screenWidth]);
-  const { favs, toggleFavoriteById } = useApp();
+  const favs = useFavoritesStore((s) => s.favs);
+  const toggleFavoriteById = useFavoritesStore((s) => s.toggleFavoriteById);
   const isFav = favs.has(product.id);
   const coverImage = resolveProductImages(product)[0];
 
@@ -92,8 +93,35 @@ export function ProductCard({
           {product.pricePrefix}
           {product.price}
         </Text>
+        {(product.favoriteCount ?? 0) > 0 ? (
+          <Text style={styles.wantCount}>
+            {t('home.wantCount', { count: product.favoriteCount ?? 0 })}
+          </Text>
+        ) : null}
         <View style={styles.tagRow}>
           <Badge text={product.tag} compact fontSize={productCardTokens.tagSize} />
+        </View>
+        <View style={styles.trustRow}>
+          {product.sellerPhoneVerified ? (
+            <Badge text={t('home.trustPhone')} compact fontSize={productCardTokens.tagSize} />
+          ) : null}
+          {product.sellerIdentityVerified ? (
+            <Badge text={t('home.trustIdentity')} compact fontSize={productCardTokens.tagSize} />
+          ) : null}
+          {(product.sellerCompletedOrders ?? 0) > 0 ? (
+            <Badge
+              text={t('home.trustTrades', { count: product.sellerCompletedOrders ?? 0 })}
+              compact
+              fontSize={productCardTokens.tagSize}
+            />
+          ) : null}
+          {(product.sellerPositiveRatingRate ?? 0) > 0 ? (
+            <Badge
+              text={t('home.trustRating', { rate: product.sellerPositiveRatingRate ?? 0 })}
+              compact
+              fontSize={productCardTokens.tagSize}
+            />
+          ) : null}
         </View>
         <View style={styles.meta}>
           <SellerAvatar
@@ -275,6 +303,7 @@ export function Banner({
   variant = 'trust',
   artwork = false,
   artworkSource,
+  artworkRemoteUri,
   flushVertical,
   badge,
   actionLabel,
@@ -288,6 +317,8 @@ export function Banner({
   artwork?: boolean;
   /** Custom full-width banner image; defaults to home promo artwork. */
   artworkSource?: number;
+  /** Remote CMS banner image URL (overrides local artwork when set). */
+  artworkRemoteUri?: string;
   /** Remove default vertical margins (parent controls spacing). */
   flushVertical?: boolean;
   /** Right-side pill on local variant (e.g. 保障). */
@@ -362,8 +393,10 @@ export function Banner({
   }
 
   if (variant === 'promo' && artwork) {
-    const bannerSource = artworkSource ?? homePromoBannerForLanguage(i18n.language);
-    const aspectRatio = bannerArtworkAspectRatio(bannerSource);
+    const bannerSource = artworkRemoteUri
+      ? { uri: artworkRemoteUri }
+      : (artworkSource ?? homePromoBannerForLanguage(i18n.language));
+    const aspectRatio = artworkRemoteUri ? 2.4 : bannerArtworkAspectRatio(bannerSource as number);
     const actionHalfHeight = profileScreenTokens.bannerActionHeight / 2;
     return (
       <View
@@ -529,9 +562,20 @@ const styles = StyleSheet.create({
     lineHeight: productCardTokens.priceSize + 2,
     marginTop: 2,
   },
+  wantCount: {
+    marginTop: 2,
+    fontSize: productCardTokens.metaSize,
+    color: colors.sub,
+  },
   tagRow: {
     marginTop: 3,
     alignSelf: 'flex-start',
+  },
+  trustRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
   },
   meta: {
     flexDirection: 'row',

@@ -222,9 +222,9 @@ function Sync-DevApiEnvFiles {
   $frontendEnv = Join-Path $ProjectRoot ".env"
   @(
     "EXPO_PUBLIC_API_URL=http://127.0.0.1:$ApiPort/v1",
-    "EXPO_PUBLIC_API_MOCK_FALLBACK=false"
+    "EXPO_PUBLIC_API_MOCK_FALLBACK=true"
   ) | Set-Content -Path $frontendEnv -Encoding utf8
-  Write-Host "Synced Frontend .env -> port $ApiPort"
+  Write-Host "Synced Frontend .env -> port $ApiPort (mock fallback ON for UI verification)"
 
   $backendRoot = Join-Path (Split-Path $ProjectRoot -Parent) "Backend"
   $backendEnv = Join-Path $backendRoot ".env"
@@ -279,8 +279,19 @@ function Set-DevApiEnv {
   param([int]$ApiPort = (Resolve-DevApiPort))
   Sync-DevApiEnvFiles -ApiPort $ApiPort
   $env:EXPO_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort/v1"
-  $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "false"
+  $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "true"
   return $ApiPort
+}
+
+function Stop-MetroIfRunning {
+  param([int]$MetroPort = 8081)
+  if (-not (Test-PortListening $MetroPort)) { return $false }
+  $listenPid = Get-ListeningPid -Port $MetroPort
+  if (-not $listenPid) { return $false }
+  Write-Host "Stopping Metro on port $MetroPort (PID $listenPid) to apply .env ..."
+  cmd /c "taskkill /F /PID $listenPid /T 2>nul" | Out-Null
+  Start-Sleep -Seconds 2
+  return $true
 }
 
 function Set-MetroPortForward {

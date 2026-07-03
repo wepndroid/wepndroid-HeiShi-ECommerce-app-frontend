@@ -1,5 +1,5 @@
 import { HomeTabKey, Product, ProductCatKey } from '../types';
-import { productInRegion, RegionSelection, ALL_AREAS } from '../data/region';
+import { productInRegion, RegionSelection, ALL_AREAS, regionData, allKnownAreas } from '../data/region';
 import { products } from '../data/products';
 
 const HOME_TAB_CAT: Partial<Record<HomeTabKey, ProductCatKey>> = {
@@ -27,6 +27,11 @@ export function homeFilterForCategory(
 export function categoryProducts(list: Product[], tab: HomeTabKey): Product[] {
   if (tab === 'recommended') return list;
   if (tab === 'newArrivals') return [...list].sort((a, b) => b.id - a.id);
+  if (tab === 'jobs') return list.filter((p) => p.listingType === 'job');
+  if (tab === 'rentals') return list.filter((p) => p.listingType === 'rental');
+  if (tab === 'secondhand') {
+    return list.filter((p) => !p.listingType || p.listingType === 'product' || p.listingType === 'bundle');
+  }
   const cat = HOME_TAB_CAT[tab];
   return cat ? list.filter((p) => p.catKey === cat) : list;
 }
@@ -39,8 +44,42 @@ export function regionProducts(list: Product[], region: RegionSelection): Produc
   return list.filter((p) => productInRegion(p.loc, region));
 }
 
+/** Minimum feed size before other-city listings are shown as spillover. */
+const FEED_MIN_RESULTS = 6;
+
+/** Resolve which supported city a listing location belongs to (null if unknown). */
+function cityForLoc(loc: string): string | null {
+  if (!loc) return null;
+  const normalized = loc === 'CBD' ? 'Melbourne CBD' : loc;
+  for (const group of regionData) {
+    for (const city of group.cities) {
+      if (normalized === city.name || normalized.includes(city.name)) return city.name;
+      if (allKnownAreas(city).some((area) => normalized === area || normalized.includes(area))) {
+        return city.name;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * City-first ranking with spillover (PRD §5.2): the selected city (and area, when a
+ * specific one is chosen) ranks first; if there are fewer than FEED_MIN_RESULTS, listings
+ * from other cities are appended so the feed is never sparse.
+ */
+export function cityFirstWithSpillover(pool: Product[], region: RegionSelection): Product[] {
+  const inCity = pool.filter((p) => {
+    if (cityForLoc(p.loc) !== region.city) return false;
+    if (region.area === ALL_AREAS) return true;
+    return productInRegion(p.loc, region);
+  });
+  if (inCity.length >= FEED_MIN_RESULTS) return inCity;
+  const spillover = pool.filter((p) => !inCity.includes(p));
+  return [...inCity, ...spillover];
+}
+
 export function homeFeedProducts(region: RegionSelection, tab: HomeTabKey): Product[] {
-  return categoryProducts(regionProducts(products, region), tab);
+  return cityFirstWithSpillover(categoryProducts(products, tab), region);
 }
 
 export function feedTitleKey(tab: HomeTabKey, region: RegionSelection): string {

@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,7 +19,9 @@ import { NO_NAV_SCREENS } from '../data/productsNav';
 import { AmazingSurface } from './AmazingSurface';
 import { MarqueePlaceholder } from './MarqueeText';
 import { colors, fonts, formControls, iconTokens, emptyStateTokens, loadingStateTokens, badgeTokens, radius, searchBarSurface, searchBarTokens, spacing, typography, detailPageTokens, homeScreenTokens, profileScreenTokens, sectionHeadTokens, navBarShadow } from '../theme';
-import { useApp } from '../context/AppContext';
+import { useUiStore } from '../store/uiStore';
+import { nav, requireAuthNav, goBack } from '../store/navigation';
+import { useActiveScreen } from '../store/useActiveScreen';
 import { ScreenId, TabScreenId } from '../types';
 import { AppIcon, AppIconName } from './AppIcon';
 import { LOGO_ASPECT, LOGO_EN, LOGO_ZH } from '../assets/logos';
@@ -32,7 +35,7 @@ const TAB_ITEMS: { id: TabScreenId; icon: AppIconName; labelKey: string; publish
 ];
 
 export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
-  const { nav, requireAuthNav, activeTab } = useApp();
+  const { activeTab } = useActiveScreen();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
@@ -68,7 +71,7 @@ export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
             key={item.id}
             style={styles.navItem}
             onPress={() =>
-              item.id === 'messages' || item.id === 'profile' || item.id === 'category'
+              item.id === 'messages' || item.id === 'profile'
                 ? requireAuthNav(item.id)
                 : nav(item.id)
             }
@@ -86,7 +89,8 @@ export function BottomNav(_props: { blurTarget?: RefObject<View | null> }) {
 }
 
 export function Toast() {
-  const { toastMessage, toastVisible } = useApp();
+  const toastMessage = useUiStore((s) => s.toastMessage);
+  const toastVisible = useUiStore((s) => s.toastVisible);
   const opacity = React.useRef(new Animated.Value(0)).current;
   const translateY = React.useRef(new Animated.Value(25)).current;
 
@@ -113,6 +117,38 @@ export function Toast() {
       <Text style={styles.toastText} numberOfLines={1}>
         {toastMessage}
       </Text>
+    </Animated.View>
+  );
+}
+
+/** Full-width notice at the top of the screen (white background, black text). */
+export function TopBanner() {
+  const topBannerMessage = useUiStore((s) => s.topBannerMessage);
+  const topBannerVisible = useUiStore((s) => s.topBannerVisible);
+  const clearTopBanner = useUiStore((s) => s.clearTopBanner);
+  const insets = useSafeAreaInsets();
+  const opacity = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: topBannerVisible ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [topBannerVisible, opacity]);
+
+  if (!topBannerVisible || !topBannerMessage) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="box-none"
+      style={[styles.topBannerWrap, { paddingTop: insets.top, opacity }]}
+    >
+      <Pressable style={styles.topBanner} onPress={clearTopBanner} accessibilityRole="button">
+        <Text style={styles.topBannerText} numberOfLines={3}>
+          {topBannerMessage}
+        </Text>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -216,7 +252,6 @@ export function IconButton({
 }
 
 export function BackButton({ onPress }: { onPress?: () => void }) {
-  const { goBack } = useApp();
   return (
     <Pressable style={styles.back} onPress={onPress ?? goBack}>
       <AppIcon name="chevronBack" size={22} color={colors.text} />
@@ -530,6 +565,14 @@ export function Notice({
 
 export type DismissibleModalPlacement = 'bottom' | 'center' | 'fill';
 
+const MODAL_BORDER_COLOR = colors.line;
+
+/** Bottom inset once at the sheet edge — avoids double-padding in child sheets. */
+function modalSheetBottomPadding(bottomInset: number): number {
+  if (Platform.OS === 'web') return spacing.screenPadding;
+  return Math.max(bottomInset, spacing.screenPadding);
+}
+
 /** Modal with a tappable backdrop — closes when the user presses outside `children`. */
 export function DismissibleModal({
   visible,
@@ -551,11 +594,19 @@ export function DismissibleModal({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const blockBackdropCloseRef = useRef(false);
-  const resolvedStatusBarTranslucent = statusBarTranslucent ?? placement === 'bottom';
+  const resolvedStatusBarTranslucent = statusBarTranslucent ?? true;
   // Transparent Android modals with animationType="slide" often size to content height,
   // leaving a gap above the system nav bar — use none/fade at the Modal layer instead.
   const resolvedAnimationType =
     placement === 'bottom' && animationType === 'slide' ? 'none' : animationType;
+  const modalProps = {
+    visible,
+    transparent: true as const,
+    animationType: resolvedAnimationType,
+    onRequestClose: onClose,
+    statusBarTranslucent: resolvedStatusBarTranslucent,
+    navigationBarTranslucent: true,
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -573,14 +624,8 @@ export function DismissibleModal({
 
   if (placement === 'fill') {
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType={animationType}
-        onRequestClose={onClose}
-        statusBarTranslucent={statusBarTranslucent}
-      >
-        <View style={styles.dismissModalFillRoot} pointerEvents="box-none">
+      <Modal {...modalProps} animationType={animationType}>
+        <View style={styles.dismissModalFillRoot}>
           <Pressable
             style={styles.dismissModalFillBackdrop}
             onPress={handleBackdropPress}
@@ -596,53 +641,43 @@ export function DismissibleModal({
   }
 
   if (placement === 'bottom') {
+    const sheetBottomPad = modalSheetBottomPadding(insets.bottom);
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType={resolvedAnimationType}
-        onRequestClose={onClose}
-        statusBarTranslucent={resolvedStatusBarTranslucent}
-      >
-        <Pressable
-          style={styles.dismissModalBottomBackdrop}
-          onPress={handleBackdropPress}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.closeModal')}
-        >
-          <Pressable style={[styles.dismissModalCardStop, contentStyle]} onPress={() => undefined}>
-            <View
-              style={[
-                styles.dismissModalBottomSheetSurface,
-                { paddingBottom: insets.bottom },
-              ]}
-            >
-              {children}
-            </View>
-          </Pressable>
-        </Pressable>
+      <Modal {...modalProps}>
+        <View style={styles.dismissModalBottomRoot}>
+          <Pressable
+            style={styles.dismissModalBottomBackdropLayer}
+            onPress={handleBackdropPress}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.closeModal')}
+          />
+          <View
+            style={[
+              styles.dismissModalBottomSheetSurface,
+              { paddingBottom: sheetBottomPad },
+              contentStyle,
+            ]}
+          >
+            {children}
+          </View>
+        </View>
       </Modal>
     );
   }
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={animationType}
-      onRequestClose={onClose}
-      statusBarTranslucent={statusBarTranslucent}
-    >
-      <Pressable
-        style={[styles.dismissModalBackdropPress, styles.dismissModalBackdropCenter]}
-        onPress={handleBackdropPress}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.closeModal')}
-      >
-        <Pressable style={[styles.dismissModalCardStop, contentStyle]} onPress={() => undefined}>
+    <Modal {...modalProps} animationType={animationType}>
+      <View style={styles.dismissModalCenterRoot}>
+        <Pressable
+          style={styles.dismissModalCenterBackdropLayer}
+          onPress={handleBackdropPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('common.closeModal')}
+        />
+        <View style={[styles.dismissModalCenterCardWrap, contentStyle]} pointerEvents="box-none">
           {children}
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -845,6 +880,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: typography.bodySm,
     fontWeight: fonts.weights.medium,
+  },
+  topBannerWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 300,
+  },
+  topBanner: {
+    backgroundColor: colors.paper,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: 10,
+  },
+  topBannerText: {
+    color: colors.text,
+    fontSize: typography.bodySm,
+    fontWeight: fonts.weights.medium,
+    textAlign: 'center',
   },
   logoWrap: {
     flexShrink: 0,
@@ -1135,22 +1190,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  dismissModalBackdropBottom: {
+  dismissModalBottomRoot: {
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
   },
-  dismissModalBackdropCenter: {
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  dismissModalBottomBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+  dismissModalBottomBackdropLayer: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   dismissModalBottomSheetSurface: {
+    width: '100%',
+    maxHeight: '82%',
     backgroundColor: colors.paper,
     borderTopLeftRadius: radius.bottomSheet,
     borderTopRightRadius: radius.bottomSheet,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: MODAL_BORDER_COLOR,
+    overflow: 'hidden',
+  },
+  dismissModalCenterRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  dismissModalCenterBackdropLayer: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  dismissModalCenterCardWrap: {
+    width: '100%',
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: MODAL_BORDER_COLOR,
     overflow: 'hidden',
   },
   dismissModalCardStop: {
@@ -1160,7 +1233,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dismissModalFillBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   dismissModalFillContent: {

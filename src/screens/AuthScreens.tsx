@@ -1,22 +1,57 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { nav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import {
   AuthErrorKey,
   hasRegisterAvatar,
   validateRegisterAvatarStep,
   validateRegisterPhoneStep,
 } from '../data/auth';
-import { sendRegisterCode } from '../services/authService';
+import { sendRegisterCode, sendLoginCode, loginWithOtp } from '../services/authService';
+import { isSupabaseAuthConfigured } from '../api/supabase';
+import { loginWithOAuth } from '../services/authService';
 import { pickImagesFromLibrary, type PickedMedia } from '../services/mediaPicker';
 import { AppIcon } from '../components/AppIcon';
 import { DetailCard, FieldInputStacked, FieldSelectRow, FormCard } from '../components/FormUI';
 import { allCityOptions, DEFAULT_REGION } from '../data/region';
 import { BackButton, Logo, Notice, PillButton, ScreenScroll, TitleBar } from '../components/UI';
-import { colors, fonts } from '../theme';
+import { colors, fonts, radius } from '../theme';
 import { NumericInputKind } from '../utils/numericInput';
+import { OAUTH_LOGO_APPLE, OAUTH_LOGO_GOOGLE, OAUTH_LOGO_WECHAT } from '../assets/oauthLogos';
+
+const OAUTH_LOGOS: Record<'google' | 'apple' | 'wechat', number> = {
+  google: OAUTH_LOGO_GOOGLE,
+  apple: OAUTH_LOGO_APPLE,
+  wechat: OAUTH_LOGO_WECHAT,
+};
+
+function OAuthButton({
+  provider,
+  label,
+  disabled,
+  onPress,
+}: {
+  provider: 'google' | 'apple' | 'wechat';
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.oauthButton, disabled && styles.oauthButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Image source={OAUTH_LOGOS[provider]} style={styles.oauthButtonLogo} resizeMode="contain" />
+    </Pressable>
+  );
+}
 
 function AuthField({
   label,
@@ -60,14 +95,62 @@ function authErrorMessage(t: (key: string) => string, error: AuthErrorKey) {
 
 export function LoginScreen() {
   const { t } = useTranslation();
-  const { nav, login, toast } = useApp();
+  const login = useAuthStore((s) => s.login);
+  const [loginMode, setLoginMode] = useState<'password' | 'sms'>('password');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
+  const [resendAfter, setResendAfter] = useState(0);
+  const socialConfigured = isSupabaseAuthConfigured();
+
+  useEffect(() => {
+    if (resendAfter <= 0) return undefined;
+    const timer = setTimeout(() => setResendAfter((value) => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendAfter]);
+
+  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat') => {
+    if (oauthSubmitting) return;
+    setOauthSubmitting(true);
+    const result = await loginWithOAuth(provider);
+    setOauthSubmitting(false);
+    if ('pending' in result && result.pending) {
+      toast(t('toast.oauthContinueInBrowser'));
+      return;
+    }
+    if ('error' in result) {
+      toast(authErrorMessage(t, result.error));
+      return;
+    }
+    toast(t('toast.loginSuccess'));
+    nav('profile');
+  };
+
+  useEffect(() => {
+    if (!socialConfigured) return;
+    const sub = Linking.addEventListener('url', () => {
+      toast(t('toast.loginSuccess'));
+      nav('profile');
+    });
+    return () => sub.remove();
+  }, [nav, socialConfigured, t, toast]);
 
   const handleLogin = async () => {
     if (submitting) return;
     setSubmitting(true);
+    if (loginMode === 'sms') {
+      const result = await loginWithOtp(phone, verificationCode);
+      setSubmitting(false);
+      if ('error' in result) {
+        toast(authErrorMessage(t, result.error));
+        return;
+      }
+      toast(t('toast.loginSuccess'));
+      nav('profile');
+      return;
+    }
     const result = await login(phone, password);
     setSubmitting(false);
     if ('error' in result && result.error) {
@@ -78,6 +161,22 @@ export function LoginScreen() {
     nav('profile');
   };
 
+  const handleSendLoginCode = async () => {
+    if (submitting || resendAfter > 0) return;
+    setSubmitting(true);
+    const result = await sendLoginCode(phone);
+    setSubmitting(false);
+    if ('error' in result) {
+      toast(authErrorMessage(t, result.error));
+      return;
+    }
+    setResendAfter(result.resendAfter);
+    toast(t('screens.login.codeSent'));
+    if (result.devCode) {
+      toast(t('screens.register.devCodeHint', { code: result.devCode }));
+    }
+  };
+
   return (
     <ScreenScroll screenId="login">
       <TitleBar center={t('screens.login.title')} left={<BackButton />} />
@@ -85,6 +184,18 @@ export function LoginScreen() {
         <Logo size={34} />
         <Text style={styles.heroTitle}>{t('screens.login.headline')}</Text>
         <Text style={styles.heroSub}>{t('screens.login.subtitle')}</Text>
+      </View>
+      <View style={styles.loginModeRow}>
+        <PillButton
+          label={t('screens.login.modePassword')}
+          variant={loginMode === 'password' ? 'brand' : 'light'}
+          onPress={() => setLoginMode('password')}
+        />
+        <PillButton
+          label={t('screens.login.modeSms')}
+          variant={loginMode === 'sms' ? 'brand' : 'light'}
+          onPress={() => setLoginMode('sms')}
+        />
       </View>
       <FormCard>
         <AuthField
@@ -95,21 +206,65 @@ export function LoginScreen() {
           numericKind="phone"
           onInvalidInput={() => toast(t('toast.numberOnly'))}
         />
-        <AuthField
-          label={t('screens.login.passwordLabel')}
-          value={password}
-          onChangeText={setPassword}
-          placeholder={t('screens.login.passwordPlaceholder')}
-          secureTextEntry
-        />
+        {loginMode === 'password' ? (
+          <AuthField
+            label={t('screens.login.passwordLabel')}
+            value={password}
+            onChangeText={setPassword}
+            placeholder={t('screens.login.passwordPlaceholder')}
+            secureTextEntry
+          />
+        ) : (
+          <>
+            <AuthField
+              label={t('screens.login.codeLabel')}
+              value={verificationCode}
+              onChangeText={setVerificationCode}
+              placeholder={t('screens.login.codePlaceholder')}
+              numericKind="integer"
+              onInvalidInput={() => toast(t('toast.numberOnly'))}
+            />
+            <PillButton
+              label={
+                resendAfter > 0
+                  ? t('screens.login.resendIn', { seconds: resendAfter })
+                  : t('screens.login.sendCode')
+              }
+              variant="light"
+              full
+              onPress={() => void handleSendLoginCode()}
+            />
+          </>
+        )}
       </FormCard>
-      <Notice text={t('screens.login.demoHint')} />
+      {loginMode === 'password' ? <Notice text={t('screens.login.demoHint')} /> : null}
       <PillButton
         label={t('screens.login.submit')}
         variant="brand"
         full
         onPress={() => void handleLogin()}
       />
+      <Text style={styles.oauthDivider}>{t('screens.login.orContinueWith')}</Text>
+      <View style={styles.oauthRow}>
+        <OAuthButton
+          provider="google"
+          label={t('screens.login.google')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('google')}
+        />
+        <OAuthButton
+          provider="apple"
+          label={t('screens.login.apple')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('apple')}
+        />
+        <OAuthButton
+          provider="wechat"
+          label={t('screens.login.wechat')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('wechat')}
+        />
+      </View>
       <Pressable style={styles.linkRow} onPress={() => nav('register')}>
         <Text style={styles.linkText}>{t('screens.login.toRegister')}</Text>
       </Pressable>
@@ -121,7 +276,7 @@ type RegisterStep = 'phone' | 'verify';
 
 export function RegisterScreen() {
   const { t } = useTranslation();
-  const { nav, register, toast } = useApp();
+  const register = useAuthStore((s) => s.register);
   const [step, setStep] = useState<RegisterStep>('phone');
   const [nickname, setNickname] = useState('');
   const [phone, setPhone] = useState('');
@@ -134,7 +289,25 @@ export function RegisterScreen() {
   const [resendAfter, setResendAfter] = useState(0);
   const [pickedAvatar, setPickedAvatar] = useState<PickedMedia | null>(null);
   const [pickingAvatar, setPickingAvatar] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const pickedAvatarRef = useRef<PickedMedia | null>(null);
+
+  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat') => {
+    if (oauthSubmitting) return;
+    setOauthSubmitting(true);
+    const result = await loginWithOAuth(provider);
+    setOauthSubmitting(false);
+    if ('pending' in result && result.pending) {
+      toast(t('toast.oauthContinueInBrowser'));
+      return;
+    }
+    if ('error' in result) {
+      toast(authErrorMessage(t, result.error));
+      return;
+    }
+    toast(t('toast.registerSuccess'));
+    nav('profile');
+  };
 
   const getPickedAvatar = () => pickedAvatarRef.current ?? pickedAvatar;
 
@@ -396,6 +569,28 @@ export function RegisterScreen() {
         </>
       )}
 
+      <Text style={styles.oauthDivider}>{t('screens.register.orContinueWith')}</Text>
+      <View style={styles.oauthRow}>
+        <OAuthButton
+          provider="google"
+          label={t('screens.login.google')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('google')}
+        />
+        <OAuthButton
+          provider="apple"
+          label={t('screens.login.apple')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('apple')}
+        />
+        <OAuthButton
+          provider="wechat"
+          label={t('screens.login.wechat')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('wechat')}
+        />
+      </View>
+
       <Pressable style={styles.linkRow} onPress={() => nav('login')}>
         <Text style={styles.linkText}>{t('screens.register.toLogin')}</Text>
       </Pressable>
@@ -421,6 +616,11 @@ const styles = StyleSheet.create({
     color: '#777777',
     textAlign: 'center',
   },
+  loginModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
   linkRow: {
     alignItems: 'center',
     marginTop: 14,
@@ -433,6 +633,37 @@ const styles = StyleSheet.create({
   },
   linkTextMuted: {
     color: colors.sub,
+  },
+  oauthDivider: {
+    marginTop: 16,
+    marginBottom: 10,
+    textAlign: 'center',
+    color: colors.sub,
+    fontSize: 13,
+  },
+  oauthRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  oauthButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.paper,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  oauthButtonDisabled: {
+    opacity: 0.5,
+  },
+  oauthButtonLogo: {
+    width: 24,
+    height: 24,
   },
   avatarLabel: {
     fontSize: 13,

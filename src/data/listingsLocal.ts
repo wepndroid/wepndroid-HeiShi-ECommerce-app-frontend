@@ -8,7 +8,7 @@ const LISTINGS_KEY = 'localListings';
 
 export interface LocalListingRecord {
   id: number;
-  type: 'product' | 'service' | 'bundle';
+  type: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   title: string;
   description: string;
   price: number;
@@ -104,9 +104,45 @@ export async function createLocalListing(
   return mapLocalListingToUi(record);
 }
 
+/** Active user-published listings, for merging into the mock feed/search. */
+export async function listActiveLocalListingRecords(): Promise<LocalListingRecord[]> {
+  const listings = await readListings();
+  return listings.filter((item) => item.status === 'active');
+}
+
+export async function updateLocalListingStatus(
+  listingId: number,
+  status: 'active' | 'draft' | 'inactive',
+): Promise<UiListing | null> {
+  const listings = await readListings();
+  const index = listings.findIndex((item) => item.id === listingId);
+  if (index < 0) return null;
+  const updated: LocalListingRecord = { ...listings[index], status };
+  listings[index] = updated;
+  await writeListings(listings);
+  return mapLocalListingToUi(updated);
+}
+
 export async function deleteLocalListing(listingId: number): Promise<void> {
   const listings = await readListings();
   await writeListings(listings.filter((item) => item.id !== listingId));
+}
+
+export async function updateLocalListingPrice(
+  listingId: number,
+  price: number,
+): Promise<UiListing | null> {
+  const listings = await readListings();
+  const index = listings.findIndex((item) => item.id === listingId);
+  if (index < 0) return null;
+  const current = listings[index];
+  const bundleMeta = current.bundleMeta
+    ? { ...current.bundleMeta, fullPrice: price }
+    : undefined;
+  const updated: LocalListingRecord = { ...current, price, bundleMeta };
+  listings[index] = updated;
+  await writeListings(listings);
+  return mapLocalListingToUi(updated);
 }
 
 export async function createLocalResaleDraft(sourceListingId: number, title: string, price: number, imageUrl: string) {

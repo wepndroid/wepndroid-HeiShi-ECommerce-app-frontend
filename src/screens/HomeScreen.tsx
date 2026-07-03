@@ -1,8 +1,12 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { useRegionStore, regionLabel } from '../store/regionStore';
+import { nav, openSearch, requireAuthNav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import { ALL_AREAS, formatAreaLabel } from '../data/region';
 import { feedTitleKey, homeFilterForCategory } from '../hooks/useProductFilters';
 import {
@@ -24,6 +28,7 @@ import {
 } from '../components/HomeCategoryShortcutRow';
 import { HomeTabKey, ProductCatKey } from '../types';
 import { usePhotoSearch } from '../hooks/usePhotoSearch';
+import { useHomeBanners } from '../hooks/useHomeBanners';
 import { colors, fonts, homeScreenTokens } from '../theme';
 
 const HOME_TABS: HomeTabKey[] = [
@@ -38,28 +43,23 @@ const CATS = HOME_CATEGORY_SHORTCUTS;
 
 export function HomeScreen() {
   const { t, i18n } = useTranslation();
-  const {
-    nav,
-    requireAuthNav,
-    openSearch,
-    openDetail,
-    homeFeed,
-    homeFeedLoading,
-    homeFeedError,
-    reloadHomeFeed,
-    homeTabKey,
-    setHomeTabKey,
-    setHomeCategory,
-    homeCategory,
-    region,
-    regionLabelText,
-    openRegionSheet,
-    toast,
-    isLoggedIn,
-    authReady,
-  } = useApp();
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const homeFeed = useCatalogStore((s) => s.homeFeed);
+  const homeFeedLoading = useCatalogStore((s) => s.homeFeedLoading);
+  const homeFeedError = useCatalogStore((s) => s.homeFeedError);
+  const reloadHomeFeed = useCatalogStore((s) => s.reloadHomeFeed);
+  const homeTabKey = useCatalogStore((s) => s.homeTabKey);
+  const setHomeTabKey = useCatalogStore((s) => s.setHomeTabKey);
+  const setHomeCategory = useCatalogStore((s) => s.setHomeCategory);
+  const homeCategory = useCatalogStore((s) => s.homeCategory);
+  const region = useRegionStore((s) => s.region);
+  const openRegionSheet = useRegionStore((s) => s.openRegionSheet);
+  const regionLabelText = regionLabel(region);
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
   const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
   const searchByPhoto = usePhotoSearch();
+  const cmsBanner = useHomeBanners('home');
 
   const titleKey = feedTitleKey(homeTabKey, region);
   const feedTitle = t(
@@ -117,9 +117,18 @@ export function HomeScreen() {
       <Banner
         variant="promo"
         artwork
-        title={t('home.bannerTitle')}
+        title={cmsBanner?.title ?? t('home.bannerTitle')}
         subtitle={t('home.bannerSubtitle')}
-        artworkSource={homePromoBannerForLanguage(i18n.language)}
+        artworkSource={cmsBanner ? undefined : homePromoBannerForLanguage(i18n.language)}
+        artworkRemoteUri={cmsBanner?.imageUrl}
+        actionLabel={cmsBanner?.linkUrl ? t('home.bannerAction') : undefined}
+        onAction={
+          cmsBanner?.linkUrl
+            ? () => {
+                void Linking.openURL(cmsBanner.linkUrl!);
+              }
+            : undefined
+        }
       />
 
       <SectionHead

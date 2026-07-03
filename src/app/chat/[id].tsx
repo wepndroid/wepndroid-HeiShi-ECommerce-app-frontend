@@ -1,11 +1,14 @@
 import { useLayoutEffect, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { useApp } from '../../context/AppContext';
+import { useAuthStore } from '../../store/authStore';
+import { useChatStore } from '../../store/chatStore';
 import { ChatScreen } from '../../screens/PublishScreens';
 
 export default function ChatRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { hydrateChatFromConversationId, authReady, isLoggedIn } = useApp();
+  const hydrateChatFromConversationId = useChatStore((s) => s.hydrateChatFromConversationId);
+  const authReady = useAuthStore((s) => s.authReady);
+  const isLoggedIn = useAuthStore((s) => s.user != null);
 
   const conversationId = useMemo(() => {
     const raw = Array.isArray(id) ? id[0] : id;

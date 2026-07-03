@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FAVORITES_KEY = 'catalogFavorites';
 
-const DEFAULT_FAVORITE_IDS = [1, 3, 5, 6];
+const DEFAULT_FAVORITE_IDS = [1, 3, 5, 6, 13, 15];
 
 export async function loadLocalFavorites(): Promise<Set<number>> {
   const raw = await AsyncStorage.getItem(FAVORITES_KEY);

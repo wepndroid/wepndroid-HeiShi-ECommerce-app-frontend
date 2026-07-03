@@ -1006,9 +1006,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   sheetCard: {
-    maxHeight: '62%',
+    maxHeight: '100%',
     paddingTop: 14,
-    paddingBottom: 24,
   },
   sheetTitle: {
     fontSize: 16,

@@ -5,7 +5,7 @@ import type { CreateOrderRequest, OrderDto, OrderReviewDto, Paginated } from '..
 export const ordersApi = {
   /** GET /orders?status= */
   list(params?: {
-    status?: 'pendingPay' | 'pendingShip' | 'pendingReceive' | 'pendingReview' | 'completed' | 'all';
+    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress' | 'all';
     listingId?: number;
     page?: number;
     pageSize?: number;
@@ -15,7 +15,7 @@ export const ordersApi = {
 
   /** GET /orders/sales?status= — seller's sales */
   listSales(params?: {
-    status?: 'pendingPay' | 'pendingShip' | 'pendingReceive' | 'pendingReview' | 'completed' | 'all';
+    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress' | 'all';
     listingId?: number;
     page?: number;
     pageSize?: number;
@@ -66,6 +66,24 @@ export const ordersApi = {
   /** GET /orders/:id/review */
   getReview(id: number) {
     return apiRequest<OrderReviewDto>(`/orders/${id}/review`);
+  },
+
+  /** POST /orders/:id/dispute */
+  openDispute(id: number, body: { reason: string; evidenceUrls?: string[] }) {
+    return apiRequest<OrderDto>(`/orders/${id}/dispute`, { method: 'POST', body });
+  },
+
+  /** POST /orders/:id/refund */
+  requestRefund(id: number, body: { reason: string; evidenceUrls?: string[] }) {
+    return apiRequest<OrderDto>(`/orders/${id}/refund`, { method: 'POST', body });
+  },
+
+  /** POST /orders/:id/seller-adjust-amount */
+  sellerAdjustAmount(id: number, amount: number) {
+    return apiRequest<OrderDto>(`/orders/${id}/seller-adjust-amount`, {
+      method: 'POST',
+      body: { amount },
+    });
   },
 
   /** POST /orders/:id/cancel */

@@ -22,7 +22,7 @@ import {
   regionData,
   regionSummary,
 } from '../data/region';
-import { useApp } from '../context/AppContext';
+import { useRegionStore } from '../store/regionStore';
 import { PillButton, DismissibleModal } from './UI';
 import { colors, fonts, radius, amazingStyle } from '../theme';
 
@@ -30,12 +30,10 @@ const SHEET_SLIDE_OFFSET = 420;
 
 export function RegionSheet() {
   const { t } = useTranslation();
-  const {
-    region,
-    setRegion,
-    regionSheetVisible,
-    closeRegionSheet,
-  } = useApp();
+  const region = useRegionStore((s) => s.region);
+  const setRegion = useRegionStore((s) => s.setRegion);
+  const regionSheetVisible = useRegionStore((s) => s.regionSheetVisible);
+  const closeRegionSheet = useRegionStore((s) => s.closeRegionSheet);
   const slideAnim = useRef(new Animated.Value(SHEET_SLIDE_OFFSET)).current;
   const [expandedOtherCity, setExpandedOtherCity] = useState<string | null>(null);
 
@@ -281,8 +279,7 @@ const styles = StyleSheet.create({
   sheet: {
     paddingHorizontal: 14,
     paddingTop: 18,
-    paddingBottom: 28,
-    maxHeight: '82%',
+    maxHeight: '100%',
   },
   head: {
     flexDirection: 'row',
@@ -321,12 +318,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   card: {
-    ...amazingStyle,
+    // Unselected regions are flat — no fill, border, or shadow. Only the
+    // active state group is highlighted (cardActive) so it stands out.
     borderRadius: radius.md,
     padding: 12,
     marginBottom: 10,
+    backgroundColor: 'transparent',
   },
   cardActive: {
+    ...amazingStyle,
     borderColor: colors.brand,
     backgroundColor: colors.brand3,
   },

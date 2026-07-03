@@ -88,6 +88,31 @@ const DEMO_MESSAGES: Record<string, LocalMessageRecord[]> = {
       sentAt: new Date(Date.now() - 4 * 60_000).toISOString(),
     },
   ],
+  'demo-2': [
+    {
+      id: 'm4',
+      conversationId: 'demo-2',
+      textKey: 'screens.chat.msg4',
+      side: 'left',
+      sentAt: new Date(Date.now() - 4 * 60 * 60_000).toISOString(),
+    },
+    {
+      id: 'm5',
+      conversationId: 'demo-2',
+      textKey: 'screens.chat.msg5',
+      side: 'right',
+      sentAt: new Date(Date.now() - 3.5 * 60 * 60_000).toISOString(),
+    },
+  ],
+  'demo-3': [
+    {
+      id: 'm6',
+      conversationId: 'demo-3',
+      textKey: 'screens.chat.msg6',
+      side: 'left',
+      sentAt: new Date(Date.now() - 28 * 60 * 60_000).toISOString(),
+    },
+  ],
 };
 
 function resolveText(record: { text?: string; textKey?: string }): string {
@@ -112,21 +137,25 @@ async function readConversations(): Promise<LocalConversationRecord[]> {
 }
 
 function mergeWithDemoDefaults(stored: LocalConversationRecord[]): LocalConversationRecord[] {
-  const demoById = new Map(DEMO_CONVERSATIONS.map((row) => [row.id, row]));
   const byId = new Map(stored.map((row) => [row.id, row]));
   for (const demo of DEMO_CONVERSATIONS) {
     const existing = byId.get(demo.id);
-    if (!existing) continue;
-    byId.set(demo.id, {
-      ...existing,
-      listingId: existing.listingId ?? demo.listingId,
-      listingTitle: existing.listingTitle ?? demo.listingTitle,
-      counterpartNameKey: existing.counterpartNameKey ?? demo.counterpartNameKey,
-      verified: existing.verified ?? demo.verified,
-      lastMessageKey: existing.lastMessageKey ?? demo.lastMessageKey,
-    });
+    if (existing) {
+      byId.set(demo.id, {
+        ...existing,
+        listingId: existing.listingId ?? demo.listingId,
+        listingTitle: existing.listingTitle ?? demo.listingTitle,
+        counterpartNameKey: existing.counterpartNameKey ?? demo.counterpartNameKey,
+        verified: existing.verified ?? demo.verified,
+        lastMessageKey: existing.lastMessageKey ?? demo.lastMessageKey,
+      });
+    } else {
+      byId.set(demo.id, demo);
+    }
   }
-  return [...byId.values()];
+  return [...byId.values()].sort(
+    (a, b) => (Date.parse(b.lastMessageAt) || 0) - (Date.parse(a.lastMessageAt) || 0),
+  );
 }
 
 async function writeConversations(conversations: LocalConversationRecord[]) {

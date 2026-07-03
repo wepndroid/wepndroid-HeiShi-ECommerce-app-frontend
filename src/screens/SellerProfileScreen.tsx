@@ -2,7 +2,9 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { useFavoritesStore } from '../store/favoritesStore';
 import { usePublicUserProfile } from '../hooks/usePublicUserProfile';
 import { sellerKeyFromUserId } from '../data/catalogDemo';
 import { DetailCard } from '../components/FormUI';
@@ -23,7 +25,10 @@ function VerificationBadge({ label, active }: { label: string; active: boolean }
 
 export function SellerProfileScreen({ userId }: { userId: string }) {
   const { t } = useTranslation();
-  const { openDetail, toggleFollow, isFollowingSeller, user } = useApp();
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const toggleFollow = useFavoritesStore((s) => s.toggleFollow);
+  const isFollowingSeller = useFavoritesStore((s) => s.isFollowingSeller);
+  const user = useAuthStore((s) => s.user);
   const { profile, listings, loading, error } = usePublicUserProfile(userId);
 
   const sellerKey = sellerKeyFromUserId(userId) ?? userId.replace(/^seller-/, '');

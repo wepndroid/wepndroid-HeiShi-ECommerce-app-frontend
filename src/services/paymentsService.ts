@@ -43,6 +43,10 @@ export async function addPaymentMethod(
       if (!API_USE_MOCK_FALLBACK) throw new Error('payment_add_failed');
     }
   }
+  if (API_USE_MOCK_FALLBACK) {
+    const existing = mockPaymentMethods().find((m) => m.type === type);
+    if (existing) return existing;
+  }
   throw new Error('payment_add_failed');
 }
 
@@ -55,6 +59,7 @@ export async function removePaymentMethod(methodId: string, isLoggedIn: boolean)
       if (!API_USE_MOCK_FALLBACK) throw new Error('payment_remove_failed');
     }
   }
+  if (API_USE_MOCK_FALLBACK) return;
   throw new Error('payment_remove_failed');
 }
 
@@ -65,6 +70,10 @@ export async function setDefaultPaymentMethod(methodId: string, isLoggedIn: bool
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('payment_default_failed');
     }
+  }
+  if (API_USE_MOCK_FALLBACK) {
+    const method = mockPaymentMethods().find((m) => m.id === methodId);
+    if (method) return { ...method, isDefault: true };
   }
   throw new Error('payment_default_failed');
 }

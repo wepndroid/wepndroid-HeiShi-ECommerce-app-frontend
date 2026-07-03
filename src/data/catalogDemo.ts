@@ -1,7 +1,7 @@
 import { products } from './products';
 
 /** Seeded demo listings — titles/sellers must come from i18n in Chinese mode. */
-export const DEMO_PRODUCT_MAX_ID = 12;
+export const DEMO_PRODUCT_MAX_ID = 16;
 
 export const DEMO_SERVICE_LISTING_IDS = [101, 102, 103] as const;
 

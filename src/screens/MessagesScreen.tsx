@@ -3,7 +3,11 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { useChatStore } from '../store/chatStore';
+import { nav, requireAuthNav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useConversations } from '../hooks/useConversations';
 import { useNotificationGroups } from '../hooks/useNotificationGroups';
@@ -36,7 +40,10 @@ const GROUP_TITLE_KEYS = {
 export function MessagesScreen() {
   const { t, i18n } = useTranslation();
   useAuthGuard();
-  const { nav, requireAuthNav, toast, openChat, openSellerProfile, isLoggedIn, authReady } = useApp();
+  const openChat = useChatStore((s) => s.openChat);
+  const openSellerProfile = useCatalogStore((s) => s.openSellerProfile);
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
   const { conversations, loading: conversationsLoading, loadError: conversationsLoadError, refresh: refreshConversations } = useConversations(isLoggedIn, authReady);
   const { groups, loading: groupsLoading } = useNotificationGroups(isLoggedIn, authReady);
   const [query, setQuery] = useState('');

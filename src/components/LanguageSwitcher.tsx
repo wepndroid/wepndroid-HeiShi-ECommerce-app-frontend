@@ -3,12 +3,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from './typography';
 import { useTranslation } from 'react-i18next';
 import { AppLanguage, setAppLanguage } from '../i18n';
-import { useApp } from '../context/AppContext';
+import { toast } from '../store/uiStore';
 import { colors, fonts, radius } from '../theme';
 
 export function LanguageSwitcher({ compact }: { compact?: boolean }) {
   const { i18n, t } = useTranslation();
-  const { toast } = useApp();
   const current = i18n.language.startsWith('zh') ? 'zh' : 'en';
 
   const setLang = async (lang: AppLanguage) => {

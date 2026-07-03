@@ -13,7 +13,9 @@ export type ProductCatKey =
   | 'services'
   | 'misc'
   | 'motorcycle'
-  | 'textbooks';
+  | 'textbooks'
+  | 'jobs'
+  | 'rentals';
 
 export type ScreenId =
   | 'home'
@@ -23,9 +25,10 @@ export type ScreenId =
   | 'order'
   | 'publish'
   | 'uploadProduct'
+  | 'publishJob'
+  | 'publishRental'
   | 'publishBundle'
   | 'publishService'
-  | 'resale'
   | 'messages'
   | 'chat'
   | 'profile'
@@ -69,7 +72,17 @@ export type HomeTabKey =
   | 'newArrivals'
   | 'digital'
   | 'services'
-  | 'tickets';
+  | 'tickets'
+  | 'secondhand'
+  | 'jobs'
+  | 'rentals';
+
+/** City hub local discovery tabs (PRD §4 City page). */
+export type CityHubTabKey = 'secondhand' | 'services' | 'jobs' | 'rentals';
+
+export function cityHubTabToFeedTab(tab: CityHubTabKey): HomeTabKey {
+  return tab;
+}
 
 export interface Product {
   id: number;
@@ -97,7 +110,13 @@ export interface Product {
   apiVisual?: string;
   /** Total favorites/likes on this listing (from API). */
   favoriteCount?: number;
-  listingType?: 'product' | 'service' | 'bundle';
+  isPinned?: boolean;
+  isRecommended?: boolean;
+  sellerPhoneVerified?: boolean;
+  sellerIdentityVerified?: boolean;
+  sellerCompletedOrders?: number;
+  sellerPositiveRatingRate?: number;
+  listingType?: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   bundleMeta?: BundleMeta;
   listingStatus?: 'active' | 'sold' | 'inactive' | 'draft';
   purchaseAvailable?: boolean;
@@ -184,9 +203,10 @@ export interface UiListing {
   title: string;
   imageUrl: string;
   imageUrls?: string[];
-  listingType?: 'product' | 'service' | 'bundle';
+  listingType?: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   price: number;
   status: 'active' | 'draft' | 'inactive' | 'sold';
+  reviewStatus?: 'pendingReview' | 'approved' | 'rejected' | 'removed' | 'draft';
 }
 
 export type OrderFilterKey =
@@ -194,15 +214,19 @@ export type OrderFilterKey =
   | 'pendingShip'
   | 'pendingReceive'
   | 'pendingReview'
-  | 'completed';
+  | 'completed'
+  | 'inDispute';
 
 export type OrderStatus =
   | 'pendingPay'
   | 'pendingShip'
+  | 'pendingService'
   | 'pendingReceive'
   | 'pendingReview'
   | 'completed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'inDispute'
+  | 'refundInProgress';
 
 export type DemoOrder = {
   id: number;
@@ -227,4 +251,5 @@ export interface UiOrder {
   bundleItemId?: string;
   couponId?: string;
   discountAmount?: number;
+  displayAmountCny?: number;
 }

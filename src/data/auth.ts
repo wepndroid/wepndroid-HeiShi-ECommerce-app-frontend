@@ -40,7 +40,8 @@ export type AuthErrorKey =
   | 'codeRateLimit'
   | 'avatarRequired'
   | 'avatarUploadFailed'
-  | 'cityRequired';
+  | 'cityRequired'
+  | 'oauthUnavailable';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);
@@ -92,13 +93,18 @@ export async function saveSession(user: AuthUser | null) {
 
 export function normalizePhone(phone: string) {
   const cleaned = phone.replace(/\s+/g, '');
+  if (cleaned.startsWith('+86')) return cleaned;
+  if (cleaned.startsWith('86') && cleaned.length >= 13) return `+${cleaned}`;
+  if (/^1[3-9]\d{9}$/.test(cleaned)) return `+86${cleaned}`;
   if (cleaned.startsWith('+61')) return `0${cleaned.slice(3)}`;
   if (cleaned.startsWith('61') && cleaned.length >= 11) return `0${cleaned.slice(2)}`;
   return cleaned;
 }
 
 export function isValidPhone(phone: string) {
-  return /^(\+?61|0)\d{8,10}$/.test(normalizePhone(phone));
+  const normalized = normalizePhone(phone.trim());
+  if (normalized.startsWith('+86')) return /^\+861[3-9]\d{9}$/.test(normalized);
+  return /^(\+?61|0)\d{8,10}$/.test(normalized);
 }
 
 export function validateRegisterPhoneStep(input: {

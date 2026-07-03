@@ -25,8 +25,16 @@ export const productImageUrls = {
   10: 'https://images.pexels.com/photos/3992209/pexels-photo-3992209.jpeg?auto=compress&cs=tinysrgb&w=800',
   /** 摩托车头盔与手套 */
   11: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=800',
-  /** Marketing 教材资料 */
+  /** Marketing textbooks & notes */
   12: 'https://images.pexels.com/photos/159711/books-bookstore-book-reading-159711.jpeg?auto=compress&cs=tinysrgb&w=800',
+  /** Bubble tea shop part-time job */
+  13: 'https://images.pexels.com/photos/302899/pexels-photo-302899.jpeg?auto=compress&cs=tinysrgb&w=800',
+  /** Warehouse shift job */
+  14: 'https://images.pexels.com/photos/448361/pexels-photo-448361.jpeg?auto=compress&cs=tinysrgb&w=800',
+  /** Room sublet */
+  15: 'https://images.pexels.com/photos/271743/pexels-photo-271743.jpeg?auto=compress&cs=tinysrgb&w=800',
+  /** Roommate wanted */
+  16: 'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800',
 } as const;
 
 export function productImageUrl(id: number): string {

@@ -33,6 +33,20 @@ export const authApi = {
     return apiRequest<AuthTokensDto>('/auth/login', { method: 'POST', body, auth: false });
   },
 
+  /** POST /auth/login/send-code */
+  sendLoginCode(body: SendRegisterCodeRequest) {
+    return apiRequest<import('../types').SendRegisterCodeResponse>('/auth/login/send-code', {
+      method: 'POST',
+      body,
+      auth: false,
+    });
+  },
+
+  /** POST /auth/login/verify */
+  loginVerify(body: { phone: string; verificationCode: string }) {
+    return apiRequest<AuthTokensDto>('/auth/login/verify', { method: 'POST', body, auth: false });
+  },
+
   /** POST /auth/logout */
   logout() {
     return apiRequest<void>('/auth/logout', { method: 'POST' });

@@ -11,7 +11,9 @@ import i18n from '../i18n';
 import { isLocalDetailListing, resolveDetailProduct } from '../data/detailProducts';
 import { products as mockProducts } from '../data/products';
 import { localServices, serviceInRegion } from '../data/services';
-import { homeFeedProducts, regionProducts } from '../hooks/useProductFilters';
+import { categoryProducts, cityFirstWithSpillover, regionProducts } from '../hooks/useProductFilters';
+import { listActiveLocalListingRecords } from '../data/listingsLocal';
+import type { LocalListingRecord } from '../data/listingsLocal';
 import type { PickedMedia } from '../services/mediaPicker';
 import type { LocalService } from '../data/services';
 import type { RegionSelection } from '../data/region';
@@ -30,8 +32,25 @@ export interface SearchSuggestion {
   imageUrl?: string;
 }
 
-const MOCK_SUGGESTION_KEYS = ['desk', 'headphones', 'camera', 'boxes', 'pte', 'ticket'] as const;
-const MOCK_SUGGESTION_IDS = [5, 1, 4, 12, 7, 6] as const;
+const SEARCH_SUGGESTIONS_LIMIT = 4;
+
+const MOCK_SUGGESTION_KEYS = ['desk', 'headphones', 'camera', 'boxes'] as const;
+const MOCK_SUGGESTION_IDS = [5, 1, 4, 12] as const;
+
+function suggestionMatchesQuery(item: SearchSuggestion, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [item.query, item.title, item.subtitle].some((part) =>
+    part.toLowerCase().includes(needle),
+  );
+}
+
+function filterSearchSuggestions(items: SearchSuggestion[], query: string): SearchSuggestion[] {
+  const filtered = query.trim()
+    ? items.filter((item) => suggestionMatchesQuery(item, query))
+    : items;
+  return filtered.slice(0, SEARCH_SUGGESTIONS_LIMIT);
+}
 
 function mockSearchSuggestions(): SearchSuggestion[] {
   return MOCK_SUGGESTION_KEYS.map((key, index) => {
@@ -46,10 +65,60 @@ function mockSearchSuggestions(): SearchSuggestion[] {
   });
 }
 
-function mockFeed(region: RegionSelection, tab: HomeTabKey, categoryKey?: ProductCatKey): Product[] {
-  const base = homeFeedProducts(region, tab);
-  if (categoryKey) return base.filter((p) => p.catKey === categoryKey);
-  return base;
+/** Map a user-published local listing to a feed Product (mock demo). */
+function localRecordToProduct(record: LocalListingRecord): Product {
+  const images = record.bundleMeta?.coverImageUrls?.length
+    ? record.bundleMeta.coverImageUrls
+    : [record.imageUrl];
+  return {
+    id: record.id,
+    price: record.price,
+    catKey: (record.categoryKey as ProductCatKey) || 'misc',
+    tagKey: record.tagKey,
+    sellerKey: 'me',
+    seller: i18n.t('common.you', { defaultValue: 'Me' }),
+    loc: record.locationLabel || 'Melbourne',
+    height: '',
+    imageUrl: record.imageUrl,
+    imageUrls: images,
+    apiTitle: record.title,
+    apiDesc: record.description,
+    apiVisual: record.title,
+    favoriteCount: 0,
+    listingType: record.type,
+    listingStatus: 'active',
+    bundleMeta: record.bundleMeta,
+    escrowSupported: true,
+  };
+}
+
+async function localFeedProducts(): Promise<Product[]> {
+  try {
+    const records = await listActiveLocalListingRecords();
+    return records.map(localRecordToProduct);
+  } catch {
+    return [];
+  }
+}
+
+/** Merge user-published local listings ahead of static seed, de-duped by id. */
+function mergeLocalFirst(local: Product[], base: Product[]): Product[] {
+  return [...local, ...base.filter((p) => !local.some((l) => l.id === p.id))];
+}
+
+async function mockFeed(
+  region: RegionSelection,
+  tab: HomeTabKey,
+  categoryKey?: ProductCatKey,
+): Promise<Product[]> {
+  // Merge user-published + static seed, then rank city-first with spillover (PRD §5.2).
+  const pool = mergeLocalFirst(
+    categoryProducts(await localFeedProducts(), tab),
+    categoryProducts(mockProducts, tab),
+  );
+  const ranked = cityFirstWithSpillover(pool, region);
+  if (categoryKey) return ranked.filter((p) => p.catKey === categoryKey);
+  return ranked;
 }
 
 function mockSearchableText(product: Product): string {
@@ -70,9 +139,10 @@ function mockSearchableText(product: Product): string {
     .toLowerCase();
 }
 
-function mockSearch(region: RegionSelection, query: string): Product[] {
+async function mockSearch(region: RegionSelection, query: string): Promise<Product[]> {
   const q = query.trim().toLowerCase();
-  const regional = regionProducts(mockProducts, region);
+  const local = regionProducts(await localFeedProducts(), region);
+  const regional = mergeLocalFirst(local, regionProducts(mockProducts, region));
   if (!q) return regional.slice(0, 6);
   return regional.filter((product) => mockSearchableText(product).includes(q));
 }
@@ -110,9 +180,12 @@ export async function fetchFeed(
       hasMore = result.hasMore;
       page += 1;
     }
+    if (items.length === 0 && API_USE_MOCK_FALLBACK) {
+      return await mockFeed(region, tab, categoryKey);
+    }
     return items;
   } catch {
-    if (API_USE_MOCK_FALLBACK) return mockFeed(region, tab, categoryKey);
+    if (API_USE_MOCK_FALLBACK) return await mockFeed(region, tab, categoryKey);
     throw new Error('feed_failed');
   }
 }
@@ -124,7 +197,7 @@ export async function searchCatalog(
 ): Promise<Product[]> {
   const q = query.trim();
   if (!q) {
-    if (API_USE_MOCK_FALLBACK) return mockSearch(region, '');
+    if (API_USE_MOCK_FALLBACK) return await mockSearch(region, '');
     return fetchFeed(region, 'recommended');
   }
 
@@ -146,7 +219,7 @@ export async function searchCatalog(
     }
     return items;
   } catch {
-    if (API_USE_MOCK_FALLBACK) return mockSearch(region, q);
+    if (API_USE_MOCK_FALLBACK) return await mockSearch(region, q);
     throw new Error('search_failed');
   }
 }
@@ -194,7 +267,7 @@ export async function searchCatalogByImage(
     return { items, suggestedQuery, matchCount };
   } catch {
     if (API_USE_MOCK_FALLBACK) {
-      const items = mockSearch(region, '');
+      const items = await mockSearch(region, '');
       return {
         items,
         suggestedQuery: items[0]?.apiTitle ?? '',
@@ -296,22 +369,32 @@ export async function fetchLocalServices(region: RegionSelection): Promise<Local
   }
 }
 
-export async function fetchSearchSuggestions(region: RegionSelection): Promise<SearchSuggestion[]> {
+export async function fetchSearchSuggestions(
+  region: RegionSelection,
+  searchQuery = '',
+): Promise<SearchSuggestion[]> {
+  const q = searchQuery.trim();
   try {
-    const items = await catalogApi.getSearchSuggestions(regionToFeedQuery(region));
-    return items.map((item) => ({
-      query: item.query,
-      productId: item.listingId,
-      title: item.title,
-      subtitle: item.subtitle,
-      imageUrl:
-        normalizeMediaUrl(item.imageUrl) ??
-        normalizeMediaUrl(mockProducts.find((p) => p.id === item.listingId)?.imageUrl) ??
-        (isDemoCatalogListing(item.listingId) ? productImageUrl(item.listingId) : undefined),
-    }));
+    const items = await catalogApi.getSearchSuggestions({
+      ...regionToFeedQuery(region),
+      ...(q ? { q } : {}),
+    });
+    return filterSearchSuggestions(
+      items.map((item) => ({
+        query: item.query,
+        productId: item.listingId,
+        title: item.title,
+        subtitle: item.subtitle,
+        imageUrl:
+          normalizeMediaUrl(item.imageUrl) ??
+          normalizeMediaUrl(mockProducts.find((p) => p.id === item.listingId)?.imageUrl) ??
+          (isDemoCatalogListing(item.listingId) ? productImageUrl(item.listingId) : undefined),
+      })),
+      searchQuery,
+    );
   } catch {
     if (API_USE_MOCK_FALLBACK) {
-      return mockSearchSuggestions();
+      return filterSearchSuggestions(mockSearchSuggestions(), searchQuery);
     }
     return [];
   }

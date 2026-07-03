@@ -1,13 +1,14 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../../context/AppContext';
+import { useCatalogStore } from '../../store/catalogStore';
 import { EmptyState, LoadingState, PillButton } from '../../components/UI';
 import { DetailScreen } from '../../screens/DetailScreens';
 
 export default function DetailRoute() {
   const { id, context } = useLocalSearchParams<{ id: string; context?: string | string[] }>();
-  const { loadProduct, currentItem } = useApp();
+  const loadProduct = useCatalogStore((s) => s.loadProduct);
+  const currentItem = useCatalogStore((s) => s.currentItem);
   const { t } = useTranslation();
   const [missing, setMissing] = useState(false);
   const [loadError, setLoadError] = useState(false);

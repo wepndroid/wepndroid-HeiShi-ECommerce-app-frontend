@@ -22,6 +22,11 @@ export class ApiError extends Error {
   }
 }
 
+/** True when a request failed because the backend was unreachable (offline / mock dev). */
+export function isNetworkError(err: unknown): boolean {
+  return err instanceof ApiError && (err.code === 'NETWORK_ERROR' || err.status === 0);
+}
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface ApiRequestOptions {

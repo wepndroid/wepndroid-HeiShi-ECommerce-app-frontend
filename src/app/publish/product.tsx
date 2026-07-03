@@ -1,1 +1,1 @@
-export { UploadProductScreen as default } from '../../screens/PublishScreens';
+export { PublishSecondhandScreen as default } from '../../screens/PublishScreens';

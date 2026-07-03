@@ -1,4 +1,5 @@
-import { ordersApi } from '../api';
+import { checkoutApi, ordersApi } from '../api';
+import { Linking } from 'react-native';
 import { ApiError } from '../api/client';
 import { mapOrderDtoToUiOrder } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
@@ -8,14 +9,22 @@ import {
   applyLocalOrderAction,
   createLocalOrder,
   listLocalOrders,
+  listLocalSalesOrders,
+  updateLocalOrderAmount,
 } from '../data/ordersLocal';
 import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
 
-export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel';
+export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
 
-export type CheckoutResult = { order: UiOrder | null; paid: boolean; payFailed?: boolean };
+export type CheckoutResult = {
+  order: UiOrder | null;
+  paid: boolean;
+  payFailed?: boolean;
+  pendingPayment?: boolean;
+  checkoutUrl?: string | null;
+};
 
 const CHAT_ORDER_STATUSES = new Set([
   'pendingPay',
@@ -93,14 +102,22 @@ export async function listOrders(
         status: filter === 'all' ? undefined : filter,
       });
       const mapped = visibleBuyerOrders(items.map(mapOrderDtoToUiOrder));
-      if (filter === 'all') return mapped;
-      return mapped.filter((item) => item.status === filter);
+      if (mapped.length > 0) {
+        if (filter === 'all') return mapped;
+        return mapped.filter((item) => item.status === filter);
+      }
+      if (!API_USE_MOCK_FALLBACK) {
+        if (filter === 'all') return mapped;
+        return mapped.filter((item) => item.status === filter);
+      }
     } catch {
-      throw new Error('orders_load_failed');
+      if (!API_USE_MOCK_FALLBACK) throw new Error('orders_load_failed');
     }
+    const local = await listLocalOrders(filter, products, resolveTitle, resolveSeller);
+    return visibleBuyerOrders(local);
   }
 
-  if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     const local = await listLocalOrders(filter, products, resolveTitle, resolveSeller);
     return visibleBuyerOrders(local);
   }
@@ -114,10 +131,23 @@ export async function listCompletedPurchases(isLoggedIn: boolean): Promise<UiOrd
         fetchAllOrders({ status: 'completed' }),
         fetchAllOrders({ status: 'pendingReview' }),
       ]);
-      return [...pendingReview, ...completed].map(mapOrderDtoToUiOrder);
+      const mapped = [...pendingReview, ...completed].map(mapOrderDtoToUiOrder);
+      if (mapped.length > 0) return mapped;
+      if (!API_USE_MOCK_FALLBACK) return mapped;
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('orders_load_failed');
     }
+  }
+  if (API_USE_MOCK_FALLBACK && isLoggedIn) {
+    const { products } = await import('../data/products');
+    const { listLocalOrders } = await import('../data/ordersLocal');
+    const all = await listLocalOrders(
+      'all',
+      products,
+      (p) => p.apiTitle ?? String(p.id),
+      (p) => p.seller,
+    );
+    return all.filter((o) => o.status === 'completed' || o.status === 'pendingReview');
   }
   return [];
 }
@@ -140,6 +170,9 @@ async function fetchAllSalesOrders(
 export async function listSalesOrders(
   filter: OrderFilterKey,
   isLoggedIn: boolean,
+  products: Product[] = [],
+  resolveTitle: (product: Product) => string = (p) => p.apiTitle ?? String(p.id),
+  resolveSeller: (product: Product) => string = (p) => p.seller,
 ): Promise<UiOrder[]> {
   if (isLoggedIn) {
     try {
@@ -147,13 +180,19 @@ export async function listSalesOrders(
         status: filter === 'all' ? undefined : filter,
       });
       const mapped = items.map(mapOrderDtoToUiOrder);
-      if (filter === 'all') {
-        return mapped.filter((item) => item.status !== 'cancelled');
-      }
-      return mapped.filter((item) => item.status === filter);
+      const filtered =
+        filter === 'all'
+          ? mapped.filter((item) => item.status !== 'cancelled')
+          : mapped.filter((item) => item.status === filter);
+      if (filtered.length > 0) return filtered;
+      if (!API_USE_MOCK_FALLBACK) return filtered;
     } catch {
-      throw new Error('sales_orders_load_failed');
+      if (!API_USE_MOCK_FALLBACK) throw new Error('sales_orders_load_failed');
     }
+    return listLocalSalesOrders(filter, products, resolveTitle, resolveSeller);
+  }
+  if (API_USE_MOCK_FALLBACK) {
+    return listLocalSalesOrders(filter, products, resolveTitle, resolveSeller);
   }
   return [];
 }
@@ -223,6 +262,30 @@ export async function userCanChatOnListing(
   }
 }
 
+async function paymentMethodForCheckout(
+  paymentMethodId?: string,
+): Promise<'card' | 'apple' | 'google' | 'alipay' | 'wechat' | 'paypal'> {
+  if (!paymentMethodId) return 'card';
+  try {
+    const { paymentsApi } = await import('../api');
+    const methods = await paymentsApi.listPaymentMethods();
+    const method = methods.find((m) => m.id === paymentMethodId);
+    if (method?.type === 'paypal') return 'paypal';
+    if (method?.type === 'apple_pay') return 'apple';
+    if (method?.type === 'google_pay') return 'google';
+    if (method?.type === 'alipay') return 'alipay';
+    if (method?.type === 'wechat_pay') return 'wechat';
+    return 'card';
+  } catch {
+    return 'card';
+  }
+}
+
+async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
+  const paymentMethod = await paymentMethodForCheckout(paymentMethodId);
+  return checkoutApi.create({ orderId, paymentMethod });
+}
+
 async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResult> {
   await clearStalePendingPayForListing(body.listingId, body.bundleItemId);
   let created: OrderDto;
@@ -241,9 +304,22 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
     }
   }
   try {
-    const paid = await ordersApi.pay(created.id);
+    const checkout = await runPaymentCheckout(created.id, body.paymentMethodId);
+    if (checkout.simulated) {
+      const paid = await ordersApi.pay(created.id);
+      invalidateCatalog();
+      return { order: mapOrderDtoToUiOrder(paid), paid: true };
+    }
+    if (checkout.checkoutUrl) {
+      await Linking.openURL(checkout.checkoutUrl);
+    }
     invalidateCatalog();
-    return { order: mapOrderDtoToUiOrder(paid), paid: true };
+    return {
+      order: mapOrderDtoToUiOrder(created),
+      paid: false,
+      pendingPayment: true,
+      checkoutUrl: checkout.checkoutUrl,
+    };
   } catch {
     await cancelUnpaidOrderSafely(created.id);
     invalidateCatalog();
@@ -281,10 +357,11 @@ export async function checkoutOrder(input: {
         if (err instanceof ApiError) throw err;
         throw new Error('checkout_failed');
       }
+      // Backend unreachable in mock dev — fall through to the local order below.
     }
   }
 
-  if (API_USE_MOCK_FALLBACK && !input.isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     const order = await createLocalOrder({
       listingId: input.listingId,
       deliveryMethod: input.deliveryMethod,
@@ -314,7 +391,17 @@ export async function performOrderAction(
       let dto: OrderDto | void;
       switch (action) {
         case 'pay':
-          dto = await ordersApi.pay(order.id);
+          {
+            const checkout = await runPaymentCheckout(order.id, order.paymentMethodId);
+            if (checkout.simulated) {
+              dto = await ordersApi.pay(order.id);
+            } else if (checkout.checkoutUrl) {
+              await Linking.openURL(checkout.checkoutUrl);
+              return order.status;
+            } else {
+              throw new Error('payment_pending');
+            }
+          }
           break;
         case 'remindShip':
           await ordersApi.remindShip(order.id);
@@ -329,6 +416,12 @@ export async function performOrderAction(
           dto = await ordersApi.cancel(order.id);
           invalidateCatalog();
           break;
+        case 'dispute':
+          dto = await ordersApi.openDispute(order.id, {
+            reason: 'Buyer opened dispute from app',
+            evidenceUrls: [],
+          });
+          break;
       }
       if (dto) {
         if (action === 'pay' || action === 'confirmReceive') {
@@ -338,6 +431,8 @@ export async function performOrderAction(
       }
       return order.status;
     } catch {
+      // Backend unreachable in mock dev — apply the action to the local order instead.
+      if (API_USE_MOCK_FALLBACK) return applyLocalOrderAction(order.id, order.status, action);
       throw new Error('order_action_failed');
     }
   }
@@ -381,11 +476,69 @@ export async function listPendingReviewOrders(isLoggedIn: boolean): Promise<Pend
   return fetchPendingReviewOrders(isLoggedIn);
 }
 
+export async function openOrderDispute(
+  order: UiOrder,
+  reason: string,
+  isLoggedIn: boolean,
+  evidenceUrls: string[] = [],
+): Promise<OrderStatus> {
+  if (isLoggedIn) {
+    try {
+      const dto = await ordersApi.openDispute(order.id, { reason, evidenceUrls });
+      return mapOrderDtoToUiOrder(dto).status;
+    } catch (err) {
+      if (!API_USE_MOCK_FALLBACK) throw err;
+    }
+  }
+  if (API_USE_MOCK_FALLBACK) {
+    return applyLocalOrderAction(order.id, order.status, 'dispute');
+  }
+  throw new Error('login_required');
+}
+
+export async function requestOrderRefund(
+  order: UiOrder,
+  reason: string,
+  isLoggedIn: boolean,
+  evidenceUrls: string[] = [],
+): Promise<OrderStatus> {
+  if (isLoggedIn) {
+    try {
+      const dto = await ordersApi.requestRefund(order.id, { reason, evidenceUrls });
+      return mapOrderDtoToUiOrder(dto).status;
+    } catch (err) {
+      if (!API_USE_MOCK_FALLBACK) throw err;
+    }
+  }
+  if (API_USE_MOCK_FALLBACK) {
+    return applyLocalOrderAction(order.id, order.status, 'refund');
+  }
+  throw new Error('login_required');
+}
+
+export async function sellerAdjustOrderAmount(
+  order: UiOrder,
+  amount: number,
+  isLoggedIn: boolean,
+): Promise<{ status: OrderStatus; amount: number }> {
+  if (!isLoggedIn) throw new Error('login_required');
+  try {
+    const dto = await ordersApi.sellerAdjustAmount(order.id, amount);
+    const mapped = mapOrderDtoToUiOrder(dto);
+    return { status: mapped.status, amount: mapped.amount };
+  } catch {
+    if (!API_USE_MOCK_FALLBACK) throw new Error('order_action_failed');
+    await updateLocalOrderAmount(order.id, amount);
+    return { status: order.status, amount };
+  }
+}
+
 export function orderActionForStatus(status: OrderStatus): OrderAction | null {
   switch (status) {
     case 'pendingShip':
       return 'remindShip';
     case 'pendingReceive':
+    case 'pendingService':
       return 'confirmReceive';
     case 'pendingReview':
       return null;

@@ -19,6 +19,30 @@ export function mockPaymentMethods(): PaymentMethodDto[] {
       label: i18n.t('payments.applePay'),
       isDefault: false,
     },
+    {
+      id: 'demo-google',
+      type: 'google_pay',
+      label: i18n.t('payments.googlePay'),
+      isDefault: false,
+    },
+    {
+      id: 'demo-alipay',
+      type: 'alipay',
+      label: i18n.t('payments.alipay'),
+      isDefault: false,
+    },
+    {
+      id: 'demo-wechat',
+      type: 'wechat_pay',
+      label: i18n.t('payments.wechatPay'),
+      isDefault: false,
+    },
+    {
+      id: 'demo-paypal',
+      type: 'paypal',
+      label: i18n.t('payments.paypal'),
+      isDefault: false,
+    },
   ];
 }
 

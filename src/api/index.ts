@@ -6,6 +6,7 @@ export { authApi } from './endpoints/auth';
 export { catalogApi } from './endpoints/catalog';
 export { listingsApi } from './endpoints/listings';
 export { ordersApi } from './endpoints/orders';
+export { checkoutApi } from './endpoints/checkout';
 export { favoritesApi, historyApi, followsApi, couponsApi } from './endpoints/userData';
 export { messagesApi } from './endpoints/messages';
 export { userApi, paymentsApi, settingsApi, regionApi, safetyApi } from './endpoints/user';

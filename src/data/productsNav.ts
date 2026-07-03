@@ -7,7 +7,6 @@ export const NO_NAV_SCREENS = new Set<ScreenId>([
   'uploadProduct',
   'publishBundle',
   'publishService',
-  'resale',
   'chat',
   'messageGroup',
   'settings',

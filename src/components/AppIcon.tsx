@@ -26,10 +26,10 @@ export type AppIconName =
   | 'send'
   | 'upload'
   | 'box'
-  | 'resale'
   | 'service'
   | 'cameraAlt'
   | 'edit'
+  | 'archive'
   | 'cash'
   | 'grid'
   | 'diamond'
@@ -117,10 +117,10 @@ const ICONS: Record<AppIconName, IconDef> = {
   send: { set: 'mci', name: 'send' },
   upload: { set: 'ion', name: 'cloud-upload-outline' },
   box: { set: 'ion', name: 'cube-outline' },
-  resale: { set: 'ion', name: 'repeat-outline' },
   service: { set: 'ion', name: 'briefcase-outline' },
   cameraAlt: { set: 'ion', name: 'camera-outline' },
   edit: { set: 'ion', name: 'create-outline' },
+  archive: { set: 'ion', name: 'archive-outline' },
   cash: { set: 'ion', name: 'cash-outline' },
   grid: { set: 'ion', name: 'grid-outline' },
   diamond: { set: 'ion', name: 'diamond-outline' },

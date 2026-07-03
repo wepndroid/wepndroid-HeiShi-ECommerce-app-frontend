@@ -1,11 +1,13 @@
 import React from 'react';
 import { Redirect, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { toast } from '../store/uiStore';
 
 /** Stack layout that redirects guests to login (settings, profile, local/category, etc.). */
 export function AuthRequiredStackLayout() {
-  const { isLoggedIn, authReady, toast } = useApp();
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
   const { t } = useTranslation();
 
   React.useEffect(() => {

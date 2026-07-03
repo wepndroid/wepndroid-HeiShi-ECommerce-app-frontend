@@ -35,7 +35,7 @@ export function useSearch(
 
   React.useEffect(() => {
     let cancelled = false;
-    fetchSearchSuggestions(region)
+    fetchSearchSuggestions(region, debouncedQuery)
       .then((items) => {
         if (!cancelled) setSuggestions(items);
       })
@@ -45,7 +45,7 @@ export function useSearch(
     return () => {
       cancelled = true;
     };
-  }, [region.state, region.city, region.area, i18n.language, catalogRevision]);
+  }, [region.state, region.city, region.area, debouncedQuery, i18n.language, catalogRevision]);
 
   React.useEffect(() => {
     if (isImageMode) return undefined;

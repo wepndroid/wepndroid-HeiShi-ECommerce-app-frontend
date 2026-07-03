@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { demoOrders, filterOrders } from './orders';
+import { demoOrders, demoSalesOrders, filterOrders } from './orders';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { ESCROW_FEE } from '../hooks/useProductFilters';
 
 const LOCAL_ORDERS_KEY = 'localOrders';
 const STATUS_OVERRIDES_KEY = 'orderStatusOverrides';
+const AMOUNT_OVERRIDES_KEY = 'orderAmountOverrides';
 
 export interface LocalOrderRecord {
   id: number;
@@ -49,6 +50,29 @@ async function saveStatusOverride(orderId: number, status: OrderStatus) {
   await AsyncStorage.setItem(STATUS_OVERRIDES_KEY, JSON.stringify(overrides));
 }
 
+async function loadAmountOverrides(): Promise<Record<number, number>> {
+  const raw = await AsyncStorage.getItem(AMOUNT_OVERRIDES_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<number, number>;
+  } catch {
+    return {};
+  }
+}
+
+export async function updateLocalOrderAmount(orderId: number, amount: number) {
+  const records = await loadLocalOrderRecords();
+  const index = records.findIndex((o) => o.id === orderId);
+  if (index >= 0) {
+    records[index] = { ...records[index], amount };
+    await saveLocalOrderRecords(records);
+    return;
+  }
+  const overrides = await loadAmountOverrides();
+  overrides[orderId] = amount;
+  await AsyncStorage.setItem(AMOUNT_OVERRIDES_KEY, JSON.stringify(overrides));
+}
+
 export function mapLocalOrderToUi(order: LocalOrderRecord): UiOrder {
   return {
     id: order.id,
@@ -86,20 +110,43 @@ export async function listLocalOrders(
   resolveTitle: (product: Product) => string,
   resolveSeller: (product: Product) => string,
 ): Promise<UiOrder[]> {
+  return mergeDemoOrders(filter, products, resolveTitle, resolveSeller, demoOrders);
+}
+
+export async function listLocalSalesOrders(
+  filter: OrderFilterKey,
+  products: Product[],
+  resolveTitle: (product: Product) => string,
+  resolveSeller: (product: Product) => string,
+): Promise<UiOrder[]> {
+  return mergeDemoOrders(filter, products, resolveTitle, resolveSeller, demoSalesOrders);
+}
+
+async function mergeDemoOrders(
+  filter: OrderFilterKey,
+  products: Product[],
+  resolveTitle: (product: Product) => string,
+  resolveSeller: (product: Product) => string,
+  demoSource: typeof demoOrders,
+): Promise<UiOrder[]> {
   const overrides = await loadStatusOverrides();
+  const amountOverrides = await loadAmountOverrides();
   const localRecords = await loadLocalOrderRecords();
 
-  const demoUi = demoOrders
+  const demoUi = demoSource
     .map((order) => {
       const product = products.find((p) => p.id === order.productId);
       const status = overrides[order.id] ?? order.status;
-      return mapDemoOrderToUi(
+      const mapped = mapDemoOrderToUi(
         order,
         product,
         product ? resolveTitle(product) : '',
         product ? resolveSeller(product) : '',
         status,
       );
+      if (!mapped) return null;
+      const amount = amountOverrides[order.id];
+      return amount != null ? { ...mapped, amount } : mapped;
     })
     .filter((row): row is UiOrder => row != null);
 
@@ -151,7 +198,7 @@ export async function updateLocalOrderStatus(orderId: number, status: OrderStatu
 export async function applyLocalOrderAction(
   orderId: number,
   currentStatus: OrderStatus,
-  action: 'pay' | 'ship' | 'remindShip' | 'confirmReceive' | 'submitReview' | 'cancel',
+  action: 'pay' | 'ship' | 'remindShip' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute' | 'refund',
 ): Promise<OrderStatus> {
   let next = currentStatus;
   switch (action) {
@@ -171,6 +218,12 @@ export async function applyLocalOrderAction(
       break;
     case 'cancel':
       if (currentStatus === 'pendingPay') next = 'cancelled';
+      break;
+    case 'dispute':
+      next = 'inDispute';
+      break;
+    case 'refund':
+      next = 'refundInProgress';
       break;
   }
   await updateLocalOrderStatus(orderId, next);

@@ -134,10 +134,68 @@ const productsRaw = [
     height: '' as const,
     imageUrl: productImageUrls[12],
   },
+  {
+    id: 13,
+    price: 24,
+    catKey: 'jobs' as ProductCatKey,
+    tagKey: 'partTime',
+    sellerKey: 'bubbleTea',
+    seller: 'Bubble Joy',
+    loc: 'CBD',
+    height: 'short' as const,
+    imageUrl: productImageUrls[13],
+    listingType: 'job' as const,
+  },
+  {
+    id: 14,
+    price: 28,
+    catKey: 'jobs' as ProductCatKey,
+    tagKey: 'hourlyPaid',
+    sellerKey: 'merchant1',
+    seller: 'Mel Logistics',
+    loc: 'Dandenong',
+    height: '' as const,
+    imageUrl: productImageUrls[14],
+    listingType: 'job' as const,
+  },
+  {
+    id: 15,
+    price: 220,
+    catKey: 'rentals' as ProductCatKey,
+    tagKey: 'sublet',
+    sellerKey: 'amy',
+    seller: 'Amy',
+    loc: 'Clayton',
+    height: 'tall' as const,
+    imageUrl: productImageUrls[15],
+    listingType: 'rental' as const,
+  },
+  {
+    id: 16,
+    price: 180,
+    catKey: 'rentals' as ProductCatKey,
+    tagKey: 'roommateWanted',
+    sellerKey: 'lucas',
+    seller: 'Lucas_墨尔本',
+    loc: 'Carlton',
+    height: 'short' as const,
+    imageUrl: productImageUrls[16],
+    listingType: 'rental' as const,
+  },
 ];
 
-export const products = productsRaw.map((p) => ({
-  ...p,
+function withTrustSignals<T extends (typeof productsRaw)[number]>(item: T, index: number) {
+  return {
+    ...item,
+    sellerPhoneVerified: true,
+    sellerIdentityVerified: index % 2 === 0,
+    sellerCompletedOrders: 3 + (item.id % 11),
+    sellerPositiveRatingRate: 94 + (item.id % 6),
+  };
+}
+
+export const products = productsRaw.map((p, index) => ({
+  ...withTrustSignals(p, index),
   favoriteCount: (p.id % 5) + ((p.id * 7) % 50) + 1,
   imageUrls: productGalleryUrls(p.id),
 }));

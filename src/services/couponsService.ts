@@ -15,7 +15,7 @@ export async function listCoupons(isLoggedIn: boolean): Promise<CouponDto[]> {
         hasMore = result.hasMore;
         page += 1;
       }
-      return items;
+      return items.length > 0 ? items : mockCoupons();
     } catch {
       if (!API_USE_MOCK_FALLBACK) return [];
       return mockCoupons();

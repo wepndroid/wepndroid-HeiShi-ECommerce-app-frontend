@@ -49,6 +49,12 @@ export function mapListingToProduct(dto: ListingSummaryDto): Product {
     listingType: dto.type,
     listingStatus: dto.status,
     favoriteCount: dto.favoriteCount,
+    isPinned: dto.isPinned,
+    isRecommended: dto.isRecommended,
+    sellerPhoneVerified: dto.seller.phoneVerified,
+    sellerIdentityVerified: dto.seller.identityVerified,
+    sellerCompletedOrders: dto.seller.completedOrderCount,
+    sellerPositiveRatingRate: dto.seller.positiveRatingRate,
   };
 }
 
@@ -147,6 +153,7 @@ export function mapOrderDtoToUiOrder(dto: OrderDto): UiOrder {
     bundleItemId: dto.bundleItemId,
     couponId: dto.couponId,
     discountAmount: dto.discountAmount,
+    displayAmountCny: dto.displayAmountCny,
   };
 }
 
@@ -201,6 +208,7 @@ export function mapListingDtoToUiListing(dto: ListingSummaryDto): UiListing {
           : dto.status === 'sold'
             ? 'sold'
             : 'active',
+    reviewStatus: dto.reviewStatus,
   };
 }
 

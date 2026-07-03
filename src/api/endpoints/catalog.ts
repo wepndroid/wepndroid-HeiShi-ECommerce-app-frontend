@@ -10,10 +10,26 @@ import type {
   SearchQuery,
 } from '../types';
 
+export type PlatformBannerDto = {
+  id: string;
+  title: string;
+  imageUrl: string;
+  linkUrl?: string | null;
+  position: string;
+};
+
 export const catalogApi = {
   /** GET /catalog/form-options */
   getFormOptions() {
     return apiRequest<ListingFormOptionsDto>('/catalog/form-options', { auth: false });
+  },
+
+  /** GET /catalog/banners */
+  getBanners(position: string = 'home') {
+    return apiRequest<{ items: PlatformBannerDto[] }>('/catalog/banners', {
+      query: { position },
+      auth: false,
+    });
   },
 
   /** GET /catalog/feed — public; optional auth not required for browsing */
@@ -64,10 +80,15 @@ export const catalogApi = {
   },
 
   /** GET /catalog/suggestions */
-  getSearchSuggestions(query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'>) {
+  getSearchSuggestions(
+    query?: Pick<FeedQuery, 'regionState' | 'regionCity' | 'regionArea'> & { q?: string },
+  ) {
     return apiRequest<{ query: string; listingId: number; title: string; subtitle: string; imageUrl?: string | null }[]>(
       '/catalog/suggestions',
       { query, auth: false },
     );
+  },
+  recordPromotionClick(listingId: number) {
+    return apiRequest<void>(`/catalog/listings/${listingId}/promotion-click`, { method: 'POST' });
   },
 };

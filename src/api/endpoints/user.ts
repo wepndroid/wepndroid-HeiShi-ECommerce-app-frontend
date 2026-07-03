@@ -75,7 +75,27 @@ export const userApi = {
       alipayBound: boolean;
       identityVerified: boolean;
       businessVerified: boolean;
+      submissionStatus: 'not_submitted' | 'pending' | 'approved' | 'rejected';
     }>('/users/me/verification');
+  },
+
+  submitVerification(body: {
+    legalName: string;
+    idCountry?: string;
+    idFrontUrl: string;
+    idBackUrl?: string;
+    businessName?: string;
+    businessRegUrl?: string;
+    abn?: string;
+  }) {
+    return apiRequest<{
+      phoneVerified: boolean;
+      wechatBound: boolean;
+      alipayBound: boolean;
+      identityVerified: boolean;
+      businessVerified: boolean;
+      submissionStatus: 'not_submitted' | 'pending' | 'approved' | 'rejected';
+    }>('/users/me/verification/submit', { method: 'POST', body });
   },
 
   /** POST /users/me/verification/bind */
@@ -228,7 +248,13 @@ export const safetyApi = {
   },
 
   /** POST /safety/reports */
-  submitReport(body: { targetType: 'listing' | 'user'; targetId: string; reason: string; details?: string }) {
+  submitReport(body: {
+    targetType: 'listing' | 'user' | 'chat' | 'order' | 'service';
+    targetId: string;
+    reason: string;
+    details?: string;
+    evidenceUrls?: string[];
+  }) {
     return apiRequest<void>('/safety/reports', { method: 'POST', body });
   },
 

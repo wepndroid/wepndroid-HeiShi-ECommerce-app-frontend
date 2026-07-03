@@ -11,7 +11,10 @@ import { colors, fonts, radius } from '../theme';
 
 function paymentIconName(type: PaymentMethodDto['type']): AppIconName {
   if (type === 'apple_pay') return 'apple';
+  if (type === 'google_pay') return 'card';
   if (type === 'paypal') return 'paypal';
+  if (type === 'alipay') return 'alipay';
+  if (type === 'wechat_pay') return 'wechat';
   return 'card';
 }
 
@@ -127,8 +130,7 @@ const styles = StyleSheet.create({
   sheet: {
     paddingHorizontal: 14,
     paddingTop: 18,
-    paddingBottom: 28,
-    maxHeight: '82%',
+    maxHeight: '100%',
   },
   head: {
     flexDirection: 'row',

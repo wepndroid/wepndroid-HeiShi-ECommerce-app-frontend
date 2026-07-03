@@ -7,6 +7,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.108.2",
+    "@tanstack/react-query": "^5.101.2",
     "expo": "~56.0.11",
     "expo-blur": "~56.0.3",
     "expo-constants": "~56.0.18",
@@ -27,7 +28,8 @@
     "react-native-safe-area-context": "^5.8.0",
     "react-native-screens": "4.25.2",
     "react-native-url-polyfill": "^3.0.0",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
@@ -45,6 +47,7 @@
     "fix:encoding": "powershell -ExecutionPolicy Bypass -File ./scripts/ensure-utf8.ps1 -Fix",
     "install:ldplayer": "powershell -ExecutionPolicy Bypass -File ./scripts/install-debug-ldplayer.ps1",
     "dev:ldplayer": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-ldplayer.ps1",
+    "verify:mock-ui": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-mock-ui.ps1",
     "ldplayer:fix": "powershell -ExecutionPolicy Bypass -File ./scripts/ldplayer-fix.ps1",
     "ldplayer:watch": "powershell -ExecutionPolicy Bypass -File ./scripts/ldplayer-watch.ps1",
     "build:apk": "powershell -ExecutionPolicy Bypass -File ./scripts/build-apk.ps1",

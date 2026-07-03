@@ -26,7 +26,7 @@ export interface RegionDto {
 
 export interface ListingSummaryDto {
   id: number;
-  type: 'product' | 'service' | 'bundle';
+  type: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   title: string;
   description?: string;
   price: number;
@@ -41,10 +41,17 @@ export interface ListingSummaryDto {
     nickname: string;
     avatarUrl?: string;
     verified?: boolean;
+    phoneVerified?: boolean;
+    identityVerified?: boolean;
+    completedOrderCount?: number;
+    positiveRatingRate?: number;
   };
   status: 'active' | 'draft' | 'sold' | 'inactive';
+  reviewStatus?: 'pendingReview' | 'approved' | 'rejected' | 'removed' | 'draft';
   createdAt: string;
   favoriteCount?: number;
+  isPinned?: boolean;
+  isRecommended?: boolean;
 }
 
 export interface ListingDetailDto extends ListingSummaryDto {
@@ -86,7 +93,7 @@ export interface FeedQuery {
   regionState?: string;
   regionCity?: string;
   regionArea?: string;
-  tab?: 'recommended' | 'newArrivals' | 'digital' | 'services' | 'tickets';
+  tab?: 'recommended' | 'newArrivals' | 'digital' | 'services' | 'tickets' | 'secondhand' | 'jobs' | 'rentals';
   categoryKey?: string;
   page?: number;
   pageSize?: number;
@@ -163,10 +170,11 @@ export interface OrderDto {
   listingImageUrl: string;
   seller: { id: string; nickname: string };
   buyer?: { id: string; nickname: string; avatarUrl?: string };
-  status: 'pendingPay' | 'pendingShip' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled';
+  status: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress';
   amount: number;
   escrowFee: number;
   currency: 'AUD';
+  displayAmountCny?: number;
   deliveryMethod?: string;
   paymentMethodId?: string;
   bundleItemId?: string;
@@ -284,7 +292,7 @@ export interface AddressDto {
 
 export interface PaymentMethodDto {
   id: string;
-  type: 'card' | 'apple_pay' | 'paypal';
+  type: 'card' | 'apple_pay' | 'google_pay' | 'alipay' | 'wechat_pay' | 'paypal';
   label: string;
   last4?: string;
   isDefault?: boolean;
@@ -292,7 +300,7 @@ export interface PaymentMethodDto {
 
 export interface PayoutMethodDto {
   id: string;
-  type: 'bank' | 'paypal';
+  type: 'bank' | 'paypal' | 'alipay' | 'wechat';
   label: string;
   last4?: string;
   isDefault?: boolean;
@@ -408,7 +416,7 @@ export interface LocalServiceDto {
 }
 
 export interface CreateListingRequest {
-  type: 'product' | 'service' | 'bundle';
+  type: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   title: string;
   description: string;
   price: number;
@@ -429,6 +437,7 @@ export interface CreateListingRequest {
   escrowSupported?: boolean;
   negotiable?: boolean;
   meetInPublic?: boolean;
+  merchantPost?: boolean;
 }
 
 export interface UploadImageResponse {

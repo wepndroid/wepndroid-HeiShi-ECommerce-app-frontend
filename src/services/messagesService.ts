@@ -1,5 +1,5 @@
 import { messagesApi } from '../api';
-import { ApiError } from '../api/client';
+import { ApiError, isNetworkError } from '../api/client';
 import { mapChatMessageDtoToUi, mapConversationDtoToUi } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import {
@@ -156,9 +156,12 @@ export async function listConversations(isLoggedIn: boolean): Promise<UiConversa
         all.push(...result.items.map(mapConversationDtoToUi));
         page += 1;
       } while (all.length < total);
-      return dedupeInboxConversations(all);
+      if (all.length > 0) return dedupeInboxConversations(all);
+      if (!API_USE_MOCK_FALLBACK) return [];
+      return dedupeInboxConversations(await listLocalConversations());
     } catch {
-      throw new Error('list_conversations_failed');
+      if (!API_USE_MOCK_FALLBACK) throw new Error('list_conversations_failed');
+      return dedupeInboxConversations(await listLocalConversations());
     }
   }
 
@@ -198,8 +201,8 @@ export async function openConversation(
         const dto = await messagesApi.getConversation(input.conversationId);
         return mapConversationDtoToUi(dto);
       } catch (err) {
-        if (err instanceof ApiError) throw err;
-        throw new Error('open_conversation_failed');
+        if (err instanceof ApiError && !isNetworkError(err)) throw err;
+        if (!API_USE_MOCK_FALLBACK) throw new Error('open_conversation_failed');
       }
     }
 
@@ -220,12 +223,12 @@ export async function openConversation(
       });
       return mapConversationDtoToUi(dto);
     } catch (err) {
-      if (err instanceof ApiError) throw err;
-      throw new Error('open_conversation_failed');
+      if (err instanceof ApiError && !isNetworkError(err)) throw err;
+      if (!API_USE_MOCK_FALLBACK) throw new Error('open_conversation_failed');
     }
   }
 
-  if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     return openLocalConversation(input);
   }
 
@@ -281,12 +284,12 @@ export async function sendMessage(
       const dto = await messagesApi.sendMessage(conversationId, { text: trimmed });
       return mapChatMessageDtoToUi(dto, currentUserId);
     } catch (err) {
-      if (err instanceof ApiError) throw err;
-      throw new Error('send_failed');
+      if (err instanceof ApiError && !isNetworkError(err)) throw err;
+      if (!API_USE_MOCK_FALLBACK) throw new Error('send_failed');
     }
   }
 
-  if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     return sendLocalMessage(conversationId, trimmed);
   }
 
@@ -305,11 +308,11 @@ export async function markConversationRead(
       triggerInboxPollNow();
       return;
     } catch {
-      throw new Error('mark_read_failed');
+      if (!API_USE_MOCK_FALLBACK) throw new Error('mark_read_failed');
     }
   }
 
-  if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     await markLocalConversationRead(conversationId);
     notifyInboxRefresh();
     triggerInboxPollNow();
@@ -330,11 +333,11 @@ export async function setConversationMarkedUnread(
       notifyInboxRefresh();
       return;
     } catch {
-      throw new Error('mark_unread_failed');
+      if (!API_USE_MOCK_FALLBACK) throw new Error('mark_unread_failed');
     }
   }
 
-  if (API_USE_MOCK_FALLBACK && !isLoggedIn) {
+  if (API_USE_MOCK_FALLBACK) {
     await markLocalConversationUnread(conversationId, markedAsUnread);
     notifyInboxRefresh();
     return;

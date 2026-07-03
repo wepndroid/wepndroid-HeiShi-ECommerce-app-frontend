@@ -148,8 +148,7 @@ const styles = StyleSheet.create({
   sheet: {
     paddingHorizontal: 14,
     paddingTop: 18,
-    paddingBottom: 28,
-    maxHeight: '82%',
+    maxHeight: '100%',
   },
   head: {
     flexDirection: 'row',

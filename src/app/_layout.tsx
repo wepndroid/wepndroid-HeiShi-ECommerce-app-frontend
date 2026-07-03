@@ -1,16 +1,20 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Linking from 'expo-linking';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { AppProvider } from '../context/AppContext';
-import { CheckoutPickerProvider } from '../context/CheckoutPickerContext';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '../store/queryClient';
+import { AppBootstrap } from '../store/AppBootstrap';
 import { CheckoutPickerHost } from '../components/CheckoutPickerHost';
 import { RegionSheet } from '../components/RegionSheet';
-import { BottomNav, Toast } from '../components/UI';
+import { BottomNav, Toast, TopBanner } from '../components/UI';
+import { SplashOverlay } from '../components/SplashOverlay';
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold, useFonts } from '../components/typography';
 import { showBottomNav } from '../routing/paths';
+import { completeOAuthFromUrl } from '../services/authService';
 import { colors } from '../theme';
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -20,12 +24,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <View style={styles.app}>
+      <TopBanner />
       <BlurTargetView ref={blurTargetRef} style={styles.content} collapsable={false}>
         {children}
       </BlurTargetView>
       {showNav ? <BottomNav blurTarget={blurTargetRef} /> : null}
-      <RegionSheet />
-      <CheckoutPickerHost />
       <Toast />
     </View>
   );
@@ -37,6 +40,20 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_700Bold,
   });
+  const [splashDone, setSplashDone] = React.useState(false);
+
+  useEffect(() => {
+    const handleUrl = (url: string) => {
+      if (url.includes('auth/callback')) {
+        void completeOAuthFromUrl(url);
+      }
+    };
+    void Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, []);
 
   if (!fontsLoaded) {
     return null;
@@ -44,16 +61,18 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <CheckoutPickerProvider>
+      <QueryClientProvider client={queryClient}>
+        <AppBootstrap />
         <SafeAreaView style={styles.root} edges={['top']}>
           <AppShell>
             <Stack screenOptions={{ headerShown: false, animation: 'none' }} />
           </AppShell>
+          <RegionSheet />
+          <CheckoutPickerHost />
           <StatusBar style="dark" />
+          {!splashDone ? <SplashOverlay onFinish={() => setSplashDone(true)} /> : null}
         </SafeAreaView>
-        </CheckoutPickerProvider>
-      </AppProvider>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }

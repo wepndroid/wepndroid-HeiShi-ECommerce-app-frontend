@@ -1,20 +1,19 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
+import { useRegionStore } from '../store/regionStore';
+import { useSearchStore } from '../store/searchStore';
+import { nav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import { searchCatalogByImage } from '../services/catalogService';
 import { pickImagesFromLibrary } from '../services/mediaPicker';
 
 export function usePhotoSearch() {
   const { t } = useTranslation();
-  const {
-    region,
-    nav,
-    toast,
-    clearImageSearch,
-    setImageSearchLoading,
-    setImageSearchError,
-    setImageSearchSession,
-  } = useApp();
+  const region = useRegionStore((s) => s.region);
+  const clearImageSearch = useSearchStore((s) => s.clearImageSearch);
+  const setImageSearchLoading = useSearchStore((s) => s.setImageSearchLoading);
+  const setImageSearchError = useSearchStore((s) => s.setImageSearchError);
+  const setImageSearchSession = useSearchStore((s) => s.setImageSearchSession);
 
   return useCallback(async () => {
     try {

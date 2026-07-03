@@ -1,4 +1,5 @@
 import { paymentsApi, userApi } from '../api';
+import { ApiError } from '../api/client';
 import { mapListingToProduct } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import type {
@@ -23,6 +24,7 @@ import {
   updateLocalAddress,
   loadLocalProfile,
   loadLocalVerification,
+  saveLocalVerification,
   mockCreditProfile,
   mockPayoutMethods,
   mockReviewSummary,
@@ -159,6 +161,7 @@ export async function fetchVerificationStatus(isLoggedIn: boolean): Promise<Veri
       return await userApi.getVerificationStatus();
     } catch {
       if (!API_USE_MOCK_FALLBACK) return loadLocalVerification(false);
+      return loadLocalVerification(true);
     }
   }
   return loadLocalVerification(isLoggedIn);
@@ -166,7 +169,12 @@ export async function fetchVerificationStatus(isLoggedIn: boolean): Promise<Veri
 
 export async function fetchCreditProfile(isLoggedIn: boolean): Promise<CreditProfileDto> {
   if (isLoggedIn) {
-    return userApi.getCreditProfile();
+    try {
+      return await userApi.getCreditProfile();
+    } catch {
+      if (!API_USE_MOCK_FALLBACK) throw new Error('credit_profile_failed');
+      return mockCreditProfile();
+    }
   }
   if (API_USE_MOCK_FALLBACK) {
     return mockCreditProfile();
@@ -215,6 +223,29 @@ export async function fetchPendingReviewOrders(isLoggedIn: boolean): Promise<Pen
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('pending_reviews_failed');
     }
+  }
+  if (API_USE_MOCK_FALLBACK) {
+    const { demoOrders } = await import('../data/orders');
+    const { productById } = await import('../data/products');
+    const i18n = (await import('../i18n')).default;
+    return demoOrders
+      .filter((order) => order.status === 'pendingReview')
+      .map((order): PendingReviewOrderDto | null => {
+        const product = productById(order.productId);
+        if (!product) return null;
+        return {
+          orderId: order.id,
+          listingId: product.id,
+          listingTitle: i18n.t(`products.items.${product.id}.title`, {
+            defaultValue: String(product.id),
+          }),
+          listingImageUrl: product.imageUrl,
+          amount: product.price,
+          counterpartNickname: product.seller,
+          reviewRole: 'buyer',
+        };
+      })
+      .filter((row): row is PendingReviewOrderDto => row != null);
   }
   return [];
 }
@@ -280,11 +311,51 @@ export async function bindVerification(
   if (isLoggedIn) {
     try {
       return await userApi.bindVerification(type);
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'USE_SUBMIT_ENDPOINT') {
+        throw new Error('verification_use_submit');
+      }
       if (!API_USE_MOCK_FALLBACK) throw new Error('verification_bind_failed');
     }
   }
+  if (API_USE_MOCK_FALLBACK) {
+    const patch =
+      type === 'wechat'
+        ? { wechatBound: true }
+        : type === 'alipay'
+          ? { alipayBound: true }
+          : type === 'business'
+            ? { businessVerified: true }
+            : { identityVerified: true };
+    return saveLocalVerification(patch);
+  }
   throw new Error('verification_bind_failed');
+}
+
+export async function submitIdentityVerification(
+  body: {
+    legalName: string;
+    idFrontUrl: string;
+    idBackUrl?: string;
+    businessName?: string;
+    businessRegUrl?: string;
+    abn?: string;
+  },
+  isLoggedIn: boolean,
+): Promise<VerificationStatus> {
+  if (!isLoggedIn) throw new Error('login_required');
+  try {
+    return await userApi.submitVerification(body);
+  } catch (err) {
+    // Mock dev: no admin to review — auto-approve the submission locally so the
+    // real-name gate (e.g. service publishing) is satisfiable offline.
+    if (!API_USE_MOCK_FALLBACK) throw err;
+    return saveLocalVerification(
+      body.businessName
+        ? { identityVerified: true, businessVerified: true, submissionStatus: 'approved' }
+        : { identityVerified: true, submissionStatus: 'approved' },
+    );
+  }
 }
 
 export async function fetchPublicUserProfile(userId: string): Promise<PublicUserProfileDto> {

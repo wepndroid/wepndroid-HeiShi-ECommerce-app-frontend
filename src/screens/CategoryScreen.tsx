@@ -1,28 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
-import {
-  ALL_AREAS,
-  normalizeProfileCity,
-  regionFromCityKey,
-  regionLabel,
-} from '../data/region';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { useRegionStore, regionLabel } from '../store/regionStore';
+import { openSearch, requireAuthNav } from '../store/navigation';
+import { useHomeBanners } from '../hooks/useHomeBanners';
+import { formatAreaLabel } from '../data/region';
 import { serviceDetailProduct } from '../data/detailProducts';
 import type { LocalService } from '../data/services';
-import { serviceMatchesCategory } from '../data/services';
 import { useCatalogServices } from '../hooks/useCatalogServices';
 import { useFeed } from '../hooks/useFeed';
-import { useUserProfile } from '../hooks/useUserProfile';
-import { ProductCatKey } from '../types';
-import {
-  LOCAL_CATEGORY_SHORTCUTS,
-  HomeCategoryShortcutRow,
-} from '../components/HomeCategoryShortcutRow';
-import {
-  MarketScreenHeader,
-  useInboxUnreadCount,
-} from '../components/MarketScreenHeader';
+import { cityHubTabToFeedTab, CityHubTabKey } from '../types';
+import { MarketScreenHeader, useInboxUnreadCount } from '../components/MarketScreenHeader';
 import {
   ScreenScroll,
   SearchBar,
@@ -31,71 +21,52 @@ import {
   EmptyState,
   PillButton,
 } from '../components/UI';
+import { Text } from '../components/typography';
 import { Banner, ProductFeed, ServiceCard } from '../components/ProductUI';
+import { colors, fonts } from '../theme';
 
-const LOCAL_DEFAULT_CATEGORY: ProductCatKey = 'digital';
-const LOCAL_ITEMS_PER_CATEGORY = 2;
+const CITY_HUB_TABS: CityHubTabKey[] = ['secondhand', 'services', 'jobs', 'rentals'];
 
 export function CategoryScreen() {
   const { t } = useTranslation();
-  const {
-    openSearch,
-    openDetail,
-    requireAuthNav,
-    isLoggedIn,
-    authReady,
-    products,
-    user,
-  } = useApp();
-  const { profile } = useUserProfile(user, authReady);
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const products = useCatalogStore((s) => s.products);
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
+  const region = useRegionStore((s) => s.region);
+  const openRegionSheet = useRegionStore((s) => s.openRegionSheet);
+  const regionLabelText = regionLabel(region);
   const inboxUnreadCount = useInboxUnreadCount(isLoggedIn, authReady);
-  const localRegion = useMemo(() => {
-    const cityKey = normalizeProfileCity(profile?.city);
-    const { state, city } = regionFromCityKey(cityKey);
-    return { state, city, area: ALL_AREAS };
-  }, [profile?.city]);
-  const localRegionLabel = useMemo(
-    () => regionLabel(localRegion),
-    [localRegion.state, localRegion.city, localRegion.area],
-  );
+  const cmsBanner = useHomeBanners('category');
+  const [activeTab, setActiveTab] = useState<CityHubTabKey>('secondhand');
+  const feedTab = cityHubTabToFeedTab(activeTab);
   const {
     services: visibleServices,
     loading: servicesLoading,
-  } = useCatalogServices(localRegion);
-  const [selectedCategory, setSelectedCategory] = useState<ProductCatKey>(LOCAL_DEFAULT_CATEGORY);
+  } = useCatalogServices(region);
   const {
-    items: categoryProducts,
-    loading: productsLoading,
-    error: productsError,
-    reload: reloadProducts,
-  } = useFeed(localRegion, 'recommended', selectedCategory);
+    items: feedItems,
+    loading: feedLoading,
+    error: feedError,
+    reload: reloadFeed,
+  } = useFeed(region, feedTab, null);
 
-  const displayProducts = useMemo(
-    () => categoryProducts.slice(0, LOCAL_ITEMS_PER_CATEGORY),
-    [categoryProducts],
-  );
-
-  const displayServices = useMemo(() => {
-    return visibleServices
-      .filter((service) => serviceMatchesCategory(service, selectedCategory))
-      .slice(0, LOCAL_ITEMS_PER_CATEGORY);
-  }, [visibleServices, selectedCategory]);
+  const sectionTitle = useMemo(() => {
+    const areaSuffix =
+      region.area && region.area !== '全部区域' ? ` · ${formatAreaLabel(region.area)}` : '';
+    return t(`screens.category.section.${activeTab}`, { city: regionLabelText }) + areaSuffix;
+  }, [activeTab, region.area, regionLabelText, t]);
 
   const openServiceDetail = (service: LocalService) => {
-    openDetail(
-      serviceDetailProduct(service, service.imageUrl ?? products[0]?.imageUrl ?? ''),
-    );
-  };
-
-  const selectCategory = (catKey: ProductCatKey) => {
-    setSelectedCategory(catKey);
+    openDetail(serviceDetailProduct(service, service.imageUrl ?? products[0]?.imageUrl ?? ''));
   };
 
   return (
     <ScreenScroll screenId="category">
       <MarketScreenHeader
-        regionLabelText={localRegionLabel}
+        regionLabelText={regionLabelText}
         unreadCount={inboxUnreadCount}
+        onRegionPress={openRegionSheet}
         onMessagesPress={() => requireAuthNav('messages')}
         onSettingsPress={() => requireAuthNav('settings')}
       />
@@ -105,53 +76,87 @@ export function CategoryScreen() {
         onPress={openSearch}
       />
       <Banner
-        variant="local"
-        title={t('screens.category.bannerTitle')}
-        subtitle={t('screens.category.bannerSubtitle', { city: localRegionLabel })}
-        badge={t('screens.category.bannerBadge')}
+        variant={cmsBanner ? 'promo' : 'local'}
+        title={cmsBanner?.title ?? t('screens.category.bannerTitle')}
+        subtitle={
+          cmsBanner ? undefined : t('screens.category.bannerSubtitle', { city: regionLabelText ?? '' })
+        }
+        badge={cmsBanner ? undefined : t('screens.category.bannerBadge')}
+        artworkRemoteUri={cmsBanner?.imageUrl}
       />
-      <SectionHead title={t('screens.category.sectionCategories')} compact />
-      <HomeCategoryShortcutRow
-        categories={LOCAL_CATEGORY_SHORTCUTS}
-        selectedKey={selectedCategory}
-        onSelect={selectCategory}
-        layout="spread"
-        contentStyle={styles.catRowContent}
-      />
-      <SectionHead title={t('screens.category.sectionProducts')} compact />
-      {productsLoading && !displayProducts.length ? (
+      <SectionHead title={t('screens.category.sectionTypes')} compact />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.typeTabs}
+      >
+        {CITY_HUB_TABS.map((tab) => {
+          const selected = activeTab === tab;
+          return (
+            <Pressable
+              key={tab}
+              style={[styles.typeChip, selected && styles.typeChipActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.typeChipText, selected && styles.typeChipTextActive]}>
+                {t(`screens.category.types.${tab}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <SectionHead title={sectionTitle} compact />
+      {activeTab === 'services' ? (
+        servicesLoading && !visibleServices.length ? (
+          <LoadingState compact />
+        ) : visibleServices.length ? (
+          visibleServices.map((service) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              onPress={() => openServiceDetail(service)}
+            />
+          ))
+        ) : (
+          <EmptyState text={t('screens.category.emptyServices')} />
+        )
+      ) : feedLoading && !feedItems.length ? (
         <LoadingState compact />
-      ) : productsError ? (
+      ) : feedError ? (
         <>
           <EmptyState text={t('home.feedError')} />
-          <PillButton label={t('common.retry')} variant="light" full onPress={reloadProducts} />
+          <PillButton label={t('common.retry')} variant="light" full onPress={reloadFeed} />
         </>
-      ) : displayProducts.length ? (
-        <ProductFeed data={displayProducts} onPress={openDetail} />
+      ) : feedItems.length ? (
+        <ProductFeed data={feedItems} onPress={openDetail} />
       ) : (
-        <EmptyState text={t('screens.category.emptyProducts')} />
-      )}
-      <SectionHead title={t('screens.category.sectionServices')} compact />
-      {servicesLoading && !displayServices.length ? (
-        <LoadingState compact />
-      ) : displayServices.length ? (
-        displayServices.map((service) => (
-          <ServiceCard
-            key={service.id}
-            service={service}
-            onPress={() => openServiceDetail(service)}
-          />
-        ))
-      ) : (
-        <EmptyState text={t('screens.category.emptyServices')} />
+        <EmptyState text={t(`screens.category.empty.${activeTab}`)} />
       )}
     </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  catRowContent: {
-    marginBottom: 0,
-    paddingBottom: 0,
+  typeTabs: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  typeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#f3f3f3',
+  },
+  typeChipActive: {
+    backgroundColor: colors.brand,
+  },
+  typeChipText: {
+    fontSize: 13,
+    fontWeight: fonts.weights.medium,
+    color: colors.sub,
+  },
+  typeChipTextActive: {
+    color: colors.text,
+    fontWeight: fonts.weights.bold,
   },
 });

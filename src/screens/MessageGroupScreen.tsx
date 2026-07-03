@@ -5,6 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { Text } from '../components/typography';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { useGroupNotifications } from '../hooks/useGroupNotifications';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { nav } from '../store/navigation';
+import { toast } from '../store/uiStore';
 import { AppIcon } from '../components/AppIcon';
 import { BackButton, ScreenScroll, TitleBar } from '../components/UI';
 import { ListCard } from '../components/FormUI';
@@ -30,7 +34,10 @@ export function MessageGroupScreen() {
   useAuthGuard();
   const { category: rawCategory } = useLocalSearchParams<{ category: string }>();
   const category = parseCategory(rawCategory);
-  const { nav, toast, isLoggedIn, authReady, openDetail, products } = useApp();
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const products = useCatalogStore((s) => s.products);
   const { items, loading, remove } = useGroupNotifications(category, isLoggedIn, authReady);
 
   const handleOpen = (item: (typeof items)[number]) => {

@@ -43,7 +43,13 @@ export async function blockUser(userId: string, isLoggedIn: boolean): Promise<vo
 }
 
 export async function submitReport(
-  body: { targetType: 'listing' | 'user'; targetId: string; reason: string; details?: string },
+  body: {
+    targetType: 'listing' | 'user' | 'chat' | 'order' | 'service';
+    targetId: string;
+    reason: string;
+    details?: string;
+    evidenceUrls?: string[];
+  },
   isLoggedIn: boolean,
 ): Promise<void> {
   if (!isLoggedIn) throw new Error('login_required');
@@ -52,6 +58,17 @@ export async function submitReport(
   } catch {
     if (!API_USE_MOCK_FALLBACK) throw new Error('report_failed');
   }
+}
+
+function mockSafetyReports(): SafetyReportRow[] {
+  return [
+    {
+      id: 'demo-report-1',
+      targetType: 'listing',
+      status: 'pending',
+      createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    },
+  ];
 }
 
 export async function fetchReports(isLoggedIn: boolean): Promise<SafetyReportRow[]> {
@@ -66,9 +83,11 @@ export async function fetchReports(isLoggedIn: boolean): Promise<SafetyReportRow
       hasMore = result.hasMore;
       page += 1;
     }
+    if (items.length > 0) return items;
+    if (API_USE_MOCK_FALLBACK) return mockSafetyReports();
     return items;
   } catch {
     if (!API_USE_MOCK_FALLBACK) throw new Error('reports_load_failed');
+    return mockSafetyReports();
   }
-  return [];
 }

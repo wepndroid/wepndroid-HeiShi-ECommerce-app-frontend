@@ -3,9 +3,13 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../components/typography';
-import { useApp } from '../context/AppContext';
+import { useAuthStore } from '../store/authStore';
+import { useCatalogStore } from '../store/catalogStore';
+import { toast } from '../store/uiStore';
 import { useAuthGuard } from '../hooks/useAuthGuard';
 import { ordersApi } from '../api/endpoints/orders';
+import { API_USE_MOCK_FALLBACK } from '../api/config';
+import { listLocalOrders } from '../data/ordersLocal';
 import { fetchOrderReview, submitOrderReview } from '../services/ordersService';
 import {
   EMPTY_REVIEW_CRITERIA,
@@ -51,7 +55,11 @@ function orderDtoToUi(order: OrderDto): UiOrder {
 export function LeaveFeedbackScreen() {
   const { t } = useTranslation();
   useAuthGuard();
-  const { isLoggedIn, authReady, toast, openDetail, products, user } = useApp();
+  const isLoggedIn = useAuthStore((s) => s.user != null);
+  const authReady = useAuthStore((s) => s.authReady);
+  const user = useAuthStore((s) => s.user);
+  const openDetail = useCatalogStore((s) => s.openDetail);
+  const products = useCatalogStore((s) => s.products);
   const params = useLocalSearchParams<{ orderId?: string; mode?: string }>();
   const orderId = Number(params.orderId);
   const isViewMode = params.mode === 'view';
@@ -99,11 +107,28 @@ export function LeaveFeedbackScreen() {
         }
       }
     } catch {
+      // Backend unreachable in mock dev — build the order from local/demo data so it can be rated.
+      if (API_USE_MOCK_FALLBACK) {
+        const local = await listLocalOrders(
+          'all',
+          products,
+          (p) => p.apiTitle ?? String(p.id),
+          (p) => p.seller,
+        );
+        const found = local.find((o) => o.id === orderId);
+        if (found) {
+          setOrder(found);
+          setReviewRole('buyer');
+          setCounterpartName(found.sellerName);
+          setLoading(false);
+          return;
+        }
+      }
       setError(t('screens.leaveFeedback.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [authReady, isLoggedIn, isViewMode, orderId, t, user?.id]);
+  }, [authReady, isLoggedIn, isViewMode, orderId, products, t, user?.id]);
 
   useEffect(() => {
     void load();

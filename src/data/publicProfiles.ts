@@ -1,21 +1,24 @@
 import type { PublicUserProfileDto } from '../api/types';
+import i18n from '../i18n';
 import { personAvatarUrlForKey } from './avatarPhotos';
 import { sellerKeyFromUserId } from './catalogDemo';
 import { resolveSellerUserId } from './follows';
 import { products } from './products';
 
 const DEMO_BIOS: Record<string, string> = {
-  mia: 'Melbourne seller · Fast meetups · Digital & photo gear',
-  sunny: 'Home & lifestyle items · CBD pickup available',
-  lucas: 'Keyboards & tech accessories · Carlton area',
-  xiaoyu: 'Cameras & film gear · Box Hill meetups',
-  amy: 'Furniture & home essentials · Burwood',
-  ticketShop: 'Event tickets · Southbank handoff',
-  pte: 'PTE coaching & study services · Online & in-person',
-  luna: 'Music & hobby gear · Docklands',
-  coffee: 'Outdoor & safety gear · Richmond',
-  allen: 'Moving help & motorcycle gear · Doncaster',
-  lily: 'Textbooks & cleaning services · Clayton',
+  mia: 'publicProfiles.bios.mia',
+  sunny: 'publicProfiles.bios.sunny',
+  lucas: 'publicProfiles.bios.lucas',
+  xiaoyu: 'publicProfiles.bios.xiaoyu',
+  amy: 'publicProfiles.bios.amy',
+  ticketShop: 'publicProfiles.bios.ticketShop',
+  pte: 'publicProfiles.bios.pte',
+  luna: 'publicProfiles.bios.luna',
+  coffee: 'publicProfiles.bios.coffee',
+  allen: 'publicProfiles.bios.allen',
+  lily: 'publicProfiles.bios.lily',
+  bubbleTea: 'publicProfiles.bios.bubbleTea',
+  merchant1: 'publicProfiles.bios.merchant1',
 };
 
 const DEMO_RATINGS: Record<string, { rating: number; reviewCount: number }> = {
@@ -53,7 +56,7 @@ export function mockPublicProfile(userId: string): PublicUserProfileDto | null {
     id: userId,
     nickname: sample.seller,
     avatarUrl: personAvatarUrlForKey(sellerKey, 144),
-    bio: DEMO_BIOS[sellerKey] ?? `Local seller in ${sample.loc}`,
+    bio: DEMO_BIOS[sellerKey] ? i18n.t(DEMO_BIOS[sellerKey]) : i18n.t('publicProfiles.bioFallback', { area: sample.loc }),
     city: 'Melbourne',
     memberSince: '2024-03-01T00:00:00Z',
     rating: ratingInfo.rating,

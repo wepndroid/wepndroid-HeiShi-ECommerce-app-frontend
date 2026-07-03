@@ -49,13 +49,18 @@ function defaultAddresses(): AddressDto[] {
 
 const DEFAULT_ADDRESSES: AddressDto[] = [];
 
+type SubmissionStatus = 'approved' | 'rejected' | 'not_submitted' | 'pending';
+
 const DEFAULT_VERIFICATION = {
   phoneVerified: true,
   wechatBound: true,
-  alipayBound: false,
+  alipayBound: true,
   identityVerified: false,
   businessVerified: false,
+  submissionStatus: 'pending' as SubmissionStatus,
 };
+
+export type LocalVerification = typeof DEFAULT_VERIFICATION;
 
 const DEFAULT_CREDIT: CreditProfileDto = {
   score: 86,
@@ -181,7 +186,7 @@ export async function updateLocalAddress(
   return updated;
 }
 
-export async function loadLocalVerification(isLoggedIn: boolean) {
+export async function loadLocalVerification(isLoggedIn: boolean): Promise<LocalVerification> {
   if (!isLoggedIn) {
     return {
       phoneVerified: false,
@@ -189,9 +194,20 @@ export async function loadLocalVerification(isLoggedIn: boolean) {
       alipayBound: false,
       identityVerified: false,
       businessVerified: false,
+      submissionStatus: 'not_submitted',
     };
   }
   return readJson(VERIFICATION_KEY, DEFAULT_VERIFICATION);
+}
+
+/** Persist a mock verification change (auto-approved on mock — no admin in this phase). */
+export async function saveLocalVerification(
+  patch: Partial<LocalVerification>,
+): Promise<LocalVerification> {
+  const current = await readJson<LocalVerification>(VERIFICATION_KEY, DEFAULT_VERIFICATION);
+  const next = { ...current, ...patch };
+  await writeJson(VERIFICATION_KEY, next);
+  return next;
 }
 
 export function mockCreditProfile(): CreditProfileDto {
