@@ -211,7 +211,7 @@ export async function publishListing(
     } catch (err) {
       if (err instanceof ApiError && !isNetworkError(err)) {
         if (err.code === 'IDENTITY_REQUIRED') throw new Error('identity_required');
-        if (err.code === 'BLOCKED_CONTENT') throw new Error('blocked_content');
+        if (err.code === 'BLOCKED_CONTENT') throw err;
         throw err;
       }
       // Network error (backend unreachable): fall through to the local mock create below.

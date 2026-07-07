@@ -28,6 +28,11 @@ export const authApi = {
     return apiRequest<AuthUserDto>('/auth/sync-profile', { method: 'POST', body });
   },
 
+  /** POST /auth/oauth/provision — create-or-return app profile after Supabase OAuth (Google/Apple/WeChat) */
+  provisionOAuth(body?: { nickname?: string; city?: string }) {
+    return apiRequest<AuthUserDto>('/auth/oauth/provision', { method: 'POST', body: body ?? {} });
+  },
+
   /** POST /auth/login */
   login(body: LoginRequest) {
     return apiRequest<AuthTokensDto>('/auth/login', { method: 'POST', body, auth: false });

@@ -48,6 +48,8 @@ export function mapListingToProduct(dto: ListingSummaryDto): Product {
     apiVisual: dto.title,
     listingType: dto.type,
     listingStatus: dto.status,
+    reviewStatus: dto.reviewStatus,
+    reviewNote: dto.reviewNote,
     favoriteCount: dto.favoriteCount,
     isPinned: dto.isPinned,
     isRecommended: dto.isRecommended,
@@ -205,10 +207,11 @@ export function mapListingDtoToUiListing(dto: ListingSummaryDto): UiListing {
         ? 'draft'
         : dto.status === 'inactive'
           ? 'inactive'
-          : dto.status === 'sold'
-            ? 'sold'
-            : 'active',
+            : dto.status === 'sold'
+              ? 'sold'
+              : 'active',
     reviewStatus: dto.reviewStatus,
+    reviewNote: dto.reviewNote,
   };
 }
 

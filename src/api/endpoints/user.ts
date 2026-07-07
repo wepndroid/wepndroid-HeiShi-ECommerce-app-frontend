@@ -106,6 +106,7 @@ export const userApi = {
       alipayBound: boolean;
       identityVerified: boolean;
       businessVerified: boolean;
+      submissionStatus: 'not_submitted' | 'pending' | 'approved' | 'rejected';
     }>('/users/me/verification/bind', { method: 'POST', body: { type } });
   },
 
@@ -132,8 +133,18 @@ export const paymentsApi = {
     return apiRequest<PaymentMethodDto[]>('/payments/methods');
   },
 
-  /** POST /payments/methods */
-  addPaymentMethod(body: { type: PaymentMethodDto['type']; token: string }) {
+  /** POST /payments/setup-intent — PaymentSheet bootstrap for saving a card */
+  createSetupIntent() {
+    return apiRequest<import('../types').SetupIntentDto>('/payments/setup-intent', { method: 'POST' });
+  },
+
+  /** POST /payments/methods/sync — reconcile saved cards with Stripe after PaymentSheet */
+  syncPaymentMethods() {
+    return apiRequest<PaymentMethodDto[]>('/payments/methods/sync', { method: 'POST' });
+  },
+
+  /** POST /payments/methods — real path passes stripePaymentMethodId; simulated passes token */
+  addPaymentMethod(body: { type: PaymentMethodDto['type']; stripePaymentMethodId?: string; token?: string }) {
     return apiRequest<PaymentMethodDto>('/payments/methods', { method: 'POST', body });
   },
 
@@ -171,6 +182,16 @@ export const paymentsApi = {
       method: 'PATCH',
       body: { isDefault: true },
     });
+  },
+
+  /** POST /payouts/connect/link — Stripe Connect Express onboarding URL for bank payouts */
+  createPayoutOnboardingLink() {
+    return apiRequest<import('../types').ConnectOnboardingDto>('/payouts/connect/link', { method: 'POST' });
+  },
+
+  /** GET /payouts/connect/status — poll payouts_enabled after onboarding */
+  getPayoutConnectStatus() {
+    return apiRequest<import('../types').ConnectStatusDto>('/payouts/connect/status');
   },
 };
 

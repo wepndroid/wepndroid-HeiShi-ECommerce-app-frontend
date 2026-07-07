@@ -1,5 +1,5 @@
 import { checkoutApi, ordersApi } from '../api';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { ApiError } from '../api/client';
 import { mapOrderDtoToUiOrder } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
@@ -15,6 +15,7 @@ import {
 import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
+import { handleNativeNextAction } from './stripeNative';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
 
@@ -286,6 +287,28 @@ async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
   return checkoutApi.create({ orderId, paymentMethod });
 }
 
+/**
+ * Complete a native Stripe card charge started by /payments/checkout: run in-app 3-D
+ * Secure if the PaymentIntent requires it, then reconcile status with the backend.
+ * Returns true when the payment is confirmed and the order can be finalised via pay.
+ */
+async function finalizeNativeCardCheckout(
+  orderId: number,
+  checkout: { paymentStatus: string; clientSecret?: string | null },
+): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  if (checkout.paymentStatus === 'succeeded') return true;
+  if (
+    checkout.clientSecret &&
+    (checkout.paymentStatus === 'requires_action' || checkout.paymentStatus === 'requires_confirmation')
+  ) {
+    await handleNativeNextAction(checkout.clientSecret);
+    const confirmed = await checkoutApi.confirm({ orderId });
+    return confirmed.paymentStatus === 'succeeded';
+  }
+  return false;
+}
+
 async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResult> {
   await clearStalePendingPayForListing(body.listingId, body.bundleItemId);
   let created: OrderDto;
@@ -310,9 +333,16 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
       invalidateCatalog();
       return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
-    if (checkout.checkoutUrl) {
-      await Linking.openURL(checkout.checkoutUrl);
+    // Native card charge (PaymentIntent, no redirect): confirm 3-D Secure then finalise.
+    if (!checkout.checkoutUrl) {
+      const ready = await finalizeNativeCardCheckout(created.id, checkout);
+      if (!ready) throw new Error('payment_incomplete');
+      const paid = await ordersApi.pay(created.id);
+      invalidateCatalog();
+      return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
+    // Redirect PSP (hosted Checkout Session / PayPal).
+    await Linking.openURL(checkout.checkoutUrl);
     invalidateCatalog();
     return {
       order: mapOrderDtoToUiOrder(created),
@@ -388,7 +418,7 @@ export async function performOrderAction(
 ): Promise<OrderStatus> {
   if (isLoggedIn) {
     try {
-      let dto: OrderDto | void;
+      let dto: OrderDto | void = undefined;
       switch (action) {
         case 'pay':
           {
@@ -398,6 +428,8 @@ export async function performOrderAction(
             } else if (checkout.checkoutUrl) {
               await Linking.openURL(checkout.checkoutUrl);
               return order.status;
+            } else if (await finalizeNativeCardCheckout(order.id, checkout)) {
+              dto = await ordersApi.pay(order.id);
             } else {
               throw new Error('payment_pending');
             }

@@ -10,6 +10,7 @@ import { queryClient } from '../store/queryClient';
 import { AppBootstrap } from '../store/AppBootstrap';
 import { CheckoutPickerHost } from '../components/CheckoutPickerHost';
 import { RegionSheet } from '../components/RegionSheet';
+import { StripeProvider } from '../components/StripeProvider';
 import { BottomNav, Toast, TopBanner } from '../components/UI';
 import { SplashOverlay } from '../components/SplashOverlay';
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold, useFonts } from '../components/typography';
@@ -60,20 +61,22 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <AppBootstrap />
-        <SafeAreaView style={styles.root} edges={['top']}>
-          <AppShell>
-            <Stack screenOptions={{ headerShown: false, animation: 'none' }} />
-          </AppShell>
-          <RegionSheet />
-          <CheckoutPickerHost />
-          <StatusBar style="dark" />
-          {!splashDone ? <SplashOverlay onFinish={() => setSplashDone(true)} /> : null}
-        </SafeAreaView>
-      </QueryClientProvider>
-    </SafeAreaProvider>
+    <StripeProvider>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppBootstrap />
+          <SafeAreaView style={styles.root} edges={['top']}>
+            <AppShell>
+              <Stack screenOptions={{ headerShown: false, animation: 'none' }} />
+            </AppShell>
+            <RegionSheet />
+            <CheckoutPickerHost />
+            <StatusBar style="dark" />
+            {!splashDone ? <SplashOverlay onFinish={() => setSplashDone(true)} /> : null}
+          </SafeAreaView>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </StripeProvider>
   );
 }
 

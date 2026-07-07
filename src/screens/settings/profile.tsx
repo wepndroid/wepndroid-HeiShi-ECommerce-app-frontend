@@ -326,6 +326,7 @@ export function AddressScreen() {
                 label={t('screens.address.setDefault')}
                 variant="light"
                 full
+                style={{ marginTop: 10 }}
                 onPress={() =>
                   void update(editingId, { isDefault: true }).then(() => toast(t('toast.profileSaved')))
                 }
@@ -334,11 +335,12 @@ export function AddressScreen() {
                 label={t('common.delete')}
                 variant="light"
                 full
+                style={{ marginTop: 10 }}
                 onPress={() => handleDelete(editingId)}
               />
             </>
           ) : null}
-          <PillButton label={t('common.cancel')} variant="light" full onPress={resetEditor} />
+          <PillButton label={t('common.cancel')} variant="light" full style={{ marginTop: 10 }} onPress={resetEditor} />
         </FormCard>
       ) : null}
       <TableNote>{t('screens.address.note')}</TableNote>

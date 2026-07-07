@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogStore } from '../../store/catalogStore';
@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { resolveListingDetail } from '../../services/catalogService';
 import { userCanChatOnListing } from '../../services/ordersService';
 import { submitReport } from '../../services/safetyService';
+import { ReportSheet, type ReportReason } from '../../components/ReportSheet';
 import { useCatalogRevision } from '../../utils/catalogSync';
 import { useRelatedListings } from '../../hooks/useRelatedListings';
 import { useLocalizedProduct } from '../../hooks/useLocalizedProduct';
@@ -42,6 +43,7 @@ import { demoBundleMeta, bundleHasOnHoldItemsFromMeta, isBundleListingProduct } 
 import { BUNDLE_DETAIL_ID } from '../../data/detailProducts';
 import { BundleDetailSummary, BundleItemDetailCard } from '../../components/BundleUI';
 import { detailPageTokens, spacing } from '../../theme';
+import { listingReviewState } from '../trade/shared';
 import { styles } from './shared';
 
 export function DetailScreen({ orderContext = false }: { orderContext?: boolean }) {
@@ -93,6 +95,8 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
   const isBundleListing = isBundleListingProduct(currentItem) || bundleMeta != null;
   const bundleReady = !isBundleListing || (bundleMeta?.items?.length ?? 0) > 0;
   const [bundleItemsFailed, setBundleItemsFailed] = useState(false);
+  const [showReportSheet, setShowReportSheet] = useState(false);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const catalogRevision = useCatalogRevision();
   const bundleHasOnHold = bundleMeta ? bundleHasOnHoldItemsFromMeta(bundleMeta) : false;
   const canPurchase =
@@ -190,25 +194,27 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
       requireAuthNav('login');
       return;
     }
-    Alert.alert(t('screens.chat.reportListing'), undefined, [
-      { text: t('common.cancel'), style: 'cancel' },
+    setShowReportSheet(true);
+  };
+
+  const handleSubmitReport = (reason: ReportReason, details: string) => {
+    if (reportSubmitting) return;
+    setReportSubmitting(true);
+    void submitReport(
       {
-        text: t('common.report'),
-        style: 'destructive',
-        onPress: () => {
-          void submitReport(
-            {
-              targetType: 'listing',
-              targetId: String(currentItem.id),
-              reason: 'inappropriate',
-            },
-            isLoggedIn,
-          )
-            .then(() => toast(t('toast.reportSubmitted')))
-            .catch(() => toast(t('toast.settingsUpdateFailed')));
-        },
+        targetType: 'listing',
+        targetId: String(currentItem.id),
+        reason,
+        details,
       },
-    ]);
+      isLoggedIn,
+    )
+      .then(() => {
+        setShowReportSheet(false);
+        toast(t('toast.reportSubmitted'));
+      })
+      .catch(() => toast(t('toast.settingsUpdateFailed')))
+      .finally(() => setReportSubmitting(false));
   };
 
   return (
@@ -246,6 +252,14 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
           locationLabel={currentItem.loc}
         />
       )}
+      {currentItem.reviewStatus === 'rejected' ? (
+        <View style={styles.rejectionNotice}>
+          <Text style={styles.rejectionNoticeTitle}>{t('common.rejected')}</Text>
+          <Text style={styles.rejectionNoticeText}>
+            {listingReviewState(currentItem, t)?.reason ?? t('screens.myListings.rejectedNotice')}
+          </Text>
+        </View>
+      ) : null}
       <DetailCard>
         {isBundleListing && bundleMeta ? (
           <>
@@ -415,6 +429,13 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
         />
       </StickyActions>
       ) : null}
+      <ReportSheet
+        visible={showReportSheet}
+        onClose={() => setShowReportSheet(false)}
+        onSubmit={handleSubmitReport}
+        submitting={reportSubmitting}
+        title={t('screens.report.title')}
+      />
     </View>
   );
 }

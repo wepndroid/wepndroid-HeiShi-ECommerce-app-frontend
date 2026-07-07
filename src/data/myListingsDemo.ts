@@ -26,6 +26,16 @@ export function demoMyListings(
       reviewStatus: 'pendingReview',
     },
     {
+      id: 9006,
+      title: 'Rejected listing',
+      imageUrl: productImageUrls[9],
+      price: 66,
+      status: 'active',
+      listingType: 'product',
+      reviewStatus: 'rejected',
+      reviewNote: 'Counterfeit / replica items are not allowed.',
+    },
+    {
       id: 9003,
       title: i18n.t('demoMyListings.draftProduct.title'),
       imageUrl: productImageUrls[8],

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
+import { ApiError } from '../../api/client';
 import { normalizeMediaUrls } from '../../utils/mediaUrls';
 import {
   createBundleLineItem,
@@ -30,7 +31,20 @@ export function toastAfterPublish(
   }
 }
 
-export function publishErrorToast(toast: (msg: string) => void, t: (key: string) => string, err: unknown) {
+export function publishErrorToast(
+  toast: (msg: string) => void,
+  t: (key: string, opts?: Record<string, string>) => string,
+  err: unknown,
+) {
+  if (err instanceof ApiError && err.code === 'BLOCKED_CONTENT') {
+    const details = err.details as { keyword?: string } | undefined;
+    if (details?.keyword) {
+      toast(t('toast.blockedContentWithKeyword', { keyword: details.keyword }));
+      return;
+    }
+    toast(t('toast.blockedContent'));
+    return;
+  }
   if (err instanceof Error) {
     if (err.message === 'identity_required') {
       toast(t('toast.identityRequiredForService'));

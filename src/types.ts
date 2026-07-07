@@ -119,6 +119,8 @@ export interface Product {
   listingType?: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   bundleMeta?: BundleMeta;
   listingStatus?: 'active' | 'sold' | 'inactive' | 'draft';
+  reviewStatus?: 'pendingReview' | 'approved' | 'rejected' | 'removed' | 'draft';
+  reviewNote?: string;
   purchaseAvailable?: boolean;
   conditionKey?: string;
   pickupMethodKeys?: string[];
@@ -207,6 +209,7 @@ export interface UiListing {
   price: number;
   status: 'active' | 'draft' | 'inactive' | 'sold';
   reviewStatus?: 'pendingReview' | 'approved' | 'rejected' | 'removed' | 'draft';
+  reviewNote?: string;
 }
 
 export type OrderFilterKey =

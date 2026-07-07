@@ -17,7 +17,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useCatalogStore } from '../../store/catalogStore';
 import { requireAuthNav } from '../../store/navigation';
 import { toast } from '../../store/uiStore';
-import { styles, uiListingToProduct } from './shared';
+import { listingReviewState, styles, uiListingToProduct } from './shared';
 
 export function MyListingsScreen() {
   const { t } = useTranslation();
@@ -119,8 +119,10 @@ export function MyListingsScreen() {
           <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
         </>
       ) : productListings.length ? (
-        productListings.map((listing) => (
-          <AmazingSurface key={listing.id} style={styles.orderItem}>
+        productListings.map((listing) => {
+          const reviewState = listingReviewState(listing, t);
+          return (
+            <AmazingSurface key={listing.id} style={styles.orderItem}>
             <View style={styles.listingRow}>
               <Pressable
                 style={styles.listingTapArea}
@@ -133,8 +135,22 @@ export function MyListingsScreen() {
                     <Text style={styles.orderTitle} numberOfLines={2}>
                       {listing.title}
                     </Text>
-                    {listing.reviewStatus === 'pendingReview' && status === 'active' ? (
-                      <Text style={styles.reviewPendingBadge}>{t('screens.myListings.reviewPending')}</Text>
+                    {reviewState ? (
+                      <>
+                        <Text
+                          style={[
+                            styles.reviewStateBadge,
+                            listing.reviewStatus === 'rejected' ? styles.reviewRejectedBadge : styles.reviewPendingBadge,
+                          ]}
+                        >
+                          {reviewState.badge}
+                        </Text>
+                        {reviewState.reason ? (
+                          <Text style={styles.reviewStateReason} numberOfLines={2}>
+                            {reviewState.reason}
+                          </Text>
+                        ) : null}
+                      </>
                     ) : null}
                     <Text style={styles.price}>
                       {t('common.currencyPrefix')}
@@ -176,7 +192,8 @@ export function MyListingsScreen() {
               </Pressable>
             </View>
           </AmazingSurface>
-        ))
+          );
+        })
       ) : (
         <EmptyState text={t('screens.myListings.empty')} />
       )}
@@ -270,8 +287,10 @@ export function MyServicesScreen() {
           <PillButton label={t('common.retry')} variant="light" full onPress={refresh} />
         </>
       ) : serviceListings.length ? (
-        serviceListings.map((listing) => (
-          <AmazingSurface key={listing.id} style={styles.orderItem}>
+        serviceListings.map((listing) => {
+          const reviewState = listingReviewState(listing, t);
+          return (
+            <AmazingSurface key={listing.id} style={styles.orderItem}>
             <View style={styles.listingRow}>
               <Pressable
                 style={styles.listingTapArea}
@@ -284,8 +303,22 @@ export function MyServicesScreen() {
                     <Text style={styles.orderTitle} numberOfLines={2}>
                       {listing.title}
                     </Text>
-                    {listing.reviewStatus === 'pendingReview' && status === 'active' ? (
-                      <Text style={styles.reviewPendingBadge}>{t('screens.myListings.reviewPending')}</Text>
+                    {reviewState ? (
+                      <>
+                        <Text
+                          style={[
+                            styles.reviewStateBadge,
+                            listing.reviewStatus === 'rejected' ? styles.reviewRejectedBadge : styles.reviewPendingBadge,
+                          ]}
+                        >
+                          {reviewState.badge}
+                        </Text>
+                        {reviewState.reason ? (
+                          <Text style={styles.reviewStateReason} numberOfLines={2}>
+                            {reviewState.reason}
+                          </Text>
+                        ) : null}
+                      </>
                     ) : null}
                     <Text style={styles.price}>
                       {t('common.currencyPrefix')}
@@ -327,7 +360,8 @@ export function MyServicesScreen() {
               </Pressable>
             </View>
           </AmazingSurface>
-        ))
+          );
+        })
       ) : (
         <EmptyState text={t('screens.myServices.empty')} />
       )}

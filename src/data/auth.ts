@@ -5,7 +5,9 @@ export interface AuthUser {
   id: string;
   heishiId: string;
   nickname: string;
-  phone: string;
+  /** Optional: OAuth (Google/Apple/WeChat) users have no phone at sign-up. */
+  phone?: string;
+  email?: string;
   avatarUrl?: string;
 }
 
@@ -62,12 +64,14 @@ async function writeAccounts(accounts: StoredAccount[]) {
 }
 
 function normalizeAuthUser(raw: AuthUser): AuthUser | null {
-  if (!raw?.id || !raw.nickname || !raw.phone) return null;
+  // phone is no longer required — OAuth users have none.
+  if (!raw?.id || !raw.nickname) return null;
   return {
     id: raw.id,
     heishiId: raw.heishiId ?? raw.id,
     nickname: raw.nickname,
     phone: raw.phone,
+    email: raw.email,
     avatarUrl: raw.avatarUrl,
   };
 }

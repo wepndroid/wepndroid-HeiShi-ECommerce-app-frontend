@@ -1,7 +1,7 @@
 /** PROG-105 Expo web UI verification — run: node scripts/prog105-ui-run.mjs */
 import { chromium } from 'playwright';
 
-const BASE = process.env.EXPO_WEB_URL || 'http://127.0.0.1:8081';
+const BASE = process.env.EXPO_WEB_URL || 'http://127.0.0.1:19006';
 const results = [];
 
 function check(name, pass, detail = '') {

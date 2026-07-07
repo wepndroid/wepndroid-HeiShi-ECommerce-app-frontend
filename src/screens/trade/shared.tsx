@@ -27,7 +27,29 @@ export function uiListingToProduct(listing: UiListing, sellerId?: string, seller
     apiTitle: listing.title,
     listingType: listing.listingType,
     listingStatus: listing.status,
+    reviewStatus: listing.reviewStatus,
+    reviewNote: listing.reviewNote,
   };
+}
+
+export function listingReviewState(
+  listing: Pick<UiListing, 'reviewStatus' | 'reviewNote'>,
+  t: (key: string, opts?: Record<string, string>) => string,
+): { badge: string; reason?: string } | null {
+  if (listing.reviewStatus === 'pendingReview') {
+    return {
+      badge: t('screens.myListings.reviewPending'),
+    };
+  }
+  if (listing.reviewStatus === 'rejected') {
+    return {
+      badge: t('common.rejected'),
+      reason: listing.reviewNote
+        ? t('screens.myListings.rejectionReason', { reason: listing.reviewNote })
+        : t('screens.myListings.rejectedNotice'),
+    };
+  }
+  return null;
 }
 
 export const FILTER_LABEL_KEYS: Record<
@@ -605,6 +627,20 @@ export const styles = StyleSheet.create({
     color: colors.brand2,
     marginTop: 4,
   },
+  reviewStateBadge: {
+    fontSize: 11,
+    fontWeight: fonts.weights.bold,
+    marginTop: 4,
+  },
+  reviewRejectedBadge: {
+    color: colors.red,
+  },
+  reviewStateReason: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.red,
+  },
   orderSub: {
     marginTop: 7,
     color: '#777777',
@@ -617,26 +653,29 @@ export const styles = StyleSheet.create({
     marginTop: 4,
   },
   orderActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 6,
+    // One action per line so long labels stay fully readable (no truncation).
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 8,
     marginTop: 12,
   },
   orderBtn: {
+    // Each button takes two thirds of the card width, centred on its own line.
+    width: '66.67%',
     borderRadius: radius.pill,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 9,
     backgroundColor: '#f5f5f5',
-    flexShrink: 1,
-    minWidth: 0,
+    alignItems: 'center',
   },
   orderBtnYellow: {
     backgroundColor: colors.brand,
   },
   orderBtnText: {
     fontWeight: fonts.weights.bold,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.text,
+    textAlign: 'center',
   },
 
   promptCard: {

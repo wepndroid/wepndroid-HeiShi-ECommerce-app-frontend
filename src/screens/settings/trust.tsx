@@ -11,6 +11,7 @@ import { fetchReports } from '../../services/safetyService';
 import { useCreditProfile, useVerificationStatus } from '../../hooks/useTrustProfile';
 import { Chevron, DetailCard, ListCard, ListIcon, ListRow, ListRowMain } from '../../components/FormUI';
 import { BackButton, EmptyState, Notice, PillButton, ScreenScroll, TitleBar } from '../../components/UI';
+import { nav } from '../../store/navigation';
 import { colors } from '../../theme';
 import { SimplePage, styles, verificationStatusColor, verificationStatusLabel } from './shared';
 
@@ -167,6 +168,7 @@ export function AuthCenterScreen() {
               {verificationStatusLabel(t, 'wechat', status, isLoggedIn)}
             </Text>
           }
+          onPress={() => (isLoggedIn ? nav('accountSafety') : nav('login'))}
         />
         <ListRow
           left={
@@ -186,6 +188,7 @@ export function AuthCenterScreen() {
               {verificationStatusLabel(t, 'alipay', status, isLoggedIn)}
             </Text>
           }
+          onPress={() => (isLoggedIn ? nav('accountSafety') : nav('login'))}
         />
         <ListRow
           left={
@@ -210,9 +213,16 @@ export function AuthCenterScreen() {
               {verificationStatusLabel(t, 'identity', status, isLoggedIn)}
             </Text>
           }
+          onPress={() => (isLoggedIn ? nav('accountSafety') : nav('login'))}
           border={false}
         />
       </ListCard>
+      <PillButton
+        label={t('common.continueSetup')}
+        variant="brand"
+        full
+        onPress={() => (isLoggedIn ? nav('accountSafety') : nav('login'))}
+      />
     </SimplePage>
   );
 }

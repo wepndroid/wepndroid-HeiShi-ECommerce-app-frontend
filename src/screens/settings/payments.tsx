@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
-import { addPaymentMethod, removePaymentMethod, setDefaultPaymentMethod } from '../../services/paymentsService';
+import { addPaymentMethod, connectBankPayout, removePaymentMethod, setDefaultPaymentMethod } from '../../services/paymentsService';
 import { addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } from '../../services/userService';
 import { usePaymentMethodsSettings, usePayoutMethods } from '../../hooks/usePaymentSettings';
 import type { PaymentMethodDto, PayoutMethodDto } from '../../api/types';
@@ -28,7 +28,8 @@ export function PaymentSettingsScreen() {
       await addPaymentMethod(type, isLoggedIn);
       toast(t('toast.paymentAdded'));
       refresh();
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === 'payment_canceled') return;
       toast(t('toast.settingsUpdateFailed'));
     }
   };
@@ -95,35 +96,37 @@ export function PaymentSettingsScreen() {
 
   return (
     <SimplePage screenId="paymentSettings" title={t('screens.paymentSettings.title')}>
-      <ListCard>
-        {methods.map((method, index) => (
-          <ListRow
-            key={method.id}
-            left={
-              <>
-                <ListIcon name={method.type === 'apple_pay' ? 'apple' : method.type === 'paypal' ? 'paypal' : 'card'} />
-                <ListRowMain>
-                  <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
-                  <Text style={styles.rowSub} numberOfLines={2}>
-                    {method.last4 ? `**** ${method.last4}` : method.type === 'apple_pay' ? (applePayOn ? t('screens.paymentSettings.appleOn') : t('common.notBound')) : t('common.notBound')}
-                  </Text>
-                </ListRowMain>
-              </>
-            }
-            right={
-              method.type === 'apple_pay' ? (
-                <Switch on={applePayOn} onToggle={() => void handleApplePayToggle()} />
-              ) : method.isDefault ? (
-                <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
-              ) : (
-                <Chevron />
-              )
-            }
-            border={index < methods.length - 1}
-            onPress={method.type === 'apple_pay' ? undefined : () => handlePaymentRowPress(method)}
-          />
-        ))}
-      </ListCard>
+      {methods.length > 0 ? (
+        <ListCard>
+          {methods.map((method, index) => (
+            <ListRow
+              key={method.id}
+              left={
+                <>
+                  <ListIcon name={method.type === 'apple_pay' ? 'apple' : method.type === 'paypal' ? 'paypal' : 'card'} />
+                  <ListRowMain>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
+                    <Text style={styles.rowSub} numberOfLines={2}>
+                      {method.last4 ? `**** ${method.last4}` : method.type === 'apple_pay' ? (applePayOn ? t('screens.paymentSettings.appleOn') : t('common.notBound')) : t('common.notBound')}
+                    </Text>
+                  </ListRowMain>
+                </>
+              }
+              right={
+                method.type === 'apple_pay' ? (
+                  <Switch on={applePayOn} onToggle={() => void handleApplePayToggle()} />
+                ) : method.isDefault ? (
+                  <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
+                ) : (
+                  <Chevron />
+                )
+              }
+              border={index < methods.length - 1}
+              onPress={method.type === 'apple_pay' ? undefined : () => handlePaymentRowPress(method)}
+            />
+          ))}
+        </ListCard>
+      ) : null}
       <PillButton label={t('screens.paymentSettings.add')} variant="brand" full onPress={handleAddPayment} />
     </SimplePage>
   );
@@ -146,9 +149,19 @@ export function PayoutSettingsScreen() {
     }
   };
 
+  const connectBankAndRefresh = async () => {
+    try {
+      const result = await connectBankPayout(isLoggedIn);
+      toast(t(result === 'onboarding' ? 'toast.payoutConnectStarted' : 'toast.payoutAdded'));
+      refresh();
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    }
+  };
+
   const handleAddPayout = () => {
     Alert.alert(t('screens.payoutSettings.addChooseTitle'), undefined, [
-      { text: t('screens.payoutSettings.addBank'), onPress: () => void addAndRefresh('bank') },
+      { text: t('screens.payoutSettings.addBank'), onPress: () => void connectBankAndRefresh() },
       { text: t('screens.payoutSettings.addPaypal'), onPress: () => void addAndRefresh('paypal') },
       { text: t('screens.payoutSettings.addAlipay'), onPress: () => void addAndRefresh('alipay') },
       { text: t('screens.payoutSettings.addWechat'), onPress: () => void addAndRefresh('wechat') },
@@ -192,33 +205,35 @@ export function PayoutSettingsScreen() {
   return (
     <SimplePage screenId="payoutSettings" title={t('screens.payoutSettings.title')}>
       <TableNote>{t('screens.payoutSettings.note')}</TableNote>
-      <ListCard>
-        {methods.map((method, index) => (
-          <ListRow
-            key={method.id}
-            left={
-              <>
-                <ListIcon name={method.type === 'bank' ? 'bank' : 'paypal'} />
-                <ListRowMain>
-                  <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
-                  <Text style={styles.rowSub} numberOfLines={2}>
-                    {method.last4 ? `**** ${method.last4}` : t('common.notBound')}
-                  </Text>
-                </ListRowMain>
-              </>
-            }
-            right={
-              method.isDefault ? (
-                <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
-              ) : (
-                <Chevron />
-              )
-            }
-            border={index < methods.length - 1}
-            onPress={() => handlePayoutRowPress(method)}
-          />
-        ))}
-      </ListCard>
+      {methods.length > 0 ? (
+        <ListCard>
+          {methods.map((method, index) => (
+            <ListRow
+              key={method.id}
+              left={
+                <>
+                  <ListIcon name={method.type === 'bank' ? 'bank' : 'paypal'} />
+                  <ListRowMain>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
+                    <Text style={styles.rowSub} numberOfLines={2}>
+                      {method.last4 ? `**** ${method.last4}` : t('common.notBound')}
+                    </Text>
+                  </ListRowMain>
+                </>
+              }
+              right={
+                method.isDefault ? (
+                  <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
+                ) : (
+                  <Chevron />
+                )
+              }
+              border={index < methods.length - 1}
+              onPress={() => handlePayoutRowPress(method)}
+            />
+          ))}
+        </ListCard>
+      ) : null}
       <PillButton label={t('screens.payoutSettings.add')} variant="brand" full onPress={handleAddPayout} />
     </SimplePage>
   );

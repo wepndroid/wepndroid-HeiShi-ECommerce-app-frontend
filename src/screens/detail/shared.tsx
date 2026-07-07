@@ -118,6 +118,25 @@ export const styles = StyleSheet.create({
     lineHeight: detailPageTokens.bodyLineHeight,
     color: colors.sub,
   },
+  rejectionNotice: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 77, 79, 0.22)',
+    backgroundColor: 'rgba(255, 77, 79, 0.08)',
+    padding: 12,
+    marginBottom: 10,
+  },
+  rejectionNoticeTitle: {
+    fontSize: 12,
+    fontWeight: fonts.weights.bold,
+    color: colors.red,
+    marginBottom: 4,
+  },
+  rejectionNoticeText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text,
+  },
   cardH3: {
     fontSize: detailPageTokens.cardHeadingSize,
     fontWeight: fonts.weights.bold,

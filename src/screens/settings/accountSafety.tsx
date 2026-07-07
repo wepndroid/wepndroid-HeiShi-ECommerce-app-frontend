@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { nav } from '../../store/navigation';
@@ -42,17 +42,20 @@ export function AccountSafetyScreen() {
   const [legalName, setLegalName] = useState('');
   const [idFrontUrl, setIdFrontUrl] = useState('');
   const [idBackUrl, setIdBackUrl] = useState('');
-  const [uploadingIdSide, setUploadingIdSide] = useState<'front' | 'back' | null>(null);
+  const [businessName, setBusinessName] = useState('');
+  const [abn, setAbn] = useState('');
+  const [businessRegUrl, setBusinessRegUrl] = useState('');
+  const [uploadingIdSide, setUploadingIdSide] = useState<'front' | 'back' | 'business' | null>(null);
   const [submittingIdentity, setSubmittingIdentity] = useState(false);
 
   const identityPending = status?.submissionStatus === 'pending' && !status.identityVerified;
+  const verificationComplete = !!status?.identityVerified && !!status?.businessVerified;
+  // A user can submit while there is no pending review and they are not already
+  // fully verified — this also lets an identity-verified user add business docs.
   const canSubmitIdentity =
-    isLoggedIn &&
-    !status?.identityVerified &&
-    status?.submissionStatus !== 'pending' &&
-    status?.submissionStatus !== 'approved';
+    isLoggedIn && status?.submissionStatus !== 'pending' && !verificationComplete;
 
-  const handleUploadIdPhoto = async (side: 'front' | 'back') => {
+  const handleUploadIdPhoto = async (side: 'front' | 'back' | 'business') => {
     if (!isLoggedIn || uploadingIdSide) return;
     setUploadingIdSide(side);
     try {
@@ -61,7 +64,8 @@ export function AccountSafetyScreen() {
       const asset = picked[0];
       const url = await uploadListingImage(asset.uri, isLoggedIn, asset.mimeType, asset.fileName);
       if (side === 'front') setIdFrontUrl(url);
-      else setIdBackUrl(url);
+      else if (side === 'back') setIdBackUrl(url);
+      else setBusinessRegUrl(url);
       toast(t('toast.photoAdded'));
     } catch (error) {
       if (error instanceof Error && error.message === 'permission_denied') {
@@ -86,7 +90,14 @@ export function AccountSafetyScreen() {
     setSubmittingIdentity(true);
     try {
       await submitIdentityVerification(
-        { legalName: name, idFrontUrl, idBackUrl: idBackUrl || undefined },
+        {
+          legalName: name,
+          idFrontUrl,
+          idBackUrl: idBackUrl || undefined,
+          businessName: businessName.trim() || undefined,
+          businessRegUrl: businessRegUrl || undefined,
+          abn: abn.trim() || undefined,
+        },
         isLoggedIn,
       );
       refresh();
@@ -94,6 +105,9 @@ export function AccountSafetyScreen() {
       setLegalName('');
       setIdFrontUrl('');
       setIdBackUrl('');
+      setBusinessName('');
+      setAbn('');
+      setBusinessRegUrl('');
       toast(t('toast.verificationSubmitted'));
     } catch {
       toast(t('toast.settingsUpdateFailed'));
@@ -160,7 +174,7 @@ export function AccountSafetyScreen() {
       nav('login');
       return;
     }
-    if (status?.identityVerified || identityPending) return;
+    if (verificationComplete || identityPending) return;
     setShowIdentityForm(true);
   };
 
@@ -263,34 +277,63 @@ export function AccountSafetyScreen() {
             onChangeText={setLegalName}
             placeholder={t('screens.accountSafety.identityLegalName')}
           />
-          <PillButton
-            label={
-              idFrontUrl
-                ? `${t('screens.accountSafety.identityIdFront')} — ${t('screens.accountSafety.identityUploaded')}`
-                : t('screens.accountSafety.identityIdFront')
-            }
-            variant="light"
-            full
-            onPress={() => void handleUploadIdPhoto('front')}
+          <View style={localStyles.buttonStack}>
+            <PillButton
+              label={
+                idFrontUrl
+                  ? `${t('screens.accountSafety.identityIdFront')} — ${t('screens.accountSafety.identityUploaded')}`
+                  : t('screens.accountSafety.identityIdFront')
+              }
+              variant="light"
+              full
+              onPress={() => void handleUploadIdPhoto('front')}
+            />
+            <PillButton
+              label={
+                idBackUrl
+                  ? `${t('screens.accountSafety.identityIdBack')} — ${t('screens.accountSafety.identityUploaded')}`
+                  : t('screens.accountSafety.identityIdBack')
+              }
+              variant="light"
+              full
+              onPress={() => void handleUploadIdPhoto('back')}
+            />
+          </View>
+          <SettingSectionTitle title={t('screens.accountSafety.businessSectionTitle')} />
+          <FieldInputStacked
+            label={t('screens.accountSafety.businessName')}
+            value={businessName}
+            onChangeText={setBusinessName}
+            placeholder={t('screens.accountSafety.businessName')}
           />
-          <PillButton
-            label={
-              idBackUrl
-                ? `${t('screens.accountSafety.identityIdBack')} — ${t('screens.accountSafety.identityUploaded')}`
-                : t('screens.accountSafety.identityIdBack')
-            }
-            variant="light"
-            full
-            onPress={() => void handleUploadIdPhoto('back')}
+          <FieldInputStacked
+            label={t('screens.accountSafety.businessAbn')}
+            value={abn}
+            onChangeText={setAbn}
+            placeholder={t('screens.accountSafety.businessAbn')}
           />
+          <View style={localStyles.buttonStack}>
+            <PillButton
+              label={
+                businessRegUrl
+                  ? `${t('screens.accountSafety.businessReg')} — ${t('screens.accountSafety.identityUploaded')}`
+                  : t('screens.accountSafety.businessReg')
+              }
+              variant="light"
+              full
+              onPress={() => void handleUploadIdPhoto('business')}
+            />
+          </View>
           {uploadingIdSide ? <ActivityIndicator style={{ marginVertical: 8 }} /> : null}
-          <PillButton
-            label={t('screens.accountSafety.identitySubmit')}
-            variant="brand"
-            full
-            onPress={() => void handleSubmitIdentity()}
-          />
-          <PillButton label={t('common.cancel')} variant="light" full onPress={() => setShowIdentityForm(false)} />
+          <View style={localStyles.actionStack}>
+            <PillButton
+              label={t('screens.accountSafety.identitySubmit')}
+              variant="brand"
+              full
+              onPress={() => void handleSubmitIdentity()}
+            />
+            <PillButton label={t('common.cancel')} variant="light" full onPress={() => setShowIdentityForm(false)} />
+          </View>
         </FormCard>
       ) : null}
       {showPasswordForm ? (
@@ -328,3 +371,13 @@ export function AccountSafetyScreen() {
     </SimplePage>
   );
 }
+
+const localStyles = StyleSheet.create({
+  buttonStack: {
+    gap: 8,
+  },
+  actionStack: {
+    gap: 8,
+    marginTop: 2,
+  },
+});

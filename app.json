@@ -60,7 +60,15 @@
           "photosPermission": "Allow HeyMarket to access your photos so you can upload listing images.",
           "cameraPermission": "Allow HeyMarket to use the camera to take listing photos."
         }
-      ]
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.heishi.mvp",
+          "enableGooglePay": true
+        }
+      ],
+      "expo-web-browser"
     ]
   }
 }

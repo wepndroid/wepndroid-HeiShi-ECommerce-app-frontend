@@ -48,6 +48,7 @@ export interface ListingSummaryDto {
   };
   status: 'active' | 'draft' | 'sold' | 'inactive';
   reviewStatus?: 'pendingReview' | 'approved' | 'rejected' | 'removed' | 'draft';
+  reviewNote?: string;
   createdAt: string;
   favoriteCount?: number;
   isPinned?: boolean;
@@ -117,7 +118,8 @@ export interface ImageSearchResponseDto {
 export interface AuthUserDto {
   id: string;
   nickname: string;
-  phone: string;
+  phone?: string;
+  email?: string;
   avatarUrl?: string;
   bio?: string;
   city?: string;
@@ -295,6 +297,9 @@ export interface PaymentMethodDto {
   type: 'card' | 'apple_pay' | 'google_pay' | 'alipay' | 'wechat_pay' | 'paypal';
   label: string;
   last4?: string;
+  brand?: string;
+  expMonth?: number;
+  expYear?: number;
   isDefault?: boolean;
 }
 
@@ -303,7 +308,28 @@ export interface PayoutMethodDto {
   type: 'bank' | 'paypal' | 'alipay' | 'wechat';
   label: string;
   last4?: string;
+  payoutsEnabled?: boolean;
   isDefault?: boolean;
+}
+
+/** Params the mobile PaymentSheet needs to save a card (POST /payments/setup-intent). */
+export interface SetupIntentDto {
+  publishableKey: string;
+  customerId: string;
+  ephemeralKey: string;
+  setupIntentClientSecret: string;
+  simulated: boolean;
+}
+
+export interface ConnectOnboardingDto {
+  url: string;
+  simulated: boolean;
+}
+
+export interface ConnectStatusDto {
+  connected: boolean;
+  detailsSubmitted: boolean;
+  payoutsEnabled: boolean;
 }
 
 export interface CouponDto {

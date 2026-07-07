@@ -31,6 +31,18 @@ async function clearStoredSession(): Promise<void> {
 
 const pendingRegisterCodes = new Map<string, string>();
 const SUPABASE_RESEND_SECONDS = 60;
+const PHONE_AUTH_PROVIDER = (process.env?.EXPO_PUBLIC_PHONE_AUTH_PROVIDER ?? '').trim().toLowerCase();
+
+function isBackendPhoneAuthMode(): boolean {
+  return PHONE_AUTH_PROVIDER === 'backend' || PHONE_AUTH_PROVIDER === 'twilio';
+}
+
+function shouldUseSupabasePhoneAuth(): boolean {
+  if (isBackendPhoneAuthMode()) {
+    return false;
+  }
+  return isSupabaseAuthConfigured();
+}
 
 function mapAuthApiError(err: unknown, fallback: AuthErrorKey): AuthErrorKey {
   if (err instanceof ApiError) {
@@ -80,6 +92,7 @@ function mapUser(dto: AuthUserDto): AuthUser {
     heishiId: dto.heishiId,
     nickname: dto.nickname,
     phone: dto.phone,
+    email: dto.email,
     avatarUrl: dto.avatarUrl,
   };
 }
@@ -94,6 +107,45 @@ async function applyTokens(tokens: AuthTokensDto): Promise<AuthUser> {
   const user = mapUser(tokens.user);
   await saveSession(user);
   return user;
+}
+
+async function refreshBackendSession(): Promise<AuthUser | null> {
+  const refreshToken = await AsyncStorage.getItem(AUTH_REFRESH_KEY);
+  if (!refreshToken) return null;
+  try {
+    const user = await applyTokens(await authApi.refresh(refreshToken));
+    await clearSupabaseSessionIfBackendPhoneAuth();
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+async function clearSupabaseSessionIfBackendPhoneAuth(): Promise<void> {
+  if (!isBackendPhoneAuthMode() || !isSupabaseAuthConfigured()) return;
+  try {
+    await getSupabaseClient().auth.signOut();
+  } catch {
+    // Best-effort cleanup; backend auth is already established.
+  }
+}
+
+async function bootstrapBackendSession(): Promise<AuthUser | null> {
+  const refreshed = await refreshBackendSession();
+  if (refreshed) return refreshed;
+
+  const accessToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  if (!accessToken) return null;
+
+  try {
+    const me = await authApi.me();
+    const user = mapUser(me);
+    await saveSession(user);
+    await clearSupabaseSessionIfBackendPhoneAuth();
+    return user;
+  } catch {
+    return null;
+  }
 }
 
 async function uploadRegistrationAvatar(
@@ -123,6 +175,11 @@ async function syncProfileAfterAuth(
 
 /** Refresh JWT / Supabase session after a 401. Used by settings and other authed reads. */
 export async function refreshAuthSession(): Promise<AuthUser | null> {
+  if (isBackendPhoneAuthMode()) {
+    const backendUser = await refreshBackendSession();
+    if (backendUser) return backendUser;
+  }
+
   if (isSupabaseAuthConfigured()) {
     const { data, error } = await getSupabaseClient().auth.refreshSession();
     if (!error && data.session?.access_token) {
@@ -139,17 +196,21 @@ export async function refreshAuthSession(): Promise<AuthUser | null> {
     return null;
   }
 
-  const refreshToken = await AsyncStorage.getItem(AUTH_REFRESH_KEY);
-  if (!refreshToken) return null;
-  try {
-    return applyTokens(await authApi.refresh(refreshToken));
-  } catch {
-    return null;
+  if (!isBackendPhoneAuthMode()) {
+    const backendUser = await refreshBackendSession();
+    if (backendUser) return backendUser;
   }
+
+  return null;
 }
 
 /** Restore session from JWT (`/auth/me`) or local demo storage. */
 export async function bootstrapAuth(): Promise<AuthUser | null> {
+  if (isBackendPhoneAuthMode()) {
+    const backendUser = await bootstrapBackendSession();
+    if (backendUser) return backendUser;
+  }
+
   if (isSupabaseAuthConfigured()) {
     const { data } = await getSupabaseClient().auth.getSession();
     if (data.session?.access_token) {
@@ -169,24 +230,11 @@ export async function bootstrapAuth(): Promise<AuthUser | null> {
       }
       if (!API_USE_MOCK_FALLBACK) return null;
     }
-  } else {
-    const accessToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+  }
 
-    if (accessToken) {
-      try {
-        const me = await authApi.me();
-        const user = mapUser(me);
-        await saveSession(user);
-        return user;
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          const refreshed = await refreshAuthSession();
-          if (refreshed) return refreshed;
-          await clearStoredSession();
-        }
-      }
-      if (!API_USE_MOCK_FALLBACK) return null;
-    }
+  if (!isBackendPhoneAuthMode()) {
+    const backendUser = await bootstrapBackendSession();
+    if (backendUser) return backendUser;
   }
 
   return API_USE_MOCK_FALLBACK ? loadSession() : null;
@@ -201,7 +249,7 @@ export async function loginWithAuth(
 
   const normalized = normalizePhone(phone.trim());
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const { error } = await getSupabaseClient().auth.signInWithPassword({
         phone: toE164Phone(normalized),
@@ -220,6 +268,7 @@ export async function loginWithAuth(
   try {
     const tokens = await authApi.login({ phone: normalized, password });
     const user = await applyTokens(tokens);
+    await clearSupabaseSessionIfBackendPhoneAuth();
     return { user };
   } catch (err) {
     if (API_USE_MOCK_FALLBACK) {
@@ -237,7 +286,7 @@ export async function sendLoginCode(
 
   const normalized = normalizePhone(phone.trim());
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const { error } = await getSupabaseClient().auth.signInWithOtp({
         phone: toE164Phone(normalized),
@@ -271,7 +320,7 @@ export async function loginWithOtp(
 
   const normalized = normalizePhone(phone.trim());
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const { error } = await getSupabaseClient().auth.verifyOtp({
         phone: toE164Phone(normalized),
@@ -294,6 +343,7 @@ export async function loginWithOtp(
       verificationCode: verificationCode.trim(),
     });
     const user = await applyTokens(tokens);
+    await clearSupabaseSessionIfBackendPhoneAuth();
     return { user };
   } catch (err) {
     if (API_USE_MOCK_FALLBACK) {
@@ -313,7 +363,7 @@ export async function changePasswordWithAuth(
   if (!newPassword) return { error: 'passwordRequired' };
   if (newPassword.length < 6) return { error: 'passwordShort' };
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const { error } = await getSupabaseClient().auth.updateUser({ password: newPassword });
       if (error) return { error: mapSupabaseAuthError(error, 'networkError') };
@@ -339,7 +389,7 @@ export async function sendRegisterCode(
 
   const normalized = normalizePhone(phone.trim());
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const { error } = await getSupabaseClient().auth.signInWithOtp({
         phone: toE164Phone(normalized),
@@ -380,7 +430,7 @@ export async function registerWithAuth(input: {
 
   const normalizedPhone = normalizePhone(input.phone.trim());
 
-  if (isSupabaseAuthConfigured()) {
+  if (shouldUseSupabasePhoneAuth()) {
     try {
       const e164 = toE164Phone(normalizedPhone);
       const { data, error } = await getSupabaseClient().auth.verifyOtp({
@@ -422,6 +472,7 @@ export async function registerWithAuth(input: {
     });
     pendingRegisterCodes.delete(normalizedPhone);
     await applyTokens(tokens);
+    await clearSupabaseSessionIfBackendPhoneAuth();
     const avatarUrl = await uploadRegistrationAvatar(
       input.avatarUri,
       input.avatarMimeType,
@@ -516,8 +567,11 @@ export async function completeOAuthFromUrl(url: string): Promise<AuthUser | null
       if (error) return null;
     }
     await persistSupabaseAccessToken();
-    const me = await authApi.me();
-    const user = mapUser(me);
+    // OAuth users are email-based (no phone) — provision creates the app profile from the
+    // provider's claims on first sign-in, or returns the existing one. This replaces a bare
+    // /auth/me, which would 401 for a brand-new Google/Apple/WeChat user.
+    const dto = await authApi.provisionOAuth();
+    const user = mapUser(dto);
     await saveSession(user);
     return user;
   } catch {

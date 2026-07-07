@@ -66,6 +66,8 @@ npm start
 
 Then press `a` for Android, `i` for iOS simulator, or scan the QR code with Expo Go.
 
+Web dev exports and serves on `http://localhost:19006` so it can stay separate from LDPlayer Metro on `8081`.
+
 ## Project structure
 
 ```

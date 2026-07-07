@@ -4,7 +4,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.EXPO_WEB_URL || 'http://127.0.0.1:8081';
+const BASE = process.env.EXPO_WEB_URL || 'http://127.0.0.1:19006';
 
 test.describe('PROG-105 auth UI', () => {
   test('register page loads', async ({ page }) => {
