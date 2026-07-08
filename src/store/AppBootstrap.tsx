@@ -6,7 +6,7 @@ import { saveSession } from '../data/auth';
 import { bootstrapAuth } from '../services/authService';
 import { fetchUserProfile } from '../services/userService';
 import { bootstrapFavorites, bootstrapFollows } from '../services/userDataService';
-import { bootstrapPaymentSelection, listPaymentMethods } from '../services/paymentsService';
+import { bootstrapPaymentSelection, listCheckoutPaymentMethods } from '../services/paymentsService';
 import { getAppCacheSizeLabel } from '../services/settingsService';
 import { registerNotificationOpenHandler } from '../services/messageNotifications';
 import { loadPublishBundleDraft, shouldResumePublishBundle } from '../data/publishBundleDraft';
@@ -95,10 +95,10 @@ export function AppBootstrap() {
     bootstrapFollows(user != null).then((f) => useFavoritesStore.getState().setFollows(f));
   }, [authReady, user]);
 
-  // Payment methods + default selection.
+  // Checkout payment options + default selection.
   useEffect(() => {
     if (!authReady) return;
-    listPaymentMethods(user != null).then(async (methods) => {
+    listCheckoutPaymentMethods(user != null).then(async (methods) => {
       const checkout = useCheckoutStore.getState();
       checkout.setPaymentMethods(methods);
       if (!methods.length) {

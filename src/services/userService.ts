@@ -26,7 +26,6 @@ import {
   loadLocalVerification,
   saveLocalVerification,
   mockCreditProfile,
-  mockPayoutMethods,
   mockReviewSummary,
   mockReceivedReviews,
   saveLocalProfile,
@@ -255,11 +254,8 @@ export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMeth
     try {
       return await paymentsApi.listPayoutMethods();
     } catch {
-      if (!API_USE_MOCK_FALLBACK) return [];
+      return [];
     }
-  }
-  if (API_USE_MOCK_FALLBACK || !isLoggedIn) {
-    return mockPayoutMethods();
   }
   return [];
 }
@@ -267,15 +263,25 @@ export async function listPayoutMethods(isLoggedIn: boolean): Promise<PayoutMeth
 export async function addPayoutMethod(
   type: PayoutMethodDto['type'],
   isLoggedIn: boolean,
+  accountRef?: string,
 ): Promise<PayoutMethodDto> {
-  if (isLoggedIn) {
-    try {
-      return await paymentsApi.addPayoutMethod({ type, accountToken: 'demo-account' });
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('payout_add_failed');
+  if (!isLoggedIn) throw new Error('login_required');
+  try {
+    return await paymentsApi.addPayoutMethod({ type, accountRef });
+  } catch (err) {
+    if (err instanceof ApiError) {
+      if (err.code === 'PAYOUT_BIND_REQUIRED') {
+        throw new Error(`payout_bind_required_${type}`);
+      }
+      if (err.code === 'PAYOUT_PROVIDER_NOT_READY') {
+        throw new Error('payout_provider_not_ready');
+      }
+      if (err.code === 'VALIDATION_ERROR') {
+        throw new Error('payout_validation_failed');
+      }
     }
+    throw new Error('payout_add_failed');
   }
-  throw new Error('payout_add_failed');
 }
 
 export async function removePayoutMethod(methodId: string, isLoggedIn: boolean): Promise<void> {

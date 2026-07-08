@@ -220,8 +220,6 @@ export async function applyLocalOrderAction(
       if (currentStatus === 'pendingPay') next = 'cancelled';
       break;
     case 'dispute':
-      next = 'inDispute';
-      break;
     case 'refund':
       next = 'refundInProgress';
       break;

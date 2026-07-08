@@ -95,4 +95,4 @@ export function resalePrice(price: number): number {
   return Math.round(price * 0.75);
 }
 
-export const ESCROW_FEE = 0.99;
+export const ESCROW_FEE = 0;

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { PaymentMethodDto } from '../api/types';
 import {
   bootstrapPaymentSelection,
-  listPaymentMethods,
+  listCheckoutPaymentMethods,
   selectPaymentMethod,
 } from '../services/paymentsService';
 import { useAuthStore } from './authStore';
@@ -45,7 +45,7 @@ export const useCheckoutStore = create<CheckoutState>((set, get) => ({
   refreshPaymentMethods: async () => {
     if (!useAuthStore.getState().authReady) return [];
     const loggedIn = useAuthStore.getState().user != null;
-    const methods = await listPaymentMethods(loggedIn);
+    const methods = await listCheckoutPaymentMethods(loggedIn);
     set({ paymentMethods: methods });
     if (!methods.length) {
       set({ paymentMethodId: undefined, paymentMethod: '' });

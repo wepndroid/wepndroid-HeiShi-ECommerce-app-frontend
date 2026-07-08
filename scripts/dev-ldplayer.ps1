@@ -13,9 +13,20 @@ $ApiPort = Ensure-DevBackend
 Set-DevApiEnv -ApiPort $ApiPort | Out-Null
 
 Start-LdPlayerWatchIfNeeded -Port $Port
-Repair-LdPlayerDevConnection -Port $Port -MetroPort $MetroPort
 
 Stop-MetroIfRunning -MetroPort $MetroPort | Out-Null
+
+Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  (Join-Path $PSScriptRoot "ldplayer-autoreload.ps1"),
+  "-Port",
+  "$Port",
+  "-MetroPort",
+  "$MetroPort"
+) | Out-Null
 
 Write-Host ""
 Write-Host "Backend OK: http://127.0.0.1:$ApiPort"

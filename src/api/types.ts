@@ -296,11 +296,15 @@ export interface PaymentMethodDto {
   id: string;
   type: 'card' | 'apple_pay' | 'google_pay' | 'alipay' | 'wechat_pay' | 'paypal';
   label: string;
+  subtitle?: string;
   last4?: string;
   brand?: string;
   expMonth?: number;
   expYear?: number;
   isDefault?: boolean;
+  checkoutOnly?: boolean;
+  removable?: boolean;
+  defaultable?: boolean;
 }
 
 export interface PayoutMethodDto {
@@ -308,6 +312,7 @@ export interface PayoutMethodDto {
   type: 'bank' | 'paypal' | 'alipay' | 'wechat';
   label: string;
   last4?: string;
+  accountHint?: string;
   payoutsEnabled?: boolean;
   isDefault?: boolean;
 }

@@ -440,9 +440,7 @@ export function OrderListCard({
   onContact,
   onSecondary,
   onDispute,
-  onRefund,
   disputeLabel,
-  refundLabel,
   onAdjustPrice,
   adjustPriceLabel,
   showContact = true,
@@ -455,9 +453,7 @@ export function OrderListCard({
   onContact: () => void;
   onSecondary?: () => void;
   onDispute?: () => void;
-  onRefund?: () => void;
   disputeLabel?: string;
-  refundLabel?: string;
   onAdjustPrice?: () => void;
   adjustPriceLabel?: string;
   showContact?: boolean;
@@ -511,13 +507,6 @@ export function OrderListCard({
           <Pressable style={styles.orderBtn} onPress={onDispute}>
             <Text style={styles.orderBtnText} numberOfLines={1}>
               {disputeLabel}
-            </Text>
-          </Pressable>
-        ) : null}
-        {onRefund && refundLabel ? (
-          <Pressable style={styles.orderBtn} onPress={onRefund}>
-            <Text style={styles.orderBtnText} numberOfLines={1}>
-              {refundLabel}
             </Text>
           </Pressable>
         ) : null}

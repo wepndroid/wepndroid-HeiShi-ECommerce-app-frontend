@@ -2,24 +2,153 @@ import { Linking, Platform } from 'react-native';
 import { paymentsApi } from '../api';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
 import type { PaymentMethodDto, SetupIntentDto } from '../api/types';
+import i18n from '../i18n';
 import {
+  loadEnabledCheckoutMethodIds,
   loadSelectedPaymentMethodId,
-  mockPaymentMethods,
+  saveEnabledCheckoutMethodIds,
   saveSelectedPaymentMethodId,
 } from '../data/payments';
 import { presentNativePaymentSheet } from './stripeNative';
 
+const VIRTUAL_NEW_CARD_ID = 'virtual:new_card';
+const VIRTUAL_APPLE_PAY_ID = 'virtual:apple_pay';
+const VIRTUAL_GOOGLE_PAY_ID = 'virtual:google_pay';
+const VIRTUAL_PAYPAL_ID = 'virtual:paypal';
+const VIRTUAL_ALIPAY_ID = 'virtual:alipay';
+const VIRTUAL_WECHAT_ID = 'virtual:wechat_pay';
+
 export async function listPaymentMethods(isLoggedIn: boolean): Promise<PaymentMethodDto[]> {
   if (isLoggedIn) {
     try {
-      return await paymentsApi.listPaymentMethods();
+      return (await paymentsApi.listPaymentMethods()).filter((method) => method.type === 'card');
     } catch {
-      if (!API_USE_MOCK_FALLBACK) return [];
+      return [];
     }
   }
 
-  if (API_USE_MOCK_FALLBACK) return mockPaymentMethods();
   return [];
+}
+
+function checkoutCardSubtitle(): string {
+  return i18n.t('screens.order.cardOptionSub', {
+    defaultValue: 'Enter a Visa or Mastercard securely in Stripe Checkout.',
+  });
+}
+
+function checkoutApplePaySubtitle(): string {
+  return i18n.t('screens.order.applePayOptionSub', {
+    defaultValue: 'Opens Stripe Checkout. Apple Pay appears when this device and browser support it.',
+  });
+}
+
+function checkoutGooglePaySubtitle(): string {
+  return i18n.t('screens.order.googlePayOptionSub', {
+    defaultValue: 'Opens Stripe Checkout. Google Pay appears when this device and browser support it.',
+  });
+}
+
+function virtualCheckoutMethods(): PaymentMethodDto[] {
+  return [
+    {
+      id: VIRTUAL_NEW_CARD_ID,
+      type: 'card',
+      label: i18n.t('screens.order.cardOption', {
+        defaultValue: 'Visa / Mastercard',
+      }),
+      subtitle: checkoutCardSubtitle(),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+    {
+      id: VIRTUAL_APPLE_PAY_ID,
+      type: 'apple_pay',
+      label: i18n.t('payments.applePay'),
+      subtitle: checkoutApplePaySubtitle(),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+    {
+      id: VIRTUAL_GOOGLE_PAY_ID,
+      type: 'google_pay',
+      label: i18n.t('payments.googlePay'),
+      subtitle: checkoutGooglePaySubtitle(),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+    {
+      id: VIRTUAL_PAYPAL_ID,
+      type: 'paypal',
+      label: i18n.t('payments.paypal'),
+      subtitle: i18n.t('screens.order.paypalOptionSub', {
+        defaultValue: 'Approve the payment in PayPal and return to the app.',
+      }),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+    {
+      id: VIRTUAL_ALIPAY_ID,
+      type: 'alipay',
+      label: i18n.t('payments.alipay'),
+      subtitle: i18n.t('screens.order.redirectOptionSub', {
+        defaultValue: 'Continue in the provider checkout page and return when payment is approved.',
+      }),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+    {
+      id: VIRTUAL_WECHAT_ID,
+      type: 'wechat_pay',
+      label: i18n.t('payments.wechatPay'),
+      subtitle: i18n.t('screens.order.redirectOptionSub', {
+        defaultValue: 'Continue in the provider checkout page and return when payment is approved.',
+      }),
+      checkoutOnly: true,
+      removable: false,
+      defaultable: false,
+    },
+  ];
+}
+
+export function listAvailableCheckoutMethods(): PaymentMethodDto[] {
+  return virtualCheckoutMethods();
+}
+
+async function enabledCheckoutMethodIds(): Promise<string[]> {
+  const stored = await loadEnabledCheckoutMethodIds();
+  const availableIds = new Set(virtualCheckoutMethods().map((method) => method.id));
+  if (!stored?.length) return [...availableIds];
+  const filtered = stored.filter((id) => availableIds.has(id));
+  return filtered.length ? filtered : [...availableIds];
+}
+
+export async function loadCheckoutMethodPreferences(): Promise<Array<PaymentMethodDto & { enabled: boolean }>> {
+  const methods = virtualCheckoutMethods();
+  const enabledIds = new Set(await enabledCheckoutMethodIds());
+  return methods.map((method) => ({ ...method, enabled: enabledIds.has(method.id) }));
+}
+
+export async function setCheckoutMethodPreference(methodId: string, enabled: boolean): Promise<string[]> {
+  const ids = new Set(await enabledCheckoutMethodIds());
+  if (enabled) ids.add(methodId);
+  else ids.delete(methodId);
+  const next = virtualCheckoutMethods()
+    .map((method) => method.id)
+    .filter((id) => ids.has(id));
+  await saveEnabledCheckoutMethodIds(next);
+  return next;
+}
+
+export async function listCheckoutPaymentMethods(isLoggedIn: boolean): Promise<PaymentMethodDto[]> {
+  const enabledIds = new Set(await enabledCheckoutMethodIds());
+  const saved = enabledIds.has(VIRTUAL_NEW_CARD_ID) ? await listPaymentMethods(isLoggedIn) : [];
+  const visibleCheckoutMethods = virtualCheckoutMethods().filter((method) => enabledIds.has(method.id));
+  return [...saved, ...visibleCheckoutMethods];
 }
 
 export async function bootstrapPaymentSelection(
@@ -55,9 +184,16 @@ export async function addPaymentMethod(
   type: PaymentMethodDto['type'],
   isLoggedIn: boolean,
 ): Promise<PaymentMethodDto> {
-  // Real card connection: SetupIntent + PaymentSheet. Only cards are tokenized/saved;
-  // wallets (Apple/Google Pay) are offered inside PaymentSheet + at checkout, not stored.
-  if (isLoggedIn && type === 'card' && Platform.OS === 'ios') {
+  if (type !== 'card') {
+    throw new Error('payment_method_checkout_only');
+  }
+  if (isLoggedIn && Platform.OS === 'web' && !API_USE_MOCK_FALLBACK) {
+    throw new Error('payment_web_unsupported');
+  }
+
+  // Real card connection: SetupIntent + PaymentSheet. Wallets are not stored in settings;
+  // Stripe surfaces Apple Pay / Google Pay dynamically during checkout when eligible.
+  if (isLoggedIn && Platform.OS !== 'web') {
     let setup: SetupIntentDto | undefined;
     try {
       setup = await paymentsApi.createSetupIntent();
@@ -65,26 +201,20 @@ export async function addPaymentMethod(
       if (!API_USE_MOCK_FALLBACK) throw err;
     }
     if (setup && !setup.simulated && setup.publishableKey && setup.setupIntentClientSecret) {
-      const methods = await saveCardWithPaymentSheet(setup);
-      const card = [...methods].reverse().find((m) => m.type === 'card') ?? methods[methods.length - 1];
-      if (!card) throw new Error('payment_add_failed');
-      return card;
+      try {
+        const methods = await saveCardWithPaymentSheet(setup);
+        const card = [...methods].reverse().find((m) => m.type === 'card') ?? methods[methods.length - 1];
+        if (!card) throw new Error('payment_add_failed');
+        return card;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === 'payment_canceled') throw err;
+        throw err;
+      }
     }
   }
 
-  // Simulated / wallet path (no Stripe key, offline dev, or non-card option).
-  if (isLoggedIn) {
-    try {
-      return await paymentsApi.addPaymentMethod({ type, token: 'demo-token' });
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('payment_add_failed');
-    }
-  }
-  if (API_USE_MOCK_FALLBACK) {
-    const existing = mockPaymentMethods().find((m) => m.type === type);
-    if (existing) return existing;
-  }
-  throw new Error('payment_add_failed');
+  throw new Error('payment_setup_unavailable');
 }
 
 export async function removePaymentMethod(methodId: string, isLoggedIn: boolean): Promise<void> {
@@ -108,11 +238,26 @@ export async function setDefaultPaymentMethod(methodId: string, isLoggedIn: bool
       if (!API_USE_MOCK_FALLBACK) throw new Error('payment_default_failed');
     }
   }
-  if (API_USE_MOCK_FALLBACK) {
-    const method = mockPaymentMethods().find((m) => m.id === methodId);
-    if (method) return { ...method, isDefault: true };
-  }
   throw new Error('payment_default_failed');
+}
+
+export function resolveCheckoutMethodFromSelection(
+  paymentMethodId?: string,
+): 'card' | 'apple' | 'google' | 'alipay' | 'wechat' | 'paypal' {
+  switch (paymentMethodId) {
+    case VIRTUAL_APPLE_PAY_ID:
+      return 'apple';
+    case VIRTUAL_GOOGLE_PAY_ID:
+      return 'google';
+    case VIRTUAL_PAYPAL_ID:
+      return 'paypal';
+    case VIRTUAL_ALIPAY_ID:
+      return 'alipay';
+    case VIRTUAL_WECHAT_ID:
+      return 'wechat';
+    default:
+      return 'card';
+  }
 }
 
 /**
@@ -122,29 +267,13 @@ export async function setDefaultPaymentMethod(methodId: string, isLoggedIn: bool
  */
 export async function connectBankPayout(isLoggedIn: boolean): Promise<'onboarding' | 'simulated'> {
   if (!isLoggedIn) throw new Error('login_required');
-  let link: { url: string; simulated: boolean };
-  try {
-    link = await paymentsApi.createPayoutOnboardingLink();
-  } catch (err) {
-    if (!API_USE_MOCK_FALLBACK) throw err;
-    link = { url: '', simulated: true };
-  }
-  if (link.simulated || !link.url) {
-    // No Stripe configured — keep dev UX working with the simulated bank add.
-    try {
-      await paymentsApi.addPayoutMethod({ type: 'bank', accountToken: 'demo-account' });
-    } catch {
-      if (!API_USE_MOCK_FALLBACK) throw new Error('payout_add_failed');
-    }
-    return 'simulated';
-  }
+  const link = await paymentsApi.createPayoutOnboardingLink();
+  if (!link.url) throw new Error('payout_add_failed');
   await Linking.openURL(link.url);
-  // On return, sync status; the backend creates/updates the bank payout row once
-  // the connected account has payouts enabled.
   try {
     await paymentsApi.getPayoutConnectStatus();
   } catch {
-    /* status poll is best-effort */
+    /* status sync resumes after the user completes onboarding */
   }
   return 'onboarding';
 }

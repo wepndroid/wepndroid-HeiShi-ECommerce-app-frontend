@@ -167,7 +167,7 @@ export const paymentsApi = {
   },
 
   /** POST /payouts/methods */
-  addPayoutMethod(body: { type: PayoutMethodDto['type']; accountToken: string }) {
+  addPayoutMethod(body: { type: PayoutMethodDto['type']; accountToken?: string; accountRef?: string }) {
     return apiRequest<PayoutMethodDto>('/payouts/methods', { method: 'POST', body });
   },
 

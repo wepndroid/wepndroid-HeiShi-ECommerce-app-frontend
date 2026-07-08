@@ -26,6 +26,8 @@ export function toastAfterPublish(
 ) {
   if (listing?.reviewStatus === 'pendingReview') {
     toast(t('toast.listingPendingReview', { title }));
+  } else if (listing?.reviewStatus === 'rejected') {
+    toast(listing.reviewNote ? listing.reviewNote : t('toast.blockedContent'));
   } else {
     toast(t(publishedKey, { title }));
   }

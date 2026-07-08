@@ -15,6 +15,7 @@ import {
 import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
+import { resolveCheckoutMethodFromSelection } from './paymentsService';
 import { handleNativeNextAction } from './stripeNative';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
@@ -266,20 +267,7 @@ export async function userCanChatOnListing(
 async function paymentMethodForCheckout(
   paymentMethodId?: string,
 ): Promise<'card' | 'apple' | 'google' | 'alipay' | 'wechat' | 'paypal'> {
-  if (!paymentMethodId) return 'card';
-  try {
-    const { paymentsApi } = await import('../api');
-    const methods = await paymentsApi.listPaymentMethods();
-    const method = methods.find((m) => m.id === paymentMethodId);
-    if (method?.type === 'paypal') return 'paypal';
-    if (method?.type === 'apple_pay') return 'apple';
-    if (method?.type === 'google_pay') return 'google';
-    if (method?.type === 'alipay') return 'alipay';
-    if (method?.type === 'wechat_pay') return 'wechat';
-    return 'card';
-  } catch {
-    return 'card';
-  }
+  return resolveCheckoutMethodFromSelection(paymentMethodId);
 }
 
 async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
@@ -449,7 +437,7 @@ export async function performOrderAction(
           invalidateCatalog();
           break;
         case 'dispute':
-          dto = await ordersApi.openDispute(order.id, {
+          dto = await ordersApi.requestRefund(order.id, {
             reason: 'Buyer opened dispute from app',
             evidenceUrls: [],
           });
@@ -516,14 +504,14 @@ export async function openOrderDispute(
 ): Promise<OrderStatus> {
   if (isLoggedIn) {
     try {
-      const dto = await ordersApi.openDispute(order.id, { reason, evidenceUrls });
+      const dto = await ordersApi.requestRefund(order.id, { reason, evidenceUrls });
       return mapOrderDtoToUiOrder(dto).status;
     } catch (err) {
       if (!API_USE_MOCK_FALLBACK) throw err;
     }
   }
   if (API_USE_MOCK_FALLBACK) {
-    return applyLocalOrderAction(order.id, order.status, 'dispute');
+    return applyLocalOrderAction(order.id, order.status, 'refund');
   }
   throw new Error('login_required');
 }

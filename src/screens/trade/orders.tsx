@@ -10,7 +10,6 @@ import { useOrders } from '../../hooks/useOrders';
 import {
   sellerActionForStatus,
   openOrderDispute,
-  requestOrderRefund,
   sellerAdjustOrderAmount,
 } from '../../services/ordersService';
 import { useLocalizedProducts } from '../../hooks/useLocalizedProduct';
@@ -121,10 +120,6 @@ export function OrdersScreen() {
     [],
   );
 
-  const handleRequestRefund = useCallback((order: UiOrder) => {
-    setPrompt({ kind: 'refund', order });
-  }, []);
-
   const submitPrompt = useCallback(
     async (reason: string, evidenceUrls: string[]) => {
       if (!prompt) return;
@@ -135,13 +130,8 @@ export function OrdersScreen() {
       const { order, kind } = prompt;
       setPrompt(null);
       try {
-        if (kind === 'dispute') {
-          await openOrderDispute(order, reason, isLoggedIn, evidenceUrls);
-          toast(t('toast.disputeOpened'));
-        } else {
-          await requestOrderRefund(order, reason, isLoggedIn, evidenceUrls);
-          toast(t('toast.refundRequested'));
-        }
+        await openOrderDispute(order, reason, isLoggedIn, evidenceUrls);
+        toast(t(kind === 'refund' ? 'toast.refundRequested' : 'toast.disputeOpened'));
         refresh();
       } catch {
         toast(t('toast.orderActionFailed'));
@@ -151,10 +141,10 @@ export function OrdersScreen() {
   );
 
   const canOpenDispute = (status: OrderStatus) =>
-    status === 'pendingShip' || status === 'pendingReceive' || status === 'pendingService';
-
-  const canRequestRefund = (status: OrderStatus) =>
-    status === 'pendingShip' || status === 'pendingReceive' || status === 'pendingService' || status === 'completed';
+    status === 'pendingShip' ||
+    status === 'pendingReceive' ||
+    status === 'pendingService' ||
+    status === 'completed';
 
   return (
     <ScreenScroll screenId="orders">
@@ -212,12 +202,6 @@ export function OrdersScreen() {
               }
               disputeLabel={
                 canOpenDispute(order.status) ? t('screens.orders.openDispute') : undefined
-              }
-              onRefund={
-                canRequestRefund(order.status) ? () => handleRequestRefund(order) : undefined
-              }
-              refundLabel={
-                canRequestRefund(order.status) ? t('screens.orders.requestRefund') : undefined
               }
             />
           );

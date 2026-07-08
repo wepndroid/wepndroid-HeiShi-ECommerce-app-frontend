@@ -11,16 +11,20 @@ import { colors, fonts, radius } from '../theme';
 
 function paymentIconName(type: PaymentMethodDto['type']): AppIconName {
   if (type === 'apple_pay') return 'apple';
-  if (type === 'google_pay') return 'card';
+  if (type === 'google_pay') return 'pay';
   if (type === 'paypal') return 'paypal';
   if (type === 'alipay') return 'alipay';
   if (type === 'wechat_pay') return 'wechat';
   return 'card';
 }
 
-function paymentSubtitle(method: PaymentMethodDto, t: (key: string) => string): string {
+function paymentSubtitle(
+  method: PaymentMethodDto,
+  t: (key: string, options?: { defaultValue?: string }) => string,
+): string {
+  if (method.subtitle) return method.subtitle;
   if (method.last4) return `**** ${method.last4}`;
-  if (method.type === 'apple_pay') return t('screens.paymentSettings.appleOn');
+  if (method.checkoutOnly) return t('screens.order.checkoutOnly', { defaultValue: 'Chosen during checkout' });
   return t('common.notBound');
 }
 
@@ -41,6 +45,8 @@ export function PaymentMethodSheet({
 }) {
   const { t } = useTranslation();
   const [pendingId, setPendingId] = useState<string | undefined>(selectedId);
+  const savedMethods = methods.filter((method) => !method.checkoutOnly);
+  const checkoutMethods = methods.filter((method) => method.checkoutOnly);
 
   useEffect(() => {
     if (!visible) return;
@@ -66,7 +72,7 @@ export function PaymentMethodSheet({
             <Text style={styles.headSub}>{t('screens.order.paymentPickerSub')}</Text>
           </View>
           <Pressable style={styles.close} onPress={onClose} accessibilityRole="button">
-            <Text style={styles.closeText}>×</Text>
+            <Text style={styles.closeText}>x</Text>
           </Pressable>
         </View>
 
@@ -74,32 +80,69 @@ export function PaymentMethodSheet({
           <LoadingState />
         ) : methods.length ? (
           <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {methods.map((method) => {
-              const active = method.id === pendingId;
-              return (
-                <Pressable
-                  key={method.id}
-                  style={[styles.option, active && styles.optionActive]}
-                  onPress={() => setPendingId(method.id)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: active }}
-                >
-                  <ListIcon name={paymentIconName(method.type)} />
-                  <View style={styles.optionBody}>
-                    <Text style={styles.optionTitle} numberOfLines={1}>
-                      {method.label}
-                    </Text>
-                    <Text style={styles.optionSub} numberOfLines={1}>
-                      {paymentSubtitle(method, t)}
-                    </Text>
-                  </View>
-                  {method.isDefault ? (
-                    <Text style={styles.defaultBadge}>{t('screens.paymentSettings.default')}</Text>
-                  ) : null}
-                  {active ? <AppIcon name="check" size={18} color={colors.text} /> : null}
-                </Pressable>
-              );
-            })}
+            {savedMethods.length ? (
+              <>
+                <Text style={styles.sectionTitle}>
+                  {t('screens.order.savedCardsTitle', { defaultValue: 'Saved cards' })}
+                </Text>
+                {savedMethods.map((method) => {
+                  const active = method.id === pendingId;
+                  return (
+                    <Pressable
+                      key={method.id}
+                      style={[styles.option, active && styles.optionActive]}
+                      onPress={() => setPendingId(method.id)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <ListIcon name={paymentIconName(method.type)} />
+                      <View style={styles.optionBody}>
+                        <Text style={styles.optionTitle} numberOfLines={1}>
+                          {method.label}
+                        </Text>
+                        <Text style={styles.optionSub} numberOfLines={2}>
+                          {paymentSubtitle(method, t)}
+                        </Text>
+                      </View>
+                      {method.isDefault ? (
+                        <Text style={styles.defaultBadge}>{t('screens.paymentSettings.default')}</Text>
+                      ) : null}
+                      {active ? <AppIcon name="check" size={18} color={colors.text} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : null}
+            {checkoutMethods.length ? (
+              <>
+                <Text style={[styles.sectionTitle, savedMethods.length ? styles.sectionTitleSpaced : null]}>
+                  {t('screens.order.checkoutMethodsTitle', { defaultValue: 'Checkout methods' })}
+                </Text>
+                {checkoutMethods.map((method) => {
+                  const active = method.id === pendingId;
+                  return (
+                    <Pressable
+                      key={method.id}
+                      style={[styles.option, active && styles.optionActive]}
+                      onPress={() => setPendingId(method.id)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <ListIcon name={paymentIconName(method.type)} />
+                      <View style={styles.optionBody}>
+                        <Text style={styles.optionTitle} numberOfLines={1}>
+                          {method.label}
+                        </Text>
+                        <Text style={styles.optionSub} numberOfLines={2}>
+                          {paymentSubtitle(method, t)}
+                        </Text>
+                      </View>
+                      {active ? <AppIcon name="check" size={18} color={colors.text} /> : null}
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : null}
           </ScrollView>
         ) : (
           <EmptyState text={t('screens.order.paymentEmpty')} />
@@ -165,6 +208,16 @@ const styles = StyleSheet.create({
   list: {
     maxHeight: 360,
     marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: fonts.weights.bold,
+    color: colors.sub,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  sectionTitleSpaced: {
+    marginTop: 8,
   },
   option: {
     flexDirection: 'row',

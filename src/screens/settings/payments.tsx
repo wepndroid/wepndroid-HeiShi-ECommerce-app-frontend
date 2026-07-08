@@ -1,15 +1,27 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../store/uiStore';
+import { nav } from '../../store/navigation';
 import { useAuthStore } from '../../store/authStore';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
-import { addPaymentMethod, connectBankPayout, removePaymentMethod, setDefaultPaymentMethod } from '../../services/paymentsService';
+import { AppIcon } from '../../components/AppIcon';
+import {
+  addPaymentMethod,
+  connectBankPayout,
+  loadCheckoutMethodPreferences,
+  removePaymentMethod,
+  setCheckoutMethodPreference,
+  setDefaultPaymentMethod,
+} from '../../services/paymentsService';
 import { addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } from '../../services/userService';
 import { usePaymentMethodsSettings, usePayoutMethods } from '../../hooks/usePaymentSettings';
+import { useVerificationStatus } from '../../hooks/useTrustProfile';
 import type { PaymentMethodDto, PayoutMethodDto } from '../../api/types';
-import { Chevron, ListCard, ListIcon, ListRow, ListRowMain, Switch, TableNote } from '../../components/FormUI';
+import { PaymentMethodAddSheet } from '../../components/PaymentMethodAddSheet';
+import { PayoutMethodAddSheet } from '../../components/PayoutMethodAddSheet';
+import { Chevron, ListCard, ListIcon, ListRow, ListRowMain, TableNote } from '../../components/FormUI';
 import { PillButton } from '../../components/UI';
 import { colors } from '../../theme';
 import { SimplePage, styles } from './shared';
@@ -20,8 +32,18 @@ export function PaymentSettingsScreen() {
   const isLoggedIn = useAuthStore((s) => s.user != null);
   const authReady = useAuthStore((s) => s.authReady);
   const { methods, refresh } = usePaymentMethodsSettings(isLoggedIn, authReady);
-  const applePayMethod = methods.find((method) => method.type === 'apple_pay');
-  const applePayOn = Boolean(applePayMethod);
+  const [addSheetVisible, setAddSheetVisible] = React.useState(false);
+  const [busyType, setBusyType] = React.useState<PaymentMethodDto['type'] | null>(null);
+  const [checkoutMethods, setCheckoutMethods] = React.useState<Array<PaymentMethodDto & { enabled: boolean }>>([]);
+  const [togglingMethodId, setTogglingMethodId] = React.useState<string | null>(null);
+
+  const refreshCheckoutMethods = React.useCallback(() => {
+    void loadCheckoutMethodPreferences().then(setCheckoutMethods);
+  }, []);
+
+  React.useEffect(() => {
+    refreshCheckoutMethods();
+  }, [refreshCheckoutMethods]);
 
   const addAndRefresh = async (type: PaymentMethodDto['type']) => {
     try {
@@ -30,38 +52,45 @@ export function PaymentSettingsScreen() {
       refresh();
     } catch (err) {
       if (err instanceof Error && err.message === 'payment_canceled') return;
+      if (
+        err instanceof Error &&
+        ['payment_setup_unavailable', 'payment_web_unsupported', 'stripe_not_available_on_device'].includes(err.message)
+      ) {
+        toast(
+          t('screens.paymentSettings.cardSetupUnavailable', {
+            defaultValue: 'Secure card saving is not available right now. Choose a payment method during checkout.',
+          }),
+        );
+        return;
+      }
       toast(t('toast.settingsUpdateFailed'));
     }
   };
 
   const handleAddPayment = () => {
-    Alert.alert(t('screens.paymentSettings.addChooseTitle'), undefined, [
-      { text: t('screens.paymentSettings.addCard'), onPress: () => void addAndRefresh('card') },
-      { text: t('screens.paymentSettings.addPaypal'), onPress: () => void addAndRefresh('paypal') },
-      { text: t('screens.paymentSettings.addGooglePay'), onPress: () => void addAndRefresh('google_pay') },
-      { text: t('screens.paymentSettings.addAlipay'), onPress: () => void addAndRefresh('alipay') },
-      { text: t('screens.paymentSettings.addWechatPay'), onPress: () => void addAndRefresh('wechat_pay') },
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
+    if (Platform.OS === 'web') {
+      toast(
+        t('screens.paymentSettings.webManageHint', {
+          defaultValue:
+            'On web, enter a new card during checkout. Saved cards are managed through the mobile add-card flow.',
+        }),
+      );
+      return;
+    }
+    setAddSheetVisible(true);
   };
 
-  const handleApplePayToggle = async () => {
+  const handleAddType = async (type: PaymentMethodDto['type']) => {
+    setAddSheetVisible(false);
+    setBusyType(type);
     try {
-      if (applePayOn && applePayMethod) {
-        await removePaymentMethod(applePayMethod.id, isLoggedIn);
-        toast(t('toast.paymentRemoved'));
-      } else {
-        await addPaymentMethod('apple_pay', isLoggedIn);
-        toast(t('toast.paymentAdded'));
-      }
-      refresh();
-    } catch {
-      toast(t('toast.settingsUpdateFailed'));
+      await addAndRefresh(type);
+    } finally {
+      setBusyType(null);
     }
   };
 
   const handlePaymentRowPress = (method: (typeof methods)[number]) => {
-    if (method.type === 'apple_pay') return;
     Alert.alert(method.label, undefined, [
       ...(method.isDefault
         ? []
@@ -94,8 +123,76 @@ export function PaymentSettingsScreen() {
     ]);
   };
 
+  const paymentTypeIcon = (type: PaymentMethodDto['type']) => {
+    if (type === 'apple_pay') return 'apple';
+    if (type === 'google_pay') return 'pay';
+    if (type === 'paypal') return 'paypal';
+    if (type === 'alipay') return 'alipay';
+    if (type === 'wechat_pay') return 'wechat';
+    return 'card';
+  };
+
+  const toggleCheckoutMethod = async (methodId: string, enabled: boolean) => {
+    setTogglingMethodId(methodId);
+    try {
+      await setCheckoutMethodPreference(methodId, !enabled);
+      setCheckoutMethods((current) =>
+        current.map((method) =>
+          method.id === methodId ? { ...method, enabled: !enabled } : method,
+        ),
+      );
+    } finally {
+      setTogglingMethodId(null);
+    }
+  };
+
   return (
     <SimplePage screenId="paymentSettings" title={t('screens.paymentSettings.title')}>
+      <PaymentMethodAddSheet
+        visible={addSheetVisible}
+        onClose={() => setAddSheetVisible(false)}
+        onSelect={(type) => void handleAddType(type)}
+        busyType={busyType}
+      />
+      <TableNote>
+        {t('screens.paymentSettings.checkoutVisibilitySub', {
+          defaultValue:
+            'Choose which payment methods appear on the payment page. Saved cards are managed below.',
+        })}
+      </TableNote>
+      {checkoutMethods.length ? (
+        <ListCard>
+          {checkoutMethods.map((method, index) => (
+            <ListRow
+              key={method.id}
+              left={
+                <>
+                  <ListIcon name={paymentTypeIcon(method.type)} />
+                  <ListRowMain>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
+                    <Text style={styles.rowSub} numberOfLines={2}>
+                      {method.subtitle ?? t('common.notBound')}
+                    </Text>
+                  </ListRowMain>
+                </>
+              }
+              right={
+                <View style={[localStyles.checkbox, method.enabled && localStyles.checkboxOn]}>
+                  {method.enabled ? (
+                    <AppIcon name="checkmark" size={14} color="#ffffff" />
+                  ) : null}
+                </View>
+              }
+              border={index < checkoutMethods.length - 1}
+              onPress={
+                togglingMethodId === method.id
+                  ? undefined
+                  : () => void toggleCheckoutMethod(method.id, method.enabled)
+              }
+            />
+          ))}
+        </ListCard>
+      ) : null}
       {methods.length > 0 ? (
         <ListCard>
           {methods.map((method, index) => (
@@ -103,34 +200,55 @@ export function PaymentSettingsScreen() {
               key={method.id}
               left={
                 <>
-                  <ListIcon name={method.type === 'apple_pay' ? 'apple' : method.type === 'paypal' ? 'paypal' : 'card'} />
+                  <ListIcon name="card" />
                   <ListRowMain>
                     <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
                     <Text style={styles.rowSub} numberOfLines={2}>
-                      {method.last4 ? `**** ${method.last4}` : method.type === 'apple_pay' ? (applePayOn ? t('screens.paymentSettings.appleOn') : t('common.notBound')) : t('common.notBound')}
+                      {method.last4 ? `**** ${method.last4}` : t('common.notBound')}
                     </Text>
                   </ListRowMain>
                 </>
               }
               right={
-                method.type === 'apple_pay' ? (
-                  <Switch on={applePayOn} onToggle={() => void handleApplePayToggle()} />
-                ) : method.isDefault ? (
+                method.isDefault ? (
                   <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
                 ) : (
                   <Chevron />
                 )
               }
               border={index < methods.length - 1}
-              onPress={method.type === 'apple_pay' ? undefined : () => handlePaymentRowPress(method)}
+              onPress={() => handlePaymentRowPress(method)}
             />
           ))}
         </ListCard>
       ) : null}
-      <PillButton label={t('screens.paymentSettings.add')} variant="brand" full onPress={handleAddPayment} />
+      <PillButton
+        label={t('screens.paymentSettings.add')}
+        variant="brand"
+        full
+        onPress={handleAddPayment}
+        disabled={Boolean(busyType)}
+      />
     </SimplePage>
   );
 }
+
+const localStyles = StyleSheet.create({
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.paper,
+  },
+  checkboxOn: {
+    backgroundColor: colors.brand,
+    borderColor: colors.brand,
+  },
+});
 
 export function PayoutSettingsScreen() {
   const { t } = useTranslation();
@@ -138,35 +256,68 @@ export function PayoutSettingsScreen() {
   const isLoggedIn = useAuthStore((s) => s.user != null);
   const authReady = useAuthStore((s) => s.authReady);
   const { methods, refresh } = usePayoutMethods(isLoggedIn, authReady);
+  const { status } = useVerificationStatus(isLoggedIn, authReady);
+  const [addSheetVisible, setAddSheetVisible] = React.useState(false);
+  const [busyType, setBusyType] = React.useState<PayoutMethodDto['type'] | null>(null);
 
-  const addAndRefresh = async (type: PayoutMethodDto['type']) => {
+  const payoutTypeIcon = (type: PayoutMethodDto['type']) => {
+    if (type === 'bank') return 'bank';
+    if (type === 'alipay') return 'alipay';
+    if (type === 'wechat') return 'wechat';
+    return 'paypal';
+  };
+
+  const addProviderAndRefresh = async (
+    type: Exclude<PayoutMethodDto['type'], 'bank'>,
+    accountRef: string,
+  ) => {
+    setBusyType(type);
     try {
-      await addPayoutMethod(type, isLoggedIn);
+      await addPayoutMethod(type, isLoggedIn, accountRef);
       toast(t('toast.payoutAdded'));
+      setAddSheetVisible(false);
       refresh();
-    } catch {
-      toast(t('toast.settingsUpdateFailed'));
+    } catch (err) {
+      if (err instanceof Error && err.message === 'payout_bind_required_alipay') {
+        setAddSheetVisible(false);
+        toast(t('screens.payoutSettings.alipayBindFirstToast'));
+        nav('accountSafety');
+        return;
+      }
+      if (err instanceof Error && err.message === 'payout_bind_required_wechat') {
+        setAddSheetVisible(false);
+        toast(t('screens.payoutSettings.wechatBindFirstToast'));
+        nav('accountSafety');
+        return;
+      }
+      toast(
+        t(
+          err instanceof Error && err.message === 'payout_validation_failed'
+            ? 'screens.payoutSettings.validationFailed'
+            : 'toast.settingsUpdateFailed',
+        ),
+      );
+    } finally {
+      setBusyType(null);
     }
   };
 
   const connectBankAndRefresh = async () => {
+    setBusyType('bank');
     try {
       const result = await connectBankPayout(isLoggedIn);
       toast(t(result === 'onboarding' ? 'toast.payoutConnectStarted' : 'toast.payoutAdded'));
+      setAddSheetVisible(false);
       refresh();
     } catch {
       toast(t('toast.settingsUpdateFailed'));
+    } finally {
+      setBusyType(null);
     }
   };
 
   const handleAddPayout = () => {
-    Alert.alert(t('screens.payoutSettings.addChooseTitle'), undefined, [
-      { text: t('screens.payoutSettings.addBank'), onPress: () => void connectBankAndRefresh() },
-      { text: t('screens.payoutSettings.addPaypal'), onPress: () => void addAndRefresh('paypal') },
-      { text: t('screens.payoutSettings.addAlipay'), onPress: () => void addAndRefresh('alipay') },
-      { text: t('screens.payoutSettings.addWechat'), onPress: () => void addAndRefresh('wechat') },
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
+    setAddSheetVisible(true);
   };
 
   const handlePayoutRowPress = (method: (typeof methods)[number]) => {
@@ -204,19 +355,41 @@ export function PayoutSettingsScreen() {
 
   return (
     <SimplePage screenId="payoutSettings" title={t('screens.payoutSettings.title')}>
+      <PayoutMethodAddSheet
+        visible={addSheetVisible}
+        onClose={() => setAddSheetVisible(false)}
+        onSubmitBank={() => void connectBankAndRefresh()}
+        onSubmitProvider={(type, accountRef) => void addProviderAndRefresh(type, accountRef)}
+        onRequireBinding={(type) => {
+          setAddSheetVisible(false);
+          toast(
+            t(
+              type === 'wechat'
+                ? 'screens.payoutSettings.wechatBindFirstToast'
+                : 'screens.payoutSettings.alipayBindFirstToast',
+            ),
+          );
+          nav('accountSafety');
+        }}
+        providerBindings={{
+          alipay: Boolean(status?.alipayBound),
+          wechat: Boolean(status?.wechatBound),
+        }}
+        busyType={busyType}
+      />
       <TableNote>{t('screens.payoutSettings.note')}</TableNote>
       {methods.length > 0 ? (
         <ListCard>
           {methods.map((method, index) => (
-            <ListRow
-              key={method.id}
-              left={
-                <>
-                  <ListIcon name={method.type === 'bank' ? 'bank' : 'paypal'} />
-                  <ListRowMain>
+                <ListRow
+                  key={method.id}
+                  left={
+                    <>
+                      <ListIcon name={payoutTypeIcon(method.type)} />
+                      <ListRowMain>
                     <Text style={styles.rowTitle} numberOfLines={1}>{method.label}</Text>
                     <Text style={styles.rowSub} numberOfLines={2}>
-                      {method.last4 ? `**** ${method.last4}` : t('common.notBound')}
+                      {method.accountHint ?? (method.last4 ? `**** ${method.last4}` : t('common.notBound'))}
                     </Text>
                   </ListRowMain>
                 </>
@@ -234,7 +407,13 @@ export function PayoutSettingsScreen() {
           ))}
         </ListCard>
       ) : null}
-      <PillButton label={t('screens.payoutSettings.add')} variant="brand" full onPress={handleAddPayout} />
+      <PillButton
+        label={t('screens.payoutSettings.add')}
+        variant="brand"
+        full
+        onPress={handleAddPayout}
+        disabled={Boolean(busyType)}
+      />
     </SimplePage>
   );
 }
