@@ -40,6 +40,7 @@ export const ROUTE_PATHS = {
   authCenter: '/auth',
   creditProfile: '/profile/credit',
   reviewManage: '/profile/reviews',
+  leaveFeedback: '/profile/review',
   safetyCenter: '/safety',
   orders: '/profile/orders',
   myListings: '/profile/listings',

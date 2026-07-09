@@ -41,6 +41,10 @@ async function main() {
   const { sendRegisterCode, registerWithAuth, bootstrapAuth } = await import(
     '../src/services/authService'
   );
+  const registerBase = {
+    avatarUri: 'mock://avatar.jpg',
+    city: 'Melbourne',
+  };
 
   const results: { name: string; pass: boolean; detail?: string }[] = [];
   const check = (name: string, pass: boolean, detail?: string) => {
@@ -63,6 +67,7 @@ async function main() {
   }
 
   const wrong = await registerWithAuth({
+    ...registerBase,
     nickname: 'MobileTest',
     phone,
     password: 'secret1',
@@ -75,12 +80,19 @@ async function main() {
     'error' in wrong ? wrong.error : 'registered unexpectedly',
   );
 
+  const verificationCode = send.devCode;
+  if (!verificationCode) {
+    console.log('\nAborted â€” backend did not expose a dev OTP code.');
+    process.exit(1);
+  }
+
   const reg = await registerWithAuth({
+    ...registerBase,
     nickname: 'MobileTest',
     phone,
     password: 'secret1',
     confirmPassword: 'secret1',
-    verificationCode: send.devCode!,
+    verificationCode,
   });
   check(
     'Register with OTP creates session',

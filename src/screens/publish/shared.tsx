@@ -228,7 +228,7 @@ export const styles = StyleSheet.create({
     color: colors.text,
   },
   secondhandStickyHeader: {
-    paddingHorizontal: screenHorizontalInset,
+    ...screenHorizontalInset,
     paddingTop: spacing.screenPadding,
     backgroundColor: colors.bg,
   },

@@ -22,6 +22,7 @@ import {
 import { toE164Phone } from '../utils/phoneE164';
 import { uploadAvatarImage } from './listingsService';
 import { unregisterDevicePushToken } from './messageNotifications';
+import { requestWeChatAuthCode } from './wechatNative';
 
 async function clearStoredSession(): Promise<void> {
   await unregisterDevicePushToken();
@@ -518,11 +519,40 @@ export type OAuthProvider = 'google' | 'apple' | 'wechat';
 export async function loginWithOAuth(
   provider: OAuthProvider,
 ): Promise<{ user: AuthUser } | { error: AuthErrorKey } | { pending: true }> {
+  if (provider === 'wechat') {
+    const nativeResult = await requestWeChatAuthCode();
+    if ('code' in nativeResult) {
+      try {
+        const user = await applyTokens(await authApi.wechat({ code: nativeResult.code }));
+        await clearSupabaseSessionIfBackendPhoneAuth();
+        return { user };
+      } catch (err) {
+        return { error: mapAuthApiError(err, 'networkError') };
+      }
+    }
+    if (
+      nativeResult.error === 'cancelled'
+      || nativeResult.error === 'denied'
+      || !isSupabaseAuthConfigured()
+    ) {
+      return {
+        error:
+          nativeResult.error === 'cancelled'
+            ? 'oauthCancelled'
+            : nativeResult.error === 'denied'
+              ? 'oauthDenied'
+              : nativeResult.error === 'unavailable'
+                ? 'oauthUnavailable'
+                : 'networkError',
+      };
+    }
+  }
+
   if (!isSupabaseAuthConfigured()) {
     return { error: 'oauthUnavailable' };
   }
   const supabaseProvider =
-    provider === 'wechat' ? ('wechat' as const) : provider === 'apple' ? ('apple' as const) : ('google' as const);
+    provider === 'wechat' ? 'custom:wechat' : provider === 'apple' ? 'apple' : 'google';
   try {
     const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
       provider: supabaseProvider,

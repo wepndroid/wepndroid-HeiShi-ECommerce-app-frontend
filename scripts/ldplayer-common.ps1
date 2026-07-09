@@ -3,7 +3,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$FrontendRoot = Split-Path -Parent $PSScriptRoot
+$RepoRoot = Split-Path -Parent $FrontendRoot
+$ProjectRoot = $FrontendRoot
+$BackendRoot = Join-Path $RepoRoot "Backend"
 $ToolsDir = Join-Path $ProjectRoot ".tools"
 $SdkDir = Join-Path $ToolsDir "android-sdk"
 
@@ -18,6 +21,8 @@ function Get-JdkHome {
 }
 
 $script:ProjectRoot = $ProjectRoot
+$script:RepoRoot = $RepoRoot
+$script:BackendRoot = $BackendRoot
 $script:SdkDir = $SdkDir
 $script:JdkHome = Get-JdkHome
 $script:LdPlayerSerial = "127.0.0.1:$Port"
@@ -226,7 +231,7 @@ function Sync-DevApiEnvFiles {
   ) | Set-Content -Path $frontendEnv -Encoding utf8
   Write-Host "Synced Frontend .env -> port $ApiPort (mock fallback ON for UI verification)"
 
-  $backendRoot = Join-Path (Split-Path $ProjectRoot -Parent) "Backend"
+  $backendRoot = $script:BackendRoot
   $backendEnv = Join-Path $backendRoot ".env"
   if (-not (Test-Path $backendEnv)) { return }
 
@@ -257,7 +262,7 @@ function Ensure-DevBackend {
   param([int]$ApiPort = (Resolve-DevApiPort))
   if (Test-ApiHealth $ApiPort) { return $ApiPort }
 
-  $BackendRoot = Join-Path (Split-Path $ProjectRoot -Parent) "Backend"
+  $BackendRoot = $script:BackendRoot
   Write-Host "Backend not detected on port $ApiPort. Starting FastAPI..."
   $python = Join-Path $BackendRoot ".venv\Scripts\python.exe"
   if (-not (Test-Path $python)) {

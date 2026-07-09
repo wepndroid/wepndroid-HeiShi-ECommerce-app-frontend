@@ -43,7 +43,9 @@ export type AuthErrorKey =
   | 'avatarRequired'
   | 'avatarUploadFailed'
   | 'cityRequired'
-  | 'oauthUnavailable';
+  | 'oauthUnavailable'
+  | 'oauthCancelled'
+  | 'oauthDenied';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);

@@ -82,7 +82,7 @@ function RatingSummaryCard({
     <DetailCard>
       <View style={styles.summaryHeader}>
         <Text style={styles.summaryLabel}>{ratingLabel}</Text>
-        <Text style={styles.summaryValue}>{roundRatingDisplay(displayScore).toFixed(2)}</Text>
+        <Text style={styles.summaryValue}>{roundRatingDisplay(displayScore).toFixed(1)}</Text>
       </View>
       <View style={styles.summaryStarsRow}>
         <StarRating rating={displayScore} showValue={false} />
@@ -195,7 +195,7 @@ function ReceivedReviewCard({
       </Pressable>
       <View style={styles.receivedStarsRow}>
         <StarRating rating={review.rating} showValue={false} />
-        <Text style={styles.receivedScore}>{roundRatingDisplay(review.rating).toFixed(2)}</Text>
+        <Text style={styles.receivedScore}>{roundRatingDisplay(review.rating).toFixed(1)}</Text>
         <Text style={styles.receivedDate}>{formatReviewDate(review.createdAt, language)}</Text>
       </View>
       {review.comment?.trim() ? (

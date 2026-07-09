@@ -1494,6 +1494,8 @@ export default {
         avatarUploadFailed: 'Could not upload profile photo. Check your connection and try again.',
         cityRequired: 'Choose your city',
         oauthUnavailable: 'Sign-in with this provider is not available in this preview yet.',
+        oauthCancelled: 'Sign-in was cancelled.',
+        oauthDenied: 'Sign-in permission was denied.',
       },
     },
     safetyCenter: {

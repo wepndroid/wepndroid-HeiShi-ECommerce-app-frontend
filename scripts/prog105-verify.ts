@@ -7,6 +7,12 @@ import {
   validateRegisterInput,
 } from '../src/data/auth';
 
+const validRegisterBase = {
+  avatarUri: 'mock://avatar.jpg',
+  city: 'Melbourne',
+  verificationCode: '123456',
+};
+
 const results: { name: string; pass: boolean; detail?: string }[] = [];
 
 function check(name: string, pass: boolean, detail?: string) {
@@ -18,17 +24,30 @@ async function main() {
   // --- Register client validation ---
   check(
     'Empty register → nicknameRequired',
-    validateRegisterInput({ nickname: '', phone: '', password: '', confirmPassword: '' }) ===
+    validateRegisterInput({
+      ...validRegisterBase,
+      nickname: '',
+      phone: '',
+      password: '',
+      confirmPassword: '',
+    }) ===
       'nicknameRequired',
   );
   check(
     'Register phone only → phoneRequired',
-    validateRegisterInput({ nickname: 'A', phone: '', password: 'secret1', confirmPassword: 'secret1' }) ===
+    validateRegisterInput({
+      ...validRegisterBase,
+      nickname: 'A',
+      phone: '',
+      password: 'secret1',
+      confirmPassword: 'secret1',
+    }) ===
       'phoneRequired',
   );
   check(
     'Register password mismatch',
     validateRegisterInput({
+      ...validRegisterBase,
       nickname: 'A',
       phone: '0400111222',
       password: 'secret1',
@@ -38,6 +57,7 @@ async function main() {
   check(
     'Register invalid phone 123',
     validateRegisterInput({
+      ...validRegisterBase,
       nickname: 'A',
       phone: '123',
       password: 'secret1',

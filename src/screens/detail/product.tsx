@@ -90,7 +90,7 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
     (currentItem.id === BUNDLE_DETAIL_ID ? demoBundleMeta() : null);
   const galleryImages = resolveProductImages({
     ...currentItem,
-    bundleMeta,
+    bundleMeta: bundleMeta ?? undefined,
   });
   const isBundleListing = isBundleListingProduct(currentItem) || bundleMeta != null;
   const bundleReady = !isBundleListing || (bundleMeta?.items?.length ?? 0) > 0;

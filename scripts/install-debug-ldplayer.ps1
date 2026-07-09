@@ -50,8 +50,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Set-Location $ProjectRoot
-Set-MetroPortForward -RequireMetro
-Start-LdPlayerApp
+Set-MetroPortForward
+if (Test-PortListening 8081) {
+  Test-MetroFromDevice -MetroPort 8081 -WarnOnly | Out-Null
+  Start-LdPlayerApp
+} else {
+  Write-Host "Metro is not running yet. Start it with: npm run dev:ldplayer" -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "Debug app installed on LDPlayer."

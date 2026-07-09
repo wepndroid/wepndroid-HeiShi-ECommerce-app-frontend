@@ -13,7 +13,7 @@ const STAR_COUNT = 5;
 const STAR_GAP = 2;
 
 export function roundRatingDisplay(value: number): number {
-  return Math.round(Math.min(STAR_COUNT, Math.max(0, value)) * 100) / 100;
+  return Math.round(Math.min(STAR_COUNT, Math.max(0, value)) * 10) / 10;
 }
 
 function starFillAmount(rating: number, index: number): number {

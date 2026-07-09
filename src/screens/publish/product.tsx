@@ -358,9 +358,9 @@ export function UploadProductScreen({
       {isJob ? (
         <FormCard>
           <FormSwitchRow
-            label={t('screens.publishJob.merchantPost')}
-            sub={t('screens.publishJob.merchantPostSub')}
-            value={merchantPost}
+            title={t('screens.publishJob.merchantPost')}
+            hint={t('screens.publishJob.merchantPostSub')}
+            on={merchantPost}
             onToggle={() => setMerchantPost((v) => !v)}
           />
         </FormCard>

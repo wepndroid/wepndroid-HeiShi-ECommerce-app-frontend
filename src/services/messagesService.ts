@@ -88,7 +88,7 @@ async function runInboxPoll(): Promise<void> {
   }
 }
 
-export function conversationShowsUnread(row: UiConversation): boolean {
+export function conversationShowsUnread(row: { unreadCount: number; markedAsUnread?: boolean }): boolean {
   return row.unreadCount > 0 || Boolean(row.markedAsUnread);
 }
 

@@ -79,7 +79,7 @@ export function CategoryScreen() {
         variant={cmsBanner ? 'promo' : 'local'}
         title={cmsBanner?.title ?? t('screens.category.bannerTitle')}
         subtitle={
-          cmsBanner ? undefined : t('screens.category.bannerSubtitle', { city: regionLabelText ?? '' })
+          t('screens.category.bannerSubtitle', { city: regionLabelText ?? '' })
         }
         badge={cmsBanner ? undefined : t('screens.category.bannerBadge')}
         artworkRemoteUri={cmsBanner?.imageUrl}

@@ -214,6 +214,7 @@ export const fonts = {
   },
   weights: {
     medium: '500' as const,
+    semibold: '600' as const,
     bold: '700' as const,
   },
 };
@@ -426,9 +427,9 @@ export const plainTextInput: TextStyle = {
   margin: 0,
   ...(Platform.OS === 'web'
     ? ({
-        outlineStyle: 'none',
-        outlineWidth: 0,
-        outlineColor: 'transparent',
-      } as TextStyle)
+      outlineStyle: 'none',
+      outlineWidth: 0,
+      outlineColor: 'transparent',
+      } as unknown as TextStyle)
     : null),
 };

@@ -108,10 +108,11 @@ export function MessagesScreen() {
     );
   }, [conversations, normalizedQuery]);
 
-  const headerUnreadCount = useMemo(
-    () => inboxUnreadCount([...conversations, ...groups]),
-    [conversations, groups],
-  );
+  const headerUnreadCount = useMemo(() => {
+    const conversationUnread = inboxUnreadCount(conversations);
+    const groupUnread = groups.reduce((sum, group) => sum + group.unreadCount, 0);
+    return conversationUnread + groupUnread;
+  }, [conversations, groups]);
 
   const hasResults = filteredGroups.length > 0 || filteredConversations.length > 0;
   const inboxLoading = authReady && (conversationsLoading || groupsLoading);

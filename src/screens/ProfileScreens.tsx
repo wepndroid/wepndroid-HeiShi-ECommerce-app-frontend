@@ -192,7 +192,7 @@ export function ProfileScreen() {
                           reviewSummary && reviewSummary.receivedCount > 0
                             ? reviewSummary.score
                             : 0,
-                        ).toFixed(2)}
+                        ).toFixed(1)}
                       </Text>
                     </View>
                     <View style={styles.ratingStarsRow}>

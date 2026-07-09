@@ -1394,6 +1394,8 @@ export default {
         avatarUploadFailed: '头像上传失败，请检查网络后重试。',
         cityRequired: '请选择所在城市',
         oauthUnavailable: '当前预览版本暂不支持该方式登录',
+        oauthCancelled: 'å·²å–æ¶ˆç™»å½•',
+        oauthDenied: 'æœªæŽˆæƒç™»å½•',
       },
     },
     safetyCenter: {

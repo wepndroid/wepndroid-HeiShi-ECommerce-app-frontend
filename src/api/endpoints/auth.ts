@@ -33,6 +33,11 @@ export const authApi = {
     return apiRequest<AuthUserDto>('/auth/oauth/provision', { method: 'POST', body: body ?? {} });
   },
 
+  /** POST /auth/wechat - native WeChat Open Platform login/register */
+  wechat(body: { code: string; nickname?: string; city?: string }) {
+    return apiRequest<AuthTokensDto>('/auth/wechat', { method: 'POST', body, auth: false });
+  },
+
   /** POST /auth/login */
   login(body: LoginRequest) {
     return apiRequest<AuthTokensDto>('/auth/login', { method: 'POST', body, auth: false });

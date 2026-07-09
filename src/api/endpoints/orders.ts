@@ -1,5 +1,5 @@
 import { apiRequest } from '../client';
-import type { ReviewCriteriaDto } from '../data/reviewCriteria';
+import type { ReviewCriteriaDto } from '../../data/reviewCriteria';
 import type { CreateOrderRequest, OrderDto, OrderReviewDto, Paginated } from '../types';
 
 export const ordersApi = {

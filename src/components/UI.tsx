@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   StyleSheet,
   View,
   ViewStyle,
@@ -161,7 +162,7 @@ export function ScreenScroll({
 }: {
   screenId: ScreenId;
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   contentBottomInset?: number;
 }) {
   const noNav = NO_NAV_SCREENS.has(screenId);
@@ -744,7 +745,7 @@ export function PillButton({
   icon?: AppIconName;
   onPress?: () => void;
   variant?: 'default' | 'light' | 'brand' | 'teal' | 'warn' | 'purchase';
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   full?: boolean;
   flex?: boolean;
   disabled?: boolean;

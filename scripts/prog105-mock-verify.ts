@@ -39,6 +39,8 @@ async function main() {
     password: 'secret1',
     confirmPassword: 'secret1',
     verificationCode: '123456',
+    avatarUri: 'mock://avatar.jpg',
+    city: 'Melbourne',
   });
   check('Mock local register works', 'user' in reg && reg.user.heishiId.startsWith('HS'));
 
