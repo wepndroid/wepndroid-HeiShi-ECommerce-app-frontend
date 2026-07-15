@@ -37,6 +37,11 @@ function checkoutCardSubtitle(): string {
 }
 
 function checkoutApplePaySubtitle(): string {
+  if (Platform.OS === 'android') {
+    return i18n.t('screens.order.applePayUnavailableAndroid', {
+      defaultValue: 'Unavailable on Android devices.',
+    });
+  }
   return i18n.t('screens.order.applePayOptionSub', {
     defaultValue: 'Opens Stripe Checkout. Apple Pay appears when this device and browser support it.',
   });
@@ -60,6 +65,7 @@ function virtualCheckoutMethods(): PaymentMethodDto[] {
       checkoutOnly: true,
       removable: false,
       defaultable: false,
+      disabled: Platform.OS === 'android',
     },
     {
       id: VIRTUAL_APPLE_PAY_ID,
@@ -154,9 +160,12 @@ export async function listCheckoutPaymentMethods(isLoggedIn: boolean): Promise<P
 export async function bootstrapPaymentSelection(
   methods: PaymentMethodDto[],
 ): Promise<PaymentMethodDto | undefined> {
-  if (!methods.length) return undefined;
+  const selectableMethods = methods.filter((method) => !method.disabled);
+  if (!selectableMethods.length) return undefined;
   const savedId = await loadSelectedPaymentMethodId();
-  return methods.find((m) => m.id === savedId) ?? methods.find((m) => m.isDefault) ?? methods[0];
+  return selectableMethods.find((m) => m.id === savedId) ??
+    selectableMethods.find((m) => m.isDefault) ??
+    selectableMethods[0];
 }
 
 export async function selectPaymentMethod(method: PaymentMethodDto) {

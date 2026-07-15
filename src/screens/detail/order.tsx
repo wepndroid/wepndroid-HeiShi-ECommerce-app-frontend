@@ -122,15 +122,11 @@ export function OrderScreen() {
     void loadProduct(currentItem.id).finally(() => setCheckoutReady(true));
   }, [currentItem.id, isLoggedIn, loadProduct]);
 
-  useEffect(() => {
-    prepareCheckout();
-  }, [prepareCheckout, catalogRevision]);
-
   useFocusEffect(
     useCallback(() => {
       prepareCheckout();
       if (isLoggedIn) void refreshPaymentMethods();
-    }, [prepareCheckout, isLoggedIn, refreshPaymentMethods]),
+    }, [catalogRevision, prepareCheckout, isLoggedIn, refreshPaymentMethods]),
   );
 
   useEffect(() => {

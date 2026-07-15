@@ -308,6 +308,7 @@ export interface PaymentMethodDto {
   checkoutOnly?: boolean;
   removable?: boolean;
   defaultable?: boolean;
+  disabled?: boolean;
 }
 
 export interface PayoutMethodDto {

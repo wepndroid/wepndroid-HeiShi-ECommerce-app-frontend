@@ -120,13 +120,15 @@ export function PaymentMethodSheet({
                 </Text>
                 {checkoutMethods.map((method) => {
                   const active = method.id === pendingId;
+                  const disabled = method.disabled === true;
                   return (
                     <Pressable
                       key={method.id}
-                      style={[styles.option, active && styles.optionActive]}
+                      style={[styles.option, active && styles.optionActive, disabled && styles.optionDisabled]}
                       onPress={() => setPendingId(method.id)}
+                      disabled={disabled}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: active }}
+                      accessibilityState={{ selected: active, disabled }}
                     >
                       <ListIcon name={paymentIconName(method.type)} />
                       <View style={styles.optionBody}>
@@ -234,6 +236,9 @@ const styles = StyleSheet.create({
   optionActive: {
     borderColor: colors.brand,
     backgroundColor: colors.brand3,
+  },
+  optionDisabled: {
+    opacity: 0.45,
   },
   optionBody: {
     flex: 1,

@@ -38,7 +38,7 @@ export const useCheckoutStore = create<CheckoutState>((set, get) => ({
   applyPaymentSelection: (id, label) => set({ paymentMethodId: id, paymentMethod: label }),
   selectPaymentMethodById: async (id) => {
     const method = get().paymentMethods.find((m) => m.id === id);
-    if (!method) return;
+    if (!method || method.disabled) return;
     set({ paymentMethodId: method.id, paymentMethod: method.label });
     await selectPaymentMethod(method);
   },
@@ -52,8 +52,8 @@ export const useCheckoutStore = create<CheckoutState>((set, get) => ({
       return methods;
     }
     const currentId = get().paymentMethodId;
-    if (currentId && methods.some((m) => m.id === currentId)) {
-      const match = methods.find((m) => m.id === currentId);
+    if (currentId && methods.some((m) => m.id === currentId && !m.disabled)) {
+      const match = methods.find((m) => m.id === currentId && !m.disabled);
       if (match) set({ paymentMethod: match.label });
       return methods;
     }
