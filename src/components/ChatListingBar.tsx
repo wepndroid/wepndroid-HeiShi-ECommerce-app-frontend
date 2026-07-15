@@ -115,8 +115,11 @@ export function ChatListingBar({
     <View style={styles.priceRow}>
       <View style={styles.priceEditor}>
         <Text style={styles.metaPrice}>{currencyPrefix}</Text>
-        {editingPrice ? (
-          <View style={styles.priceInputBox}>
+        <View style={styles.priceControlSlot}>
+          <Text style={[styles.metaPrice, styles.priceControlLayer, editingPrice && styles.hiddenPriceControl]}>
+            {price}
+          </Text>
+          <View style={[styles.priceInputBox, styles.priceControlLayer, !editingPrice && styles.hiddenPriceControl]}>
             <TextInput
               style={styles.priceInput}
               value={draftPrice}
@@ -128,13 +131,11 @@ export function ChatListingBar({
               keyboardType={numericKeyboardType('decimal')}
               placeholder={t('screens.chat.pricePlaceholder')}
               placeholderTextColor={formControls.placeholderColor}
-              autoFocus
+              editable={editingPrice && !savingPrice}
               selectTextOnFocus
             />
           </View>
-        ) : (
-          <Text style={styles.metaPrice}>{price}</Text>
-        )}
+        </View>
       </View>
       <Pressable
         style={styles.priceAction}
@@ -231,8 +232,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   priceInputBox: {
-    minWidth: 72,
-    maxWidth: 120,
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: radius.sm,
@@ -240,12 +239,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
+  priceControlSlot: {
+    width: 82,
+    height: 28,
+    position: 'relative',
+  },
+  priceControlLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   priceInput: {
     fontSize: 12,
     fontWeight: fonts.weights.bold,
     color: colors.red,
     padding: 0,
     minHeight: 20,
+  },
+  hiddenPriceControl: {
+    opacity: 0,
   },
   priceAction: {
     width: 28,

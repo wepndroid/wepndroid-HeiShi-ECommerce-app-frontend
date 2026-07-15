@@ -5,7 +5,7 @@ import type { CreateOrderRequest, OrderDto, OrderReviewDto, Paginated } from '..
 export const ordersApi = {
   /** GET /orders?status= */
   list(params?: {
-    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress' | 'all';
+    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'refunded' | 'inDispute' | 'refundInProgress' | 'all';
     listingId?: number;
     page?: number;
     pageSize?: number;
@@ -15,7 +15,7 @@ export const ordersApi = {
 
   /** GET /orders/sales?status= — seller's sales */
   listSales(params?: {
-    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress' | 'all';
+    status?: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'refunded' | 'inDispute' | 'refundInProgress' | 'all';
     listingId?: number;
     page?: number;
     pageSize?: number;

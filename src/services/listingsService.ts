@@ -357,7 +357,7 @@ export async function getMyListings(
         hasMore = result.hasMore;
         page += 1;
       }
-      return items.length > 0 ? items : mergeDemoMyListings(status);
+      return items;
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('listings_load_failed');
       return mergeDemoMyListings(status);

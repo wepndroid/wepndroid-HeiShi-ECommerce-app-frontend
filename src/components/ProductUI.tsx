@@ -296,6 +296,8 @@ function BannerHighlights({ items }: { items: string[] }) {
   );
 }
 
+const CMS_BANNER_ASPECT_RATIO = 3;
+
 export function Banner({
   title,
   subtitle,
@@ -396,7 +398,9 @@ export function Banner({
     const bannerSource = artworkRemoteUri
       ? { uri: artworkRemoteUri }
       : (artworkSource ?? homePromoBannerForLanguage(i18n.language));
-    const aspectRatio = artworkRemoteUri ? 2.4 : bannerArtworkAspectRatio(bannerSource as number);
+    const aspectRatio = artworkRemoteUri
+      ? CMS_BANNER_ASPECT_RATIO
+      : bannerArtworkAspectRatio(bannerSource as number);
     const actionHalfHeight = profileScreenTokens.bannerActionHeight / 2;
     return (
       <View
@@ -409,7 +413,7 @@ export function Banner({
         <Image
           source={bannerSource}
           style={styles.bannerArtwork}
-          resizeMode="contain"
+          resizeMode={artworkRemoteUri ? 'cover' : 'contain'}
           accessibilityRole="image"
           accessibilityLabel={title}
         />

@@ -1,10 +1,15 @@
 type PaymentSheetConfig = {
+  publishableKey: string;
   merchantDisplayName: string;
   customerId: string;
   customerEphemeralKeySecret: string;
   setupIntentClientSecret: string;
   returnURL: string;
   allowsDelayedPaymentMethods: boolean;
+};
+
+type CheckoutPaymentSheetConfig = Omit<PaymentSheetConfig, 'setupIntentClientSecret'> & {
+  paymentIntentClientSecret: string;
 };
 
 function loadStripeSdk() {
@@ -21,6 +26,7 @@ export async function presentNativePaymentSheet(config: PaymentSheetConfig): Pro
     throw new Error('stripe_not_available_on_device');
   }
 
+  await stripe.initStripe({ publishableKey: config.publishableKey, urlScheme: 'heishi' });
   const initResult = await stripe.initPaymentSheet({
     merchantDisplayName: config.merchantDisplayName,
     customerId: config.customerId,
@@ -39,6 +45,33 @@ export async function presentNativePaymentSheet(config: PaymentSheetConfig): Pro
   if (result.didCancel) {
     throw new Error('payment_canceled');
   }
+  if (result.error) {
+    throw new Error(result.error.message || result.error.code || 'stripe_payment_sheet_failed');
+  }
+}
+
+export async function presentNativeCheckoutPaymentSheet(
+  config: CheckoutPaymentSheetConfig,
+): Promise<void> {
+  const stripe = loadStripeSdk();
+  if (!stripe) throw new Error('stripe_not_available_on_device');
+
+  await stripe.initStripe({ publishableKey: config.publishableKey, urlScheme: 'heishi' });
+  const initResult = await stripe.initPaymentSheet({
+    merchantDisplayName: config.merchantDisplayName,
+    customerId: config.customerId,
+    customerEphemeralKeySecret: config.customerEphemeralKeySecret,
+    paymentIntentClientSecret: config.paymentIntentClientSecret,
+    returnURL: config.returnURL,
+    allowsDelayedPaymentMethods: config.allowsDelayedPaymentMethods,
+    paymentMethodOrder: ['card'],
+  });
+  if (initResult.error) {
+    throw new Error(initResult.error.message || initResult.error.code || 'stripe_payment_sheet_init_failed');
+  }
+
+  const result = await stripe.presentPaymentSheet();
+  if (result.didCancel) throw new Error('payment_canceled');
   if (result.error) {
     throw new Error(result.error.message || result.error.code || 'stripe_payment_sheet_failed');
   }

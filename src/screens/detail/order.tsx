@@ -11,7 +11,7 @@ import { useCheckoutStore } from '../../store/checkoutStore';
 import { useFavoritesStore } from '../../store/favoritesStore';
 import { useUiStore } from '../../store/uiStore';
 import { nav } from '../../store/navigation';
-import { checkoutOrder, clearStalePendingPayForListing } from '../../services/ordersService';
+import { checkoutOrder } from '../../services/ordersService';
 import { listCoupons } from '../../services/couponsService';
 import { ApiError } from '../../api/client';
 import { useCatalogRevision } from '../../utils/catalogSync';
@@ -119,10 +119,8 @@ export function OrderScreen() {
       return;
     }
     setCheckoutReady(false);
-    void clearStalePendingPayForListing(currentItem.id, checkoutBundleItemId ?? undefined)
-      .then(() => loadProduct(currentItem.id))
-      .finally(() => setCheckoutReady(true));
-  }, [checkoutBundleItemId, currentItem.id, isLoggedIn, loadProduct]);
+    void loadProduct(currentItem.id).finally(() => setCheckoutReady(true));
+  }, [currentItem.id, isLoggedIn, loadProduct]);
 
   useEffect(() => {
     prepareCheckout();
@@ -191,7 +189,6 @@ export function OrderScreen() {
         toast(t('toast.paySuccess'));
         setTimeout(() => nav('orders'), 700);
       } else if (pendingPayment) {
-        void loadProduct(currentItem.id);
         setCheckoutBundleItemId(null);
         toast(t('toast.checkoutPendingPay'));
         setTimeout(() => nav('orders'), 700);

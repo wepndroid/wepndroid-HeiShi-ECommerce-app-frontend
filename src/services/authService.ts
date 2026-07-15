@@ -22,6 +22,7 @@ import {
 import { toE164Phone } from '../utils/phoneE164';
 import { uploadAvatarImage } from './listingsService';
 import { unregisterDevicePushToken } from './messageNotifications';
+import { requestGoogleIdToken } from './googleNative';
 import { requestWeChatAuthCode } from './wechatNative';
 
 async function clearStoredSession(): Promise<void> {
@@ -33,6 +34,8 @@ async function clearStoredSession(): Promise<void> {
 const pendingRegisterCodes = new Map<string, string>();
 const SUPABASE_RESEND_SECONDS = 60;
 const PHONE_AUTH_PROVIDER = (process.env?.EXPO_PUBLIC_PHONE_AUTH_PROVIDER ?? '').trim().toLowerCase();
+const GOOGLE_DEV_AUTH_FALLBACK =
+  (process.env?.EXPO_PUBLIC_GOOGLE_DEV_AUTH_FALLBACK ?? '').trim().toLowerCase() === 'true';
 
 function isBackendPhoneAuthMode(): boolean {
   return PHONE_AUTH_PROVIDER === 'backend' || PHONE_AUTH_PROVIDER === 'twilio';
@@ -62,6 +65,18 @@ function mapAuthApiError(err: unknown, fallback: AuthErrorKey): AuthErrorKey {
       case 'OTP_TOO_MANY_ATTEMPTS':
         return 'codeRateLimit';
       case 'SUPABASE_NOT_CONFIGURED':
+      case 'GOOGLE_NOT_CONFIGURED':
+      case 'WECHAT_NOT_CONFIGURED':
+        return 'oauthUnavailable';
+      case 'GOOGLE_NETWORK_ERROR':
+        return 'googleBackendUnavailable';
+      case 'GOOGLE_TOKEN_INVALID':
+      case 'GOOGLE_AUTH_FAILED':
+        return 'googleTokenInvalid';
+      case 'GOOGLE_ACCOUNT_NOT_REGISTERED':
+        return 'googleAccountNotRegistered';
+      case 'GOOGLE_ACCOUNT_ALREADY_REGISTERED':
+        return 'googleAccountAlreadyRegistered';
       case 'NETWORK_ERROR':
         return 'networkError';
       default:
@@ -516,9 +531,76 @@ export async function logoutWithAuth() {
 
 export type OAuthProvider = 'google' | 'apple' | 'wechat';
 
+function mapGoogleNativeError(error: Awaited<ReturnType<typeof requestGoogleIdToken>>): AuthErrorKey {
+  if (!('error' in error)) return 'networkError';
+  switch (error.error) {
+    case 'cancelled':
+      return 'oauthCancelled';
+    case 'unavailable':
+    case 'playServicesUnavailable':
+      return 'oauthUnavailable';
+    case 'configuration':
+      return 'googleConfigurationError';
+    case 'tokenMissing':
+      return 'googleTokenMissing';
+    case 'inProgress':
+    case 'failed':
+    default:
+      return 'networkError';
+  }
+}
+
+function shouldUseGoogleDevFallback(error: Awaited<ReturnType<typeof requestGoogleIdToken>>): boolean {
+  return GOOGLE_DEV_AUTH_FALLBACK && 'error' in error && !['cancelled', 'inProgress'].includes(error.error);
+}
+
+async function createLocalGoogleDevUser(input?: { nickname?: string; city?: string }): Promise<AuthUser> {
+  const seed = Date.now().toString(36);
+  const nickname = input?.nickname?.trim() || 'Google dev user';
+  const user: AuthUser = {
+    id: `dev-google-${seed}`,
+    heishiId: `HSDEV${seed.slice(-6).toUpperCase()}`,
+    nickname,
+    email: `google-dev-${seed}@local.test`,
+  };
+  await saveSession(user);
+  return user;
+}
+
 export async function loginWithOAuth(
   provider: OAuthProvider,
 ): Promise<{ user: AuthUser } | { error: AuthErrorKey } | { pending: true }> {
+  if (provider === 'google') {
+    const nativeResult = await requestGoogleIdToken();
+    if ('idToken' in nativeResult) {
+      try {
+        const user = await applyTokens(await authApi.googleLogin({ idToken: nativeResult.idToken }));
+        await clearSupabaseSessionIfBackendPhoneAuth();
+        return { user };
+      } catch (err) {
+        return { error: mapAuthApiError(err, 'googleTokenInvalid') };
+      }
+    }
+    if (shouldUseGoogleDevFallback(nativeResult)) {
+      try {
+        const user = await applyTokens(await authApi.googleDevRegister({ nickname: 'Google dev user' }));
+        await clearSupabaseSessionIfBackendPhoneAuth();
+        return { user };
+      } catch (err) {
+        if (API_USE_MOCK_FALLBACK || GOOGLE_DEV_AUTH_FALLBACK) {
+          return { user: await createLocalGoogleDevUser() };
+        }
+        return { error: mapAuthApiError(err, 'oauthUnavailable') };
+      }
+    }
+    if (
+      nativeResult.error !== 'unavailable'
+      || !isSupabaseAuthConfigured()
+    ) {
+      return { error: mapGoogleNativeError(nativeResult) };
+    }
+  }
+
   if (provider === 'wechat') {
     const nativeResult = await requestWeChatAuthCode();
     if ('code' in nativeResult) {
@@ -570,6 +652,46 @@ export async function loginWithOAuth(
     return { error: 'networkError' };
   } catch (err) {
     return { error: mapAuthApiError(err, 'networkError') };
+  }
+}
+
+export async function registerWithOAuth(
+  provider: OAuthProvider,
+  input?: { nickname?: string; city?: string },
+): Promise<{ user: AuthUser } | { error: AuthErrorKey } | { pending: true }> {
+  if (provider !== 'google') {
+    return loginWithOAuth(provider);
+  }
+
+  const nativeResult = await requestGoogleIdToken();
+  if (!('idToken' in nativeResult)) {
+    if (shouldUseGoogleDevFallback(nativeResult)) {
+      try {
+        const nickname = input?.nickname?.trim() || undefined;
+        const city = input?.city?.trim() || undefined;
+        const user = await applyTokens(await authApi.googleDevRegister({ nickname, city }));
+        await clearSupabaseSessionIfBackendPhoneAuth();
+        return { user };
+      } catch (err) {
+        if (API_USE_MOCK_FALLBACK || GOOGLE_DEV_AUTH_FALLBACK) {
+          return { user: await createLocalGoogleDevUser(input) };
+        }
+        return { error: mapAuthApiError(err, 'oauthUnavailable') };
+      }
+    }
+    return { error: mapGoogleNativeError(nativeResult) };
+  }
+
+  try {
+    const nickname = input?.nickname?.trim() || undefined;
+    const city = input?.city?.trim() || undefined;
+    const user = await applyTokens(
+      await authApi.googleRegister({ idToken: nativeResult.idToken, nickname, city }),
+    );
+    await clearSupabaseSessionIfBackendPhoneAuth();
+    return { user };
+  } catch (err) {
+    return { error: mapAuthApiError(err, 'googleTokenInvalid') };
   }
 }
 

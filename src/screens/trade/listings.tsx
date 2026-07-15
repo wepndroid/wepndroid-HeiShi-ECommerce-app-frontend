@@ -159,7 +159,7 @@ export function MyListingsScreen() {
                   </View>
                 </View>
               </Pressable>
-              {status === 'inactive' ? (
+              {status === 'inactive' && listing.reviewStatus !== 'rejected' ? (
                 <Pressable
                   style={styles.editBtn}
                   onPress={() => relistListing(listing.id)}
@@ -327,7 +327,7 @@ export function MyServicesScreen() {
                   </View>
                 </View>
               </Pressable>
-              {status === 'inactive' ? (
+              {status === 'inactive' && listing.reviewStatus !== 'rejected' ? (
                 <Pressable
                   style={styles.editBtn}
                   onPress={() => relistListing(listing.id)}

@@ -16,7 +16,7 @@ import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
 import { resolveCheckoutMethodFromSelection } from './paymentsService';
-import { handleNativeNextAction } from './stripeNative';
+import { presentNativeCheckoutPaymentSheet } from './stripeNative';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
 
@@ -272,7 +272,11 @@ async function paymentMethodForCheckout(
 
 async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
   const paymentMethod = await paymentMethodForCheckout(paymentMethodId);
-  return checkoutApi.create({ orderId, paymentMethod });
+  return checkoutApi.create({
+    orderId,
+    paymentMethod,
+    nativePaymentSheet: Platform.OS !== 'web' && paymentMethod === 'card',
+  });
 }
 
 /**
@@ -282,19 +286,44 @@ async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
  */
 async function finalizeNativeCardCheckout(
   orderId: number,
-  checkout: { paymentStatus: string; clientSecret?: string | null },
+  checkout: {
+    paymentStatus: string;
+    clientSecret?: string | null;
+    publishableKey?: string | null;
+    customerId?: string | null;
+    ephemeralKey?: string | null;
+  },
 ): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
+  if (Platform.OS === 'web') return false;
   if (checkout.paymentStatus === 'succeeded') return true;
   if (
-    checkout.clientSecret &&
-    (checkout.paymentStatus === 'requires_action' || checkout.paymentStatus === 'requires_confirmation')
+    !checkout.clientSecret ||
+    !checkout.publishableKey ||
+    !checkout.customerId ||
+    !checkout.ephemeralKey
   ) {
-    await handleNativeNextAction(checkout.clientSecret);
-    const confirmed = await checkoutApi.confirm({ orderId });
-    return confirmed.paymentStatus === 'succeeded';
+    return false;
   }
-  return false;
+  await presentNativeCheckoutPaymentSheet({
+    publishableKey: checkout.publishableKey,
+    merchantDisplayName: 'HeyMarket',
+    customerId: checkout.customerId,
+    customerEphemeralKeySecret: checkout.ephemeralKey,
+    paymentIntentClientSecret: checkout.clientSecret,
+    returnURL: 'heishi://payment/return',
+    allowsDelayedPaymentMethods: false,
+  });
+  const confirmed = await checkoutApi.confirm({ orderId });
+  return confirmed.paymentStatus === 'succeeded';
+}
+
+async function openHostedCheckout(checkoutUrl: string): Promise<void> {
+  try {
+    await Linking.openURL(checkoutUrl);
+  } catch {
+    // Some Android WebView/emulator combinations still open the provider page but reject
+    // the promise. Keep the order pending so the provider return/webhook can reconcile it.
+  }
 }
 
 async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResult> {
@@ -330,8 +359,7 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
       return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
     // Redirect PSP (hosted Checkout Session / PayPal).
-    await Linking.openURL(checkout.checkoutUrl);
-    invalidateCatalog();
+    await openHostedCheckout(checkout.checkoutUrl);
     return {
       order: mapOrderDtoToUiOrder(created),
       paid: false,
@@ -414,7 +442,7 @@ export async function performOrderAction(
             if (checkout.simulated) {
               dto = await ordersApi.pay(order.id);
             } else if (checkout.checkoutUrl) {
-              await Linking.openURL(checkout.checkoutUrl);
+              await openHostedCheckout(checkout.checkoutUrl);
               return order.status;
             } else if (await finalizeNativeCardCheckout(order.id, checkout)) {
               dto = await ordersApi.pay(order.id);

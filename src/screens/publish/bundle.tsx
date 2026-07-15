@@ -330,12 +330,12 @@ export function PublishBundleScreen({ embedded = false }: { embedded?: boolean }
         meetInPublic,
       };
       if (isEditMode && editListingId) {
-        await updateListing(editListingId, bundlePayload, isLoggedIn);
+        const updated = await updateListing(editListingId, bundlePayload, isLoggedIn);
         if (Math.abs(bundlePrice - (editOriginalPriceRef.current ?? bundlePrice)) > 0.001) {
           await publishListingPriceChange(editListingId, bundlePrice);
         }
         editOriginalPriceRef.current = bundlePrice;
-        toast(t('toast.listingUpdated', { title: listingTitle }));
+        toastAfterPublish(toast, t, updated, listingTitle, 'toast.listingUpdated');
         setTimeout(() => nav('myListings'), 600);
       } else {
         const created = await publishBundleListing(bundlePayload, isLoggedIn);

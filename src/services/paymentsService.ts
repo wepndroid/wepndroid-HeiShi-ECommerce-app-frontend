@@ -170,6 +170,7 @@ export async function selectPaymentMethod(method: PaymentMethodDto) {
  */
 async function saveCardWithPaymentSheet(setup: SetupIntentDto): Promise<PaymentMethodDto[]> {
   await presentNativePaymentSheet({
+    publishableKey: setup.publishableKey,
     merchantDisplayName: 'HeyMarket',
     customerId: setup.customerId,
     customerEphemeralKeySecret: setup.ephemeralKey,
@@ -261,19 +262,19 @@ export function resolveCheckoutMethodFromSelection(
 }
 
 /**
- * Connect a real bank payout via Stripe Connect Express: open the hosted onboarding
- * flow, then poll status so the backend can materialise the bank payout row. Falls back
- * to the simulated add when Stripe is not configured. Returns whether onboarding ran.
+ * Connect a real bank payout via Stripe Connect Express in the system browser, then
+ * return to the payout screen through the app's deep link.
  */
 export async function connectBankPayout(isLoggedIn: boolean): Promise<'onboarding' | 'simulated'> {
   if (!isLoggedIn) throw new Error('login_required');
   const link = await paymentsApi.createPayoutOnboardingLink();
   if (!link.url) throw new Error('payout_add_failed');
   await Linking.openURL(link.url);
-  try {
-    await paymentsApi.getPayoutConnectStatus();
-  } catch {
-    /* status sync resumes after the user completes onboarding */
-  }
   return 'onboarding';
+}
+
+/** Reconcile Stripe Connect after the hosted browser returns to the app. */
+export async function syncBankPayoutConnection(isLoggedIn: boolean): Promise<void> {
+  if (!isLoggedIn) return;
+  await paymentsApi.getPayoutConnectStatus();
 }

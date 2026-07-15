@@ -11,9 +11,14 @@ import {
   validateRegisterAvatarStep,
   validateRegisterPhoneStep,
 } from '../data/auth';
-import { sendRegisterCode, sendLoginCode, loginWithOtp } from '../services/authService';
+import {
+  sendRegisterCode,
+  sendLoginCode,
+  loginWithOtp,
+  loginWithOAuth,
+  registerWithOAuth,
+} from '../services/authService';
 import { isSupabaseAuthConfigured } from '../api/supabase';
-import { loginWithOAuth } from '../services/authService';
 import { pickImagesFromLibrary, type PickedMedia } from '../services/mediaPicker';
 import { AppIcon } from '../components/AppIcon';
 import { DetailCard, FieldInputStacked, FieldSelectRow, FormCard } from '../components/FormUI';
@@ -96,6 +101,7 @@ function authErrorMessage(t: (key: string) => string, error: AuthErrorKey) {
 export function LoginScreen() {
   const { t } = useTranslation();
   const login = useAuthStore((s) => s.login);
+  const setUser = useAuthStore((s) => s.setUser);
   const [loginMode, setLoginMode] = useState<'password' | 'sms'>('password');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -124,8 +130,11 @@ export function LoginScreen() {
       toast(authErrorMessage(t, result.error));
       return;
     }
-    toast(t('toast.loginSuccess'));
-    nav('profile');
+    if ('user' in result) {
+      setUser(result.user);
+      toast(t('toast.loginSuccess'));
+      nav('profile');
+    }
   };
 
   useEffect(() => {
@@ -277,6 +286,7 @@ type RegisterStep = 'phone' | 'verify';
 export function RegisterScreen() {
   const { t } = useTranslation();
   const register = useAuthStore((s) => s.register);
+  const setUser = useAuthStore((s) => s.setUser);
   const [step, setStep] = useState<RegisterStep>('phone');
   const [nickname, setNickname] = useState('');
   const [phone, setPhone] = useState('');
@@ -295,7 +305,7 @@ export function RegisterScreen() {
   const handleOAuth = async (provider: 'google' | 'apple' | 'wechat') => {
     if (oauthSubmitting) return;
     setOauthSubmitting(true);
-    const result = await loginWithOAuth(provider);
+    const result = await registerWithOAuth(provider, { nickname, city });
     setOauthSubmitting(false);
     if ('pending' in result && result.pending) {
       toast(t('toast.oauthContinueInBrowser'));
@@ -305,8 +315,11 @@ export function RegisterScreen() {
       toast(authErrorMessage(t, result.error));
       return;
     }
-    toast(t('toast.registerSuccess'));
-    nav('profile');
+    if ('user' in result) {
+      setUser(result.user);
+      toast(t('toast.registerSuccess'));
+      nav('profile');
+    }
   };
 
   const getPickedAvatar = () => pickedAvatarRef.current ?? pickedAvatar;

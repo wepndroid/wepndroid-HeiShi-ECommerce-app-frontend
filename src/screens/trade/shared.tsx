@@ -72,6 +72,7 @@ export const FILTER_LABEL_KEYS: Record<
 export function orderDisplay(
   status: OrderStatus,
   t: (key: string) => string,
+  viewerHasReviewed = false,
 ): {
   statusTitle: string;
   statusSub: string;
@@ -126,13 +127,22 @@ export function orderDisplay(
         secondaryToastKey: 'toast.orderActionFailed',
         secondaryIsBrand: false,
       };
+    case 'refunded':
+      return {
+        statusTitle: t('screens.orders.refunded'),
+        statusSub: t('screens.orders.refundedSub'),
+        statusColor: '#999999',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
+        secondaryIsBrand: true,
+      };
     case 'pendingReview':
       return {
         statusTitle: t('common.completed'),
         statusSub: t('screens.orders.waitReview'),
         statusColor: '#999999',
-        secondaryLabel: t('screens.orders.submitReview'),
-        secondaryToastKey: 'toast.reviewSubmitted',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
         secondaryIsBrand: true,
       };
     case 'completed':
@@ -140,8 +150,8 @@ export function orderDisplay(
         statusTitle: t('common.completed'),
         statusSub: t('screens.orders.receiptConfirmed'),
         statusColor: '#999999',
-        secondaryLabel: t('screens.orders.viewReview'),
-        secondaryToastKey: 'toast.viewReview',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
         secondaryIsBrand: true,
       };
     case 'cancelled':
@@ -168,6 +178,7 @@ export function orderDisplay(
 export function sellerOrderDisplay(
   status: OrderStatus,
   t: (key: string) => string,
+  viewerHasReviewed = false,
 ): {
   statusTitle: string;
   statusSub: string;
@@ -240,13 +251,22 @@ export function sellerOrderDisplay(
         secondaryToastKey: 'toast.orderActionFailed',
         secondaryIsBrand: false,
       };
+    case 'refunded':
+      return {
+        statusTitle: t('screens.orders.refunded'),
+        statusSub: t('screens.orders.refundedSub'),
+        statusColor: '#999999',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
+        secondaryIsBrand: true,
+      };
     case 'pendingReview':
       return {
         statusTitle: t('common.completed'),
         statusSub: t('screens.sold.waitReview'),
         statusColor: '#999999',
-        secondaryLabel: t('screens.orders.submitReview'),
-        secondaryToastKey: 'toast.reviewSubmitted',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
         secondaryIsBrand: true,
       };
     case 'completed':
@@ -254,8 +274,8 @@ export function sellerOrderDisplay(
         statusTitle: t('common.completed'),
         statusSub: t('screens.sold.buyerConfirmed'),
         statusColor: '#999999',
-        secondaryLabel: t('screens.orders.viewReview'),
-        secondaryToastKey: 'toast.viewReview',
+        secondaryLabel: t(viewerHasReviewed ? 'screens.orders.viewReview' : 'screens.orders.submitReview'),
+        secondaryToastKey: viewerHasReviewed ? 'toast.viewReview' : 'toast.reviewSubmitted',
         secondaryIsBrand: true,
       };
     default:
@@ -413,11 +433,20 @@ export function OrderReasonModal({
           ) : null}
         </View>
         <View style={styles.promptActions}>
-          <Pressable style={styles.orderBtn} onPress={onCancel} disabled={submitting}>
+          <Pressable
+            style={[styles.orderBtn, styles.promptActionBtn]}
+            onPress={onCancel}
+            disabled={submitting}
+          >
             <Text style={styles.orderBtnText}>{t('common.cancel')}</Text>
           </Pressable>
           <Pressable
-            style={[styles.orderBtn, styles.orderBtnYellow, submitting && styles.orderBtnDisabled]}
+            style={[
+              styles.orderBtn,
+              styles.promptActionBtn,
+              styles.orderBtnYellow,
+              submitting && styles.orderBtnDisabled,
+            ]}
             onPress={() => void handleConfirm()}
             disabled={submitting}
           >
@@ -692,9 +721,12 @@ export const styles = StyleSheet.create({
     color: colors.text,
   },
   promptActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 8,
-    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+  },
+  promptActionBtn: {
+    width: '100%',
   },
   evidenceRow: {
     flexDirection: 'row',

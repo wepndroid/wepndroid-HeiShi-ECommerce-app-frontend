@@ -45,7 +45,13 @@ export type AuthErrorKey =
   | 'cityRequired'
   | 'oauthUnavailable'
   | 'oauthCancelled'
-  | 'oauthDenied';
+  | 'oauthDenied'
+  | 'googleConfigurationError'
+  | 'googleTokenMissing'
+  | 'googleTokenInvalid'
+  | 'googleAccountNotRegistered'
+  | 'googleAccountAlreadyRegistered'
+  | 'googleBackendUnavailable';
 
 async function readAccounts(): Promise<StoredAccount[]> {
   const raw = await AsyncStorage.getItem(ACCOUNTS_KEY);

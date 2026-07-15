@@ -57,10 +57,11 @@ if (-not (Test-ApiHealth $ApiPort)) {
 }
 
 $env:EXPO_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort/v1"
-$env:EXPO_PUBLIC_API_MOCK_FALLBACK = "true"
+$env:EXPO_PUBLIC_API_MOCK_FALLBACK = "false"
 
 Write-Host ""
 Write-Host "Backend OK: http://127.0.0.1:$ApiPort (web uses http://localhost:$ApiPort/v1)"
+Write-Host "Mock fallback: OFF (EXPO_PUBLIC_API_MOCK_FALLBACK=false)"
 Write-Host "Exporting web bundle for http://localhost:$WebPort"
 Write-Host "Demo login: 0400000000 / demo123"
 Write-Host ""

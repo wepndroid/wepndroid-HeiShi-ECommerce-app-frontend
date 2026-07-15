@@ -38,6 +38,21 @@ export const authApi = {
     return apiRequest<AuthTokensDto>('/auth/wechat', { method: 'POST', body, auth: false });
   },
 
+  /** POST /auth/google/login - native Google Sign-In for existing accounts */
+  googleLogin(body: { idToken: string }) {
+    return apiRequest<AuthTokensDto>('/auth/google/login', { method: 'POST', body, auth: false });
+  },
+
+  /** POST /auth/google/register - native Google Sign-In for new accounts */
+  googleRegister(body: { idToken: string; nickname?: string; city?: string }) {
+    return apiRequest<AuthTokensDto>('/auth/google/register', { method: 'POST', body, auth: false });
+  },
+
+  /** POST /auth/google/dev-register - local-dev fallback while Google Web OAuth is unavailable */
+  googleDevRegister(body: { nickname?: string; city?: string }) {
+    return apiRequest<AuthTokensDto>('/auth/google/dev-register', { method: 'POST', body, auth: false });
+  },
+
   /** POST /auth/login */
   login(body: LoginRequest) {
     return apiRequest<AuthTokensDto>('/auth/login', { method: 'POST', body, auth: false });

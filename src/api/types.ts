@@ -172,7 +172,7 @@ export interface OrderDto {
   listingImageUrl: string;
   seller: { id: string; nickname: string };
   buyer?: { id: string; nickname: string; avatarUrl?: string };
-  status: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'inDispute' | 'refundInProgress';
+  status: 'pendingPay' | 'pendingShip' | 'pendingService' | 'pendingReceive' | 'pendingReview' | 'completed' | 'cancelled' | 'refunded' | 'inDispute' | 'refundInProgress';
   amount: number;
   escrowFee: number;
   currency: 'AUD';
@@ -184,6 +184,7 @@ export interface OrderDto {
   discountAmount?: number;
   createdAt: string;
   updatedAt: string;
+  viewerHasReviewed?: boolean;
 }
 
 export interface CreateOrderRequest {
@@ -234,6 +235,8 @@ export interface ChatMessageDto {
   text: string;
   sentAt: string;
   ackRead?: boolean;
+  kind?: 'text' | 'priceChange';
+  price?: number;
 }
 
 export type NotificationCategory = 'system' | 'order' | 'follow';

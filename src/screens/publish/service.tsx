@@ -50,6 +50,7 @@ export function PublishServiceScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [loadingListing, setLoadingListing] = useState(isEditMode);
   const [editBlocked, setEditBlocked] = useState<'sold' | null>(null);
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
   const editOriginalPriceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export function PublishServiceScreen() {
     let cancelled = false;
     setLoadingListing(true);
     setEditBlocked(null);
+    setRejectionReason(null);
     fetchMyListingDetail(editListingId, isLoggedIn)
       .then((product) => {
         if (cancelled || !product) return;
@@ -64,6 +66,11 @@ export function PublishServiceScreen() {
           setEditBlocked('sold');
           return;
         }
+        setRejectionReason(
+          product.reviewStatus === 'rejected'
+            ? product.reviewNote || t('screens.myListings.rejectedNotice')
+            : null,
+        );
         setServiceName(product.apiTitle ?? '');
         editOriginalPriceRef.current = product.price ?? 0;
         setPrice(String(product.price ?? ''));
@@ -103,7 +110,7 @@ export function PublishServiceScreen() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, editListingId, i18n.language, isEditMode, isLoggedIn, options.serviceAreas, options.serviceTimeSlots, region.city, setImageUrls]);
+  }, [authReady, editListingId, i18n.language, isEditMode, isLoggedIn, options.serviceAreas, options.serviceTimeSlots, region.city, setImageUrls, t]);
 
   const handleServiceTypeSelect = (key: string) => {
     setServiceTypeKey(key);
@@ -165,12 +172,12 @@ export function PublishServiceScreen() {
         meetInPublic,
       };
       if (isEditMode && editListingId) {
-        await updateListing(editListingId, payload, isLoggedIn);
+        const updated = await updateListing(editListingId, payload, isLoggedIn);
         if (Math.abs(listingPrice - (editOriginalPriceRef.current ?? listingPrice)) > 0.001) {
           await publishListingPriceChange(editListingId, listingPrice);
         }
         editOriginalPriceRef.current = listingPrice;
-        toast(t('toast.listingUpdated', { title }));
+        toastAfterPublish(toast, t, updated, title, 'toast.listingUpdated');
         setTimeout(() => nav('myServices'), 600);
       } else {
         const created = await publishServiceListing(payload, isLoggedIn);
@@ -259,6 +266,9 @@ export function PublishServiceScreen() {
         center={isEditMode ? t('screens.myListings.editA11y') : t('screens.publishService.title')}
         left={<BackButton onPress={() => nav(isEditMode ? 'myServices' : 'publish')} />}
       />
+      {rejectionReason ? (
+        <Notice text={t('screens.myListings.rejectionReason', { reason: rejectionReason })} />
+      ) : null}
       <PublishPhotoUploadSection
         title={t('screens.uploadProduct.photosTitle')}
         hint={t('screens.uploadProduct.photosHint')}

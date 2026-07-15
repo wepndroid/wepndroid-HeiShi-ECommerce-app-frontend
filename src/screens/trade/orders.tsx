@@ -95,13 +95,10 @@ export function OrdersScreen() {
   );
 
   const handleSecondaryAction = async (order: (typeof visibleOrders)[number]) => {
-    const display = orderDisplay(order.status, t);
-    if (order.status === 'pendingReview') {
-      router.push(`/profile/review/${order.id}` as Href);
-      return;
-    }
-    if (order.status === 'completed') {
-      router.push(`/profile/review/${order.id}?mode=view` as Href);
+    const display = orderDisplay(order.status, t, order.viewerHasReviewed);
+    if (order.status === 'pendingReview' || order.status === 'completed' || order.status === 'refunded') {
+      const mode = order.viewerHasReviewed ? '?mode=view' : '';
+      router.push(`/profile/review/${order.id}${mode}` as Href);
       return;
     }
     if (!display.secondaryLabel) return;
@@ -178,7 +175,7 @@ export function OrdersScreen() {
         </>
       ) : visibleOrders.length ? (
         visibleOrders.map((order) => {
-          const display = orderDisplay(order.status, t);
+          const display = orderDisplay(order.status, t, order.viewerHasReviewed);
           return (
             <OrderListCard
               key={order.id}
@@ -309,12 +306,9 @@ export function SoldScreen() {
   };
 
   const handleSellerSecondary = (order: UiOrder) => {
-    if (order.status === 'pendingReview') {
-      router.push(`/profile/review/${order.id}` as Href);
-      return;
-    }
-    if (order.status === 'completed') {
-      router.push(`/profile/review/${order.id}?mode=view` as Href);
+    if (order.status === 'pendingReview' || order.status === 'completed' || order.status === 'refunded') {
+      const mode = order.viewerHasReviewed ? '?mode=view' : '';
+      router.push(`/profile/review/${order.id}${mode}` as Href);
     }
   };
 
@@ -350,7 +344,7 @@ export function SoldScreen() {
         </>
       ) : orders.length ? (
         orders.map((order) => {
-          const display = sellerOrderDisplay(order.status, t);
+          const display = sellerOrderDisplay(order.status, t, order.viewerHasReviewed);
           const sellerAction = sellerActionForStatus(order.status);
           const actionHandler =
             sellerAction === 'ship' ? handleShip : sellerAction === 'release' ? handleRelease : null;

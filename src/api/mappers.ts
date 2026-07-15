@@ -156,6 +156,7 @@ export function mapOrderDtoToUiOrder(dto: OrderDto): UiOrder {
     couponId: dto.couponId,
     discountAmount: dto.discountAmount,
     displayAmountCny: dto.displayAmountCny,
+    viewerHasReviewed: dto.viewerHasReviewed ?? false,
   };
 }
 
@@ -190,6 +191,8 @@ export function mapChatMessageDtoToUi(dto: ChatMessageDto, currentUserId?: strin
     sentAt: dto.sentAt,
     senderId: dto.senderId,
     ackRead,
+    kind: dto.kind,
+    price: dto.price,
   };
 }
 

@@ -54,6 +54,24 @@ export function useOrders(
       .finally(() => setLoading(false));
   }, [authReady, filter, isLoggedIn, i18n.language]);
 
+  const refreshSilently = React.useCallback(() => {
+    if (!authReady) return;
+    listOrders(
+      filter,
+      isLoggedIn,
+      productsRef.current,
+      resolveTitleRef.current,
+      resolveSellerRef.current,
+    )
+      .then((items) => {
+        setOrders(items);
+        setError(false);
+      })
+      .catch(() => {
+        // Keep the current list during a transient polling failure.
+      });
+  }, [authReady, filter, isLoggedIn, i18n.language]);
+
   React.useEffect(() => {
     hydratedListingIdsRef.current = '';
   }, [filter, isLoggedIn]);
@@ -76,7 +94,9 @@ export function useOrders(
   useFocusEffect(
     React.useCallback(() => {
       refresh();
-    }, [refresh]),
+      const timer = setInterval(refreshSilently, 5000);
+      return () => clearInterval(timer);
+    }, [refresh, refreshSilently]),
   );
 
   const runAction = React.useCallback(

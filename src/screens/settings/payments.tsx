@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { toast } from '../../store/uiStore';
@@ -14,6 +14,7 @@ import {
   removePaymentMethod,
   setCheckoutMethodPreference,
   setDefaultPaymentMethod,
+  syncBankPayoutConnection,
 } from '../../services/paymentsService';
 import { addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } from '../../services/userService';
 import { usePaymentMethodsSettings, usePayoutMethods } from '../../hooks/usePaymentSettings';
@@ -260,6 +261,17 @@ export function PayoutSettingsScreen() {
   const [addSheetVisible, setAddSheetVisible] = React.useState(false);
   const [busyType, setBusyType] = React.useState<PayoutMethodDto['type'] | null>(null);
 
+  React.useEffect(() => {
+    if (!isLoggedIn || !authReady) return;
+    const reconcile = () => {
+      void syncBankPayoutConnection(true).then(refresh).catch(() => undefined);
+    };
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') reconcile();
+    });
+    return () => subscription.remove();
+  }, [authReady, isLoggedIn, refresh]);
+
   const payoutTypeIcon = (type: PayoutMethodDto['type']) => {
     if (type === 'bank') return 'bank';
     if (type === 'alipay') return 'alipay';
@@ -321,7 +333,22 @@ export function PayoutSettingsScreen() {
   };
 
   const handlePayoutRowPress = (method: (typeof methods)[number]) => {
-    Alert.alert(method.label, undefined, [
+    const typeLabel = t(`screens.payoutSettings.${method.type === 'bank' ? 'addBank' : `add${method.type[0].toUpperCase()}${method.type.slice(1)}`}`);
+    const account = method.accountHint ?? (method.last4 ? `•••• ${method.last4}` : t('common.notBound'));
+    const payoutStatus = method.payoutsEnabled === false
+      ? t('screens.payoutSettings.statusPending', { defaultValue: 'Pending verification' })
+      : t('screens.payoutSettings.statusReady', { defaultValue: 'Ready for payouts' });
+    const detailLines = [
+      `${t('screens.payoutSettings.detailType', { defaultValue: 'Type' })}: ${typeLabel}`,
+      `${t('screens.payoutSettings.detailAccount', { defaultValue: 'Account' })}: ${account}`,
+      ...(method.type === 'bank'
+        ? [`${t('screens.payoutSettings.detailCurrency', { defaultValue: 'Currency' })}: AUD`]
+        : []),
+      `${t('screens.payoutSettings.detailStatus', { defaultValue: 'Status' })}: ${payoutStatus}`,
+      `${t('screens.payoutSettings.detailDefault', { defaultValue: 'Default' })}: ${method.isDefault ? t('common.yes', { defaultValue: 'Yes' }) : t('common.no', { defaultValue: 'No' })}`,
+    ];
+
+    Alert.alert(method.label, detailLines.join('\n'), [
       ...(method.isDefault
         ? []
         : [

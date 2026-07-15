@@ -21,7 +21,9 @@ import {
   OTHER_AREAS,
   regionData,
   regionSummary,
+  type RegionGroup,
 } from '../data/region';
+import { regionApi } from '../api';
 import { useRegionStore } from '../store/regionStore';
 import { PillButton, DismissibleModal } from './UI';
 import { colors, fonts, radius, amazingStyle } from '../theme';
@@ -36,13 +38,74 @@ export function RegionSheet() {
   const closeRegionSheet = useRegionStore((s) => s.closeRegionSheet);
   const slideAnim = useRef(new Animated.Value(SHEET_SLIDE_OFFSET)).current;
   const [expandedOtherCity, setExpandedOtherCity] = useState<string | null>(null);
+  const [regionGroups, setRegionGroups] = useState<RegionGroup[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(false);
+  const [regionsLoadError, setRegionsLoadError] = useState(false);
+
+  const loadRegions = React.useCallback(async () => {
+    setRegionsLoading(true);
+    setRegionsLoadError(false);
+    try {
+      const liveGroups = await regionApi.getRegionTree();
+      const normalized = liveGroups.map((group) => ({
+        ...group,
+        cities: group.cities.map((city) => {
+          const localCity = regionData
+            .find((entry) => entry.state === group.state)
+            ?.cities.find((entry) => entry.name === city.name);
+          const enabledAreas = new Set(city.areas);
+          const primary = localCity
+            ? getPrimaryAreas(localCity).filter((area) => enabledAreas.has(area))
+            : city.areas;
+          const secondary = localCity
+            ? getSecondaryAreas(localCity).filter((area) => enabledAreas.has(area))
+            : [];
+          const known = new Set([...primary, ...secondary]);
+          return {
+            ...city,
+            areas: [...primary, ...city.areas.filter((area) => !known.has(area))],
+            otherAreas: secondary,
+          };
+        }),
+      }));
+      setRegionGroups(normalized);
+
+      const selectedCity = normalized
+        .find((group) => group.state === region.state)
+        ?.cities.find((city) => city.name === region.city);
+      if (!selectedCity) {
+        const firstGroup = normalized[0];
+        const firstCity = firstGroup?.cities[0];
+        if (firstGroup && firstCity) {
+          setRegion({ state: firstGroup.state, city: firstCity.name, area: ALL_AREAS });
+        }
+      } else if (
+        region.area !== ALL_AREAS &&
+        region.area !== OTHER_AREAS &&
+        !getPrimaryAreas(selectedCity).includes(region.area) &&
+        !getSecondaryAreas(selectedCity).includes(region.area)
+      ) {
+        setRegion({ state: region.state, city: region.city, area: ALL_AREAS });
+      } else if (region.area === OTHER_AREAS && !cityHasSecondaryAreas(selectedCity)) {
+        setRegion({ state: region.state, city: region.city, area: ALL_AREAS });
+      }
+    } catch {
+      setRegionsLoadError(true);
+    } finally {
+      setRegionsLoading(false);
+    }
+  }, [region.area, region.city, region.state, setRegion]);
+
+  useEffect(() => {
+    if (regionSheetVisible) void loadRegions();
+  }, [loadRegions, regionSheetVisible]);
 
   useEffect(() => {
     if (!regionSheetVisible) {
       setExpandedOtherCity(null);
       return;
     }
-    const city = regionData
+    const city = regionGroups
       .find((g) => g.state === region.state)
       ?.cities.find((c) => c.name === region.city);
     if (!city) {
@@ -54,7 +117,7 @@ export function RegionSheet() {
     } else {
       setExpandedOtherCity(null);
     }
-  }, [regionSheetVisible, region.state, region.city, region.area]);
+  }, [regionSheetVisible, region.state, region.city, region.area, regionGroups]);
 
   useEffect(() => {
     if (!regionSheetVisible) {
@@ -90,7 +153,17 @@ export function RegionSheet() {
           </View>
           <Text style={styles.current}>{t('region.current', { value: selectedLabel })}</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {regionData.map((group) => {
+            {regionsLoading ? <Text style={styles.loadMessage}>{t('common.loading')}</Text> : null}
+            {regionsLoadError ? (
+              <View style={styles.loadState}>
+                <Text style={styles.loadMessage}>{t('region.loadFailed')}</Text>
+                <PillButton label={t('common.retry')} variant="light" full onPress={() => void loadRegions()} />
+              </View>
+            ) : null}
+            {!regionsLoading && !regionsLoadError && regionGroups.length === 0 ? (
+              <Text style={styles.loadMessage}>{t('region.noRegions')}</Text>
+            ) : null}
+            {!regionsLoading && !regionsLoadError ? regionGroups.map((group) => {
               const activeGroup = group.state === region.state;
               return (
                 <View
@@ -267,7 +340,7 @@ export function RegionSheet() {
                       })}
                 </View>
               );
-            })}
+            }) : null}
           </ScrollView>
           <PillButton label={t('common.done')} variant="brand" full onPress={closeRegionSheet} />
       </Animated.View>
@@ -280,6 +353,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 18,
     maxHeight: '100%',
+  },
+  loadState: {
+    gap: 10,
+    paddingVertical: 24,
+  },
+  loadMessage: {
+    color: colors.muted,
+    textAlign: 'center',
+    paddingVertical: 24,
   },
   head: {
     flexDirection: 'row',

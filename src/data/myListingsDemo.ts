@@ -64,5 +64,15 @@ export function demoMyListings(
     },
   ];
   if (!status) return rows;
+  if (status === 'active') {
+    return rows.filter((row) => row.status === 'active' && row.reviewStatus === 'approved');
+  }
+  if (status === 'inactive') {
+    return rows.filter(
+      (row) =>
+        row.status === 'inactive' ||
+        (row.status === 'active' && row.reviewStatus !== 'approved'),
+    );
+  }
   return rows.filter((row) => row.status === status);
 }

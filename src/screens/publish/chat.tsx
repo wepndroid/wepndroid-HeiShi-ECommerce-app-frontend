@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Image, Pressable, ScrollView, View } from 'react-native';
 import { Text, TextInput } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { useChat } from '../../hooks/useChat';
 import { useLocalizedProduct } from '../../hooks/useLocalizedProduct';
-import { updateListing } from '../../services/listingsService';
+import { updateListing, uploadListingImage } from '../../services/listingsService';
+import { pickImagesFromLibrary, type PickedMedia } from '../../services/mediaPicker';
 import { userCanChatOnListing } from '../../services/ordersService';
 import { useCatalogRevision } from '../../utils/catalogSync';
 import { formatMessageTimeLabel } from '../../utils/formatMessageTimeLabel';
@@ -18,7 +19,7 @@ import { AppIcon } from '../../components/AppIcon';
 import { BackButton, DismissibleModal, IconButton, LoadingState, Notice, PillButton, TitleBar } from '../../components/UI';
 import { TableNote } from '../../components/FormUI';
 import { colors, screenHorizontalInset, searchBarSurface, searchBarTokens } from '../../theme';
-import { toast } from '../../store/uiStore';
+import { showTopBanner, toast } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogStore } from '../../store/catalogStore';
 import { useChatStore } from '../../store/chatStore';
@@ -36,7 +37,6 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const openSellerProfile = useCatalogStore((s) => s.openSellerProfile);
   const products = useCatalogStore((s) => s.products);
   const loadProduct = useCatalogStore((s) => s.loadProduct);
-  const showPriceChangeBannerForConversation = useCatalogStore((s) => s.showPriceChangeBannerForConversation);
   const publishListingPriceChange = useCatalogStore((s) => s.publishListingPriceChange);
   const isSelfSeller = useFavoritesStore((s) => s.isSelfSeller);
   const isLoggedIn = useAuthStore((s) => s.user != null);
@@ -103,15 +103,6 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     );
   }, [displayListing, products]);
   const liveListingPrice = listingProduct?.price ?? displayListing?.price ?? 0;
-
-  React.useEffect(() => {
-    if (!conversationId) return;
-    void showPriceChangeBannerForConversation(conversationId);
-    const timer = setInterval(() => {
-      void showPriceChangeBannerForConversation(conversationId);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [catalogRevision, conversationId, showPriceChangeBannerForConversation]);
 
   React.useEffect(() => {
     const listingId = displayListing?.listingId;
@@ -197,8 +188,26 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     isLoggedIn,
     user?.id,
   );
+  const handledPriceMessageRef = useRef<string | null>(null);
+  React.useEffect(() => {
+    const latest = [...messages].reverse().find((message) => message.kind === 'priceChange');
+    if (!latest || latest.id === handledPriceMessageRef.current) return;
+    handledPriceMessageRef.current = latest.id;
+    if (latest.side === 'left' && latest.price != null) {
+      showTopBanner(
+        t('notifications.priceChangedBySeller', {
+          price: `${t('common.currencyPrefix')}${latest.price}`,
+        }),
+      );
+    }
+    if (displayListing?.listingId) void loadProduct(displayListing.listingId);
+  }, [displayListing?.listingId, loadProduct, messages, t]);
   const [input, setInput] = useState('');
   const [safetyMenuOpen, setSafetyMenuOpen] = useState(false);
+  const [reportUserOpen, setReportUserOpen] = useState(false);
+  const [reportDescription, setReportDescription] = useState('');
+  const [reportEvidence, setReportEvidence] = useState<PickedMedia[]>([]);
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
   const title = chatTitle || localizedListing.seller || t('common.messages');
   const counterpartKey = chatCounterpartKey || localizedListing.sellerKey;
@@ -229,17 +238,55 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const handleReportUser = useCallback(() => {
     if (!counterpartKey) return;
     closeSafetyMenu();
-    void submitReport(
-      {
-        targetType: 'user',
-        targetId: counterpartKey,
-        reason: 'chat',
-      },
-      isLoggedIn,
-    )
-      .then(() => toast(t('toast.reportSubmitted')))
-      .catch(() => toast(t('toast.settingsUpdateFailed')));
-  }, [closeSafetyMenu, counterpartKey, isLoggedIn, t, toast]);
+    setReportDescription('');
+    setReportEvidence([]);
+    setReportUserOpen(true);
+  }, [closeSafetyMenu, counterpartKey]);
+
+  const addReportEvidence = useCallback(async () => {
+    const remaining = 3 - reportEvidence.length;
+    if (remaining <= 0 || reportSubmitting) return;
+    try {
+      const picked = await pickImagesFromLibrary({ max: remaining });
+      if (picked.length) {
+        setReportEvidence((current) => [...current, ...picked].slice(0, 3));
+      }
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    }
+  }, [reportEvidence.length, reportSubmitting, t, toast]);
+
+  const submitUserReport = useCallback(async () => {
+    const details = reportDescription.trim();
+    if (!counterpartKey || !details || reportSubmitting) return;
+    setReportSubmitting(true);
+    try {
+      const evidenceUrls: string[] = [];
+      for (const asset of reportEvidence) {
+        evidenceUrls.push(
+          await uploadListingImage(asset.uri, isLoggedIn, asset.mimeType, asset.fileName),
+        );
+      }
+      await submitReport(
+        {
+          targetType: 'user',
+          targetId: counterpartKey,
+          reason: 'chat',
+          details,
+          evidenceUrls,
+        },
+        isLoggedIn,
+      );
+      setReportUserOpen(false);
+      setReportDescription('');
+      setReportEvidence([]);
+      toast(t('toast.reportSubmitted'));
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    } finally {
+      setReportSubmitting(false);
+    }
+  }, [counterpartKey, isLoggedIn, reportDescription, reportEvidence, reportSubmitting, t, toast]);
 
   const handleBlockUser = useCallback(() => {
     if (!counterpartKey) return;
@@ -342,7 +389,16 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
                 <PillButton label={t('common.retry')} variant="light" onPress={() => void reload()} />
               </View>
             ) : (
-              messages.map((msg) => (
+              messages.map((msg) => msg.kind === 'priceChange' ? (
+                <View key={msg.id} style={styles.priceChangeNotice}>
+                  <AppIcon name="cash" size={16} color={colors.brand2} />
+                  <Text style={styles.priceChangeNoticeText}>
+                    {t('screens.chat.priceChangedMessage', {
+                      price: `${t('common.currencyPrefix')}${msg.price ?? ''}`,
+                    })}
+                  </Text>
+                </View>
+              ) : (
               <View
                 key={msg.id}
                 style={[
@@ -424,6 +480,63 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
           <Pressable style={styles.safetyMenuCancel} onPress={closeSafetyMenu}>
             <Text style={styles.safetyMenuCancelText}>{t('common.cancel')}</Text>
           </Pressable>
+        </View>
+      </DismissibleModal>
+      <DismissibleModal
+        visible={reportUserOpen}
+        onClose={() => {
+          if (!reportSubmitting) setReportUserOpen(false);
+        }}
+        placement="center"
+        animationType="fade"
+      >
+        <View style={styles.reportUserCard}>
+          <Text style={styles.safetyMenuTitle}>{t('screens.chat.reportUserTitle')}</Text>
+          <TextInput
+            style={styles.reportDescriptionInput}
+            value={reportDescription}
+            onChangeText={setReportDescription}
+            placeholder={t('screens.chat.reportDescriptionPlaceholder')}
+            multiline
+            maxLength={1000}
+            editable={!reportSubmitting}
+          />
+          <Text style={styles.reportUserHint}>{t('screens.chat.reportUserEvidenceHint')}</Text>
+          <View style={styles.reportEvidenceRow}>
+            {reportEvidence.map((asset, index) => (
+              <Image
+                key={`${asset.uri}-${index}`}
+                source={{ uri: asset.uri }}
+                style={styles.reportEvidenceImage}
+              />
+            ))}
+            {reportEvidence.length < 3 ? (
+              <Pressable
+                style={styles.reportEvidenceAdd}
+                onPress={() => void addReportEvidence()}
+                disabled={reportSubmitting}
+              >
+                <AppIcon name="camera" size={22} color={colors.muted} />
+                <Text style={styles.reportEvidenceAddText}>{t('screens.chat.addEvidence')}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <View style={styles.reportUserActions}>
+            <PillButton
+              label={t('common.cancel')}
+              variant="light"
+              full
+              disabled={reportSubmitting || !reportDescription.trim()}
+              onPress={() => setReportUserOpen(false)}
+            />
+            <PillButton
+              label={reportSubmitting ? t('common.loading') : t('screens.chat.submitReport')}
+              variant="brand"
+              full
+              disabled={reportSubmitting}
+              onPress={() => void submitUserReport()}
+            />
+          </View>
         </View>
       </DismissibleModal>
     </View>

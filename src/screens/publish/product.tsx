@@ -239,7 +239,7 @@ export function UploadProductScreen({
         ...(isJob ? { merchantPost } : {}),
       };
       if (isEditMode && editListingId) {
-        await updateListing(
+        const updated = await updateListing(
           editListingId,
           {
             title: listingTitle,
@@ -261,7 +261,7 @@ export function UploadProductScreen({
           await publishListingPriceChange(editListingId, listingPrice);
         }
         editOriginalPriceRef.current = listingPrice;
-        toast(t('toast.listingUpdated', { title: listingTitle }));
+        toastAfterPublish(toast, t, updated, listingTitle, 'toast.listingUpdated');
       } else {
         const created = await publishListing({ ...payload, pickupMethods: [pickupMethodKey] }, isLoggedIn);
         toastAfterPublish(toast, t, created, listingTitle);

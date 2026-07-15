@@ -1,1 +1,5 @@
-export { handleNativeNextAction, presentNativePaymentSheet } from './stripeNative.native';
+export {
+  handleNativeNextAction,
+  presentNativeCheckoutPaymentSheet,
+  presentNativePaymentSheet,
+} from './stripeNative.native';

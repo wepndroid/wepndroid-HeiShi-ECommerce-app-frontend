@@ -225,11 +225,33 @@ function Repair-StaleApiPort {
 function Sync-DevApiEnvFiles {
   param([int]$ApiPort)
   $frontendEnv = Join-Path $ProjectRoot ".env"
-  @(
-    "EXPO_PUBLIC_API_URL=http://127.0.0.1:$ApiPort/v1",
-    "EXPO_PUBLIC_API_MOCK_FALLBACK=true"
-  ) | Set-Content -Path $frontendEnv -Encoding utf8
-  Write-Host "Synced Frontend .env -> port $ApiPort (mock fallback ON for UI verification)"
+  $frontendDesired = [ordered]@{
+    "EXPO_PUBLIC_API_URL" = "http://127.0.0.1:$ApiPort/v1"
+    "EXPO_PUBLIC_API_MOCK_FALLBACK" = "false"
+  }
+  $frontendLines = if (Test-Path $frontendEnv) { Get-Content $frontendEnv } else { @() }
+  $frontendFound = @{}
+  $frontendUpdated = foreach ($line in $frontendLines) {
+    $matched = $false
+    foreach ($entry in $frontendDesired.GetEnumerator()) {
+      if ($line -match "^$($entry.Key)=") {
+        $frontendFound[$entry.Key] = $true
+        $matched = $true
+        "$($entry.Key)=$($entry.Value)"
+        break
+      }
+    }
+    if (-not $matched) {
+      $line
+    }
+  }
+  foreach ($entry in $frontendDesired.GetEnumerator()) {
+    if (-not $frontendFound.ContainsKey($entry.Key)) {
+      $frontendUpdated += "$($entry.Key)=$($entry.Value)"
+    }
+  }
+  $frontendUpdated | Set-Content -Path $frontendEnv -Encoding utf8
+  Write-Host "Synced Frontend .env -> port $ApiPort (mock fallback OFF, using backend data)"
 
   $backendRoot = $script:BackendRoot
   $backendEnv = Join-Path $backendRoot ".env"
@@ -284,7 +306,7 @@ function Set-DevApiEnv {
   param([int]$ApiPort = (Resolve-DevApiPort))
   Sync-DevApiEnvFiles -ApiPort $ApiPort
   $env:EXPO_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort/v1"
-  $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "true"
+  $env:EXPO_PUBLIC_API_MOCK_FALLBACK = "false"
   return $ApiPort
 }
 

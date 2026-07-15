@@ -88,7 +88,7 @@ export function LeaveFeedbackScreen() {
       const asSeller = user?.id === dto.seller.id;
       setReviewRole(asSeller ? 'seller' : 'buyer');
       setCounterpartName(asSeller ? dto.buyer?.nickname ?? '' : dto.seller.nickname);
-      if (isViewMode || dto.status === 'completed') {
+      if (isViewMode) {
         const review = await fetchOrderReview(orderId, isLoggedIn);
         setSavedRating(review.rating);
         setComment(review.comment ?? '');

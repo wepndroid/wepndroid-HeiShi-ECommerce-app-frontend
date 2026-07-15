@@ -35,6 +35,7 @@ export interface ApiRequestOptions {
   query?: Record<string, string | number | boolean | undefined | null>;
   auth?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 async function getAccessToken(): Promise<string | null> {
@@ -61,7 +62,7 @@ function buildUrl(path: string, query?: ApiRequestOptions['query']) {
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, query, auth = true, signal } = options;
+  const { method = 'GET', body, query, auth = true, signal, timeoutMs = API_TIMEOUT_MS } = options;
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Accept-Language': getApiLanguage(),
@@ -81,7 +82,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const mergedSignal = signal ?? controller.signal;
 
   try {

@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { router, type Href } from 'expo-router';
-import i18n from '../i18n';
 import { products as defaultProducts } from '../data/products';
 import { resolveDetailProduct } from '../data/detailProducts';
 import { isBundleListingProduct } from '../data/bundle';
@@ -16,17 +15,11 @@ import {
   resolveSellerUserId,
 } from '../services/userDataService';
 import { invalidateCatalog } from '../utils/catalogSync';
-import {
-  consumePriceChangeNotice,
-  peekPriceChangeNotice,
-  queuePriceChangeNoticesForListing,
-} from '../services/priceChangeService';
 import { screenPath } from '../routing/paths';
 import { enrichSelfSellerProduct, isCurrentUserSeller } from '../utils/sellerAvatar';
 import type { AuthUser } from '../data/auth';
 import type { HomeTabKey, LoadProductResult, Product, ProductCatKey } from '../types';
 import { useAuthStore } from './authStore';
-import { showTopBanner } from './uiStore';
 
 // Lazy accessor breaks the import cycle: chatStore imports catalogStore. Only used
 // at runtime inside actions, never at module load.
@@ -72,7 +65,6 @@ interface CatalogState {
   openDetail: (p: Product, options?: { orderContext?: boolean }) => void;
   openSellerProfile: (sellerKey: string) => void;
   publishListingPriceChange: (listingId: number, newPrice: number) => Promise<void>;
-  showPriceChangeBannerForConversation: (conversationId: string) => Promise<void>;
   refreshCatalog: () => void;
   // Home feed plumbing — AppBootstrap runs the useFeed hook and pushes results in.
   setHomeFeedResult: (items: Product[], loading: boolean, error: boolean) => void;
@@ -253,8 +245,6 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
   },
 
   publishListingPriceChange: async (listingId, newPrice) => {
-    const user = useAuthStore.getState().user;
-    const sellerUserId = user?.id ?? '';
     set((state) => ({
       products: state.products.map((p) => (p.id === listingId ? { ...p, price: newPrice } : p)),
       currentItem:
@@ -262,38 +252,6 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
     }));
     getChatStore().getState().patchListingPrice(listingId, newPrice);
     invalidateCatalog();
-    if (user && sellerUserId) {
-      await queuePriceChangeNoticesForListing(listingId, newPrice, sellerUserId, true);
-    }
-    const { chatConversationId, chatListingId } = getChatStore().getState();
-    if (chatConversationId && chatListingId === listingId && user?.id) {
-      const notice = await peekPriceChangeNotice(chatConversationId);
-      if (notice && notice.sellerUserId !== user.id) {
-        showTopBanner(
-          i18n.t('notifications.priceChangedBySeller', {
-            price: `${i18n.t('common.currencyPrefix')}${newPrice}`,
-          }),
-        );
-        await consumePriceChangeNotice(chatConversationId);
-      }
-    }
-  },
-
-  showPriceChangeBannerForConversation: async (conversationId) => {
-    const user = useAuthStore.getState().user;
-    if (!user) return;
-    const notice = await peekPriceChangeNotice(conversationId);
-    if (!notice || notice.sellerUserId === user.id) return;
-    set((state) => ({
-      products: state.products.map((p) => (p.id === notice.listingId ? { ...p, price: notice.newPrice } : p)),
-    }));
-    getChatStore().getState().patchListingPrice(notice.listingId, notice.newPrice);
-    showTopBanner(
-      i18n.t('notifications.priceChangedBySeller', {
-        price: `${i18n.t('common.currencyPrefix')}${notice.newPrice}`,
-      }),
-    );
-    await consumePriceChangeNotice(conversationId);
   },
 
   refreshCatalog: () => invalidateCatalog(),

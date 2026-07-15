@@ -175,6 +175,8 @@ export interface UiChatMessage {
   senderId?: string;
   /** True when the recipient has read an outgoing message (never set for incoming). */
   ackRead: boolean;
+  kind?: 'text' | 'priceChange';
+  price?: number;
 }
 
 /** Grouped inbox row on the messages tab (system / order / follow). */
@@ -228,6 +230,7 @@ export type OrderStatus =
   | 'pendingReview'
   | 'completed'
   | 'cancelled'
+  | 'refunded'
   | 'inDispute'
   | 'refundInProgress';
 
@@ -255,4 +258,5 @@ export interface UiOrder {
   couponId?: string;
   discountAmount?: number;
   displayAmountCny?: number;
+  viewerHasReviewed?: boolean;
 }
