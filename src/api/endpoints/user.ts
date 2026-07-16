@@ -193,6 +193,16 @@ export const paymentsApi = {
   getPayoutConnectStatus() {
     return apiRequest<import('../types').ConnectStatusDto>('/payouts/connect/status');
   },
+
+  /** POST /payouts/paypal/link — PayPal Partner Referral onboarding URL. */
+  createPayPalSellerOnboardingLink() {
+    return apiRequest<{ url: string; trackingId: string }>('/payouts/paypal/link', { method: 'POST' });
+  },
+
+  /** GET /payouts/paypal/status — reconcile seller onboarding after browser return. */
+  getPayPalSellerOnboardingStatus() {
+    return apiRequest<{ connected: boolean; merchantId?: string }>('/payouts/paypal/status');
+  },
 };
 
 export const settingsApi = {

@@ -24,8 +24,7 @@ const OPTIONS: AddOption[] = [
   { type: 'wechat', icon: 'wechat', titleKey: 'screens.payoutSettings.addWechat', subKey: 'screens.payoutSettings.wechatSub' },
 ];
 
-function providerFieldKey(type: Exclude<PayoutMethodType, 'bank'>) {
-  if (type === 'paypal') return 'paypal';
+function providerFieldKey(type: 'alipay' | 'wechat') {
   if (type === 'alipay') return 'alipay';
   return 'wechat';
 }
@@ -34,6 +33,7 @@ export function PayoutMethodAddSheet({
   visible,
   onClose,
   onSubmitBank,
+  onSubmitPayPal,
   onSubmitProvider,
   onRequireBinding,
   providerBindings,
@@ -42,13 +42,14 @@ export function PayoutMethodAddSheet({
   visible: boolean;
   onClose: () => void;
   onSubmitBank: () => void;
-  onSubmitProvider: (type: Exclude<PayoutMethodType, 'bank'>, accountRef: string) => void;
+  onSubmitPayPal: () => void;
+  onSubmitProvider: (type: 'alipay' | 'wechat', accountRef: string) => void;
   onRequireBinding?: (type: 'alipay' | 'wechat') => void;
   providerBindings?: { alipay: boolean; wechat: boolean };
   busyType?: PayoutMethodType | null;
 }) {
   const { t } = useTranslation();
-  const [selectedType, setSelectedType] = React.useState<Exclude<PayoutMethodType, 'bank'> | null>(null);
+  const [selectedType, setSelectedType] = React.useState<'alipay' | 'wechat' | null>(null);
   const [accountRef, setAccountRef] = React.useState('');
 
   React.useEffect(() => {
@@ -61,6 +62,10 @@ export function PayoutMethodAddSheet({
   const selectOption = (type: PayoutMethodType) => {
     if (type === 'bank') {
       onSubmitBank();
+      return;
+    }
+    if (type === 'paypal') {
+      onSubmitPayPal();
       return;
     }
     if ((type === 'alipay' || type === 'wechat') && providerBindings && !providerBindings[type]) {
@@ -145,7 +150,7 @@ export function PayoutMethodAddSheet({
                   autoCorrect={false}
                   placeholder={t(`screens.payoutSettings.${fieldKey}Placeholder`)}
                   placeholderTextColor={colors.sub}
-                  keyboardType={selectedType === 'paypal' ? 'email-address' : 'default'}
+                  keyboardType="default"
                   selectionColor={colors.brand2}
                 />
               </View>

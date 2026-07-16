@@ -10,13 +10,15 @@ import { AppIcon } from '../../components/AppIcon';
 import {
   addPaymentMethod,
   connectBankPayout,
+  connectPayPalSeller,
   loadCheckoutMethodPreferences,
   removePaymentMethod,
   setCheckoutMethodPreference,
   setDefaultPaymentMethod,
   syncBankPayoutConnection,
+  syncPayPalSellerConnection,
 } from '../../services/paymentsService';
-import { addPayoutMethod, removePayoutMethod, setDefaultPayoutMethod } from '../../services/userService';
+import { addPayoutMethod, removePayoutMethod } from '../../services/userService';
 import { usePaymentMethodsSettings, usePayoutMethods } from '../../hooks/usePaymentSettings';
 import { useVerificationStatus } from '../../hooks/useTrustProfile';
 import type { PaymentMethodDto, PayoutMethodDto } from '../../api/types';
@@ -264,7 +266,10 @@ export function PayoutSettingsScreen() {
   React.useEffect(() => {
     if (!isLoggedIn || !authReady) return;
     const reconcile = () => {
-      void syncBankPayoutConnection(true).then(refresh).catch(() => undefined);
+      void Promise.allSettled([
+        syncBankPayoutConnection(true),
+        syncPayPalSellerConnection(true),
+      ]).then(refresh);
     };
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') reconcile();
@@ -328,6 +333,19 @@ export function PayoutSettingsScreen() {
     }
   };
 
+  const connectPayPalAndRefresh = async () => {
+    setBusyType('paypal');
+    try {
+      await connectPayPalSeller(isLoggedIn);
+      toast(t('toast.paypalConnectStarted'));
+      setAddSheetVisible(false);
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    } finally {
+      setBusyType(null);
+    }
+  };
+
   const handleAddPayout = () => {
     setAddSheetVisible(true);
   };
@@ -345,25 +363,9 @@ export function PayoutSettingsScreen() {
         ? [`${t('screens.payoutSettings.detailCurrency', { defaultValue: 'Currency' })}: AUD`]
         : []),
       `${t('screens.payoutSettings.detailStatus', { defaultValue: 'Status' })}: ${payoutStatus}`,
-      `${t('screens.payoutSettings.detailDefault', { defaultValue: 'Default' })}: ${method.isDefault ? t('common.yes', { defaultValue: 'Yes' }) : t('common.no', { defaultValue: 'No' })}`,
     ];
 
     Alert.alert(method.label, detailLines.join('\n'), [
-      ...(method.isDefault
-        ? []
-        : [
-            {
-              text: t('screens.paymentSettings.setDefault'),
-              onPress: () => {
-                void setDefaultPayoutMethod(method.id, isLoggedIn)
-                  .then(() => {
-                    toast(t('toast.payoutDefaultUpdated'));
-                    refresh();
-                  })
-                  .catch(() => toast(t('toast.settingsUpdateFailed')));
-              },
-            },
-          ]),
       {
         text: t('screens.paymentSettings.remove'),
         style: 'destructive',
@@ -386,6 +388,7 @@ export function PayoutSettingsScreen() {
         visible={addSheetVisible}
         onClose={() => setAddSheetVisible(false)}
         onSubmitBank={() => void connectBankAndRefresh()}
+        onSubmitPayPal={() => void connectPayPalAndRefresh()}
         onSubmitProvider={(type, accountRef) => void addProviderAndRefresh(type, accountRef)}
         onRequireBinding={(type) => {
           setAddSheetVisible(false);
@@ -421,13 +424,7 @@ export function PayoutSettingsScreen() {
                   </ListRowMain>
                 </>
               }
-              right={
-                method.isDefault ? (
-                  <Text style={[styles.statusText, { color: colors.green }]}>{t('screens.paymentSettings.default')}</Text>
-                ) : (
-                  <Chevron />
-                )
-              }
+              right={<Chevron />}
               border={index < methods.length - 1}
               onPress={() => handlePayoutRowPress(method)}
             />

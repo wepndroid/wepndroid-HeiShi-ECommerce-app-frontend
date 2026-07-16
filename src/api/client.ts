@@ -6,7 +6,7 @@ import {
   AUTH_TOKEN_KEY,
 } from './config';
 import { getApiLanguage } from '../i18n';
-import type { ApiErrorBody } from './types';
+import type { ApiErrorBody, AuthTokensDto } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -36,7 +36,11 @@ export interface ApiRequestOptions {
   auth?: boolean;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Internal guard: authenticated requests retry only once after token refresh. */
+  retryAuth?: boolean;
 }
+
+let tokenRefreshPromise: Promise<boolean> | null = null;
 
 async function getAccessToken(): Promise<string | null> {
   const { getSupabaseAccessToken, isSupabaseAuthConfigured } = await import('./supabase');
@@ -61,8 +65,43 @@ function buildUrl(path: string, query?: ApiRequestOptions['query']) {
   return url.toString();
 }
 
+async function refreshAccessToken(): Promise<boolean> {
+  if (tokenRefreshPromise) return tokenRefreshPromise;
+  tokenRefreshPromise = (async () => {
+    const refreshToken = await AsyncStorage.getItem(AUTH_REFRESH_KEY);
+    if (!refreshToken) return false;
+    try {
+      const response = await fetch(buildUrl('/auth/refresh'), {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!response.ok) return false;
+      const tokens = (await response.json()) as AuthTokensDto;
+      if (!tokens.accessToken || !tokens.refreshToken) return false;
+      await setAuthTokens(tokens.accessToken, tokens.refreshToken);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await tokenRefreshPromise;
+  } finally {
+    tokenRefreshPromise = null;
+  }
+}
+
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, query, auth = true, signal, timeoutMs = API_TIMEOUT_MS } = options;
+  const {
+    method = 'GET',
+    body,
+    query,
+    auth = true,
+    signal,
+    timeoutMs = API_TIMEOUT_MS,
+    retryAuth = true,
+  } = options;
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Accept-Language': getApiLanguage(),
@@ -112,6 +151,12 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     }
 
     if (!response.ok) {
+      if (response.status === 401 && auth && retryAuth && path !== '/auth/refresh') {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+          return apiRequest<T>(path, { ...options, retryAuth: false });
+        }
+      }
       const err = payload as ApiErrorBody | null;
       throw new ApiError(
         err?.message ?? `Request failed (${response.status})`,

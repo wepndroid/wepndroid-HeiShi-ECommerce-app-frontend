@@ -65,7 +65,6 @@ function virtualCheckoutMethods(): PaymentMethodDto[] {
       checkoutOnly: true,
       removable: false,
       defaultable: false,
-      disabled: Platform.OS === 'android',
     },
     {
       id: VIRTUAL_APPLE_PAY_ID,
@@ -75,6 +74,7 @@ function virtualCheckoutMethods(): PaymentMethodDto[] {
       checkoutOnly: true,
       removable: false,
       defaultable: false,
+      disabled: Platform.OS === 'android',
     },
     {
       id: VIRTUAL_GOOGLE_PAY_ID,
@@ -286,4 +286,17 @@ export async function connectBankPayout(isLoggedIn: boolean): Promise<'onboardin
 export async function syncBankPayoutConnection(isLoggedIn: boolean): Promise<void> {
   if (!isLoggedIn) return;
   await paymentsApi.getPayoutConnectStatus();
+}
+
+/** Open PayPal-hosted seller consent; PayPal returns to the app through a deep link. */
+export async function connectPayPalSeller(isLoggedIn: boolean): Promise<void> {
+  if (!isLoggedIn) throw new Error('login_required');
+  const link = await paymentsApi.createPayPalSellerOnboardingLink();
+  if (!link.url) throw new Error('payout_add_failed');
+  await Linking.openURL(link.url);
+}
+
+export async function syncPayPalSellerConnection(isLoggedIn: boolean): Promise<void> {
+  if (!isLoggedIn) return;
+  await paymentsApi.getPayPalSellerOnboardingStatus();
 }
