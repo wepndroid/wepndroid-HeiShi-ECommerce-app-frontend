@@ -3,6 +3,7 @@ import { API_USE_MOCK_FALLBACK } from '../api/config';
 import { loadLocalFavorites, saveLocalFavorites } from '../data/favorites';
 import { loadLocalFollows, resolveSellerUserId, saveLocalFollows } from '../data/follows';
 import { loadLocalHistory, recordLocalView } from '../data/history';
+import { recordShareEventForListing } from './sharingService';
 
 export async function bootstrapFavorites(isLoggedIn: boolean): Promise<Set<number>> {
   if (isLoggedIn) {
@@ -41,6 +42,9 @@ export async function setFavorite(
     try {
       if (shouldFavorite) await favoritesApi.add(listingId);
       else await favoritesApi.remove(listingId);
+      if (shouldFavorite) {
+        void recordShareEventForListing(listingId, 'favorite').catch(() => undefined);
+      }
     } catch {
       if (!API_USE_MOCK_FALLBACK) throw new Error('favorite_sync_failed');
     }
@@ -58,6 +62,7 @@ export async function recordListingView(listingId: number, isLoggedIn: boolean) 
       // Local history still updated below.
     }
   }
+  void recordShareEventForListing(listingId, 'view').catch(() => undefined);
   await recordLocalView(listingId);
 }
 

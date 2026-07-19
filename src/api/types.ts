@@ -137,6 +137,9 @@ export interface AuthTokensDto {
 export interface LoginRequest {
   phone: string;
   password: string;
+  deviceId?: string;
+  platform?: string;
+  deviceName?: string;
 }
 
 export interface RegisterRequest {
@@ -235,8 +238,35 @@ export interface ChatMessageDto {
   text: string;
   sentAt: string;
   ackRead?: boolean;
-  kind?: 'text' | 'priceChange';
+  kind?: 'text' | 'priceChange' | 'privateOffer';
   price?: number;
+  structuredPayload?: PrivateOfferDto;
+  officialPlatformMessage?: boolean;
+}
+
+export type PrivateOfferStatus =
+  | 'PENDING'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'CONVERTED_TO_ORDER';
+
+export interface PrivateOfferDto {
+  id: string;
+  productId: number;
+  sellerId: string;
+  buyerId: string;
+  conversationId: string;
+  originalPrice: number;
+  negotiatedPrice: number;
+  currency: string;
+  quantity: number;
+  shippingFee: number;
+  totalAmount: number;
+  expirationTime: string;
+  status: PrivateOfferStatus;
+  orderId?: number | null;
+  createdAt: string;
 }
 
 export type NotificationCategory = 'system' | 'order' | 'follow';

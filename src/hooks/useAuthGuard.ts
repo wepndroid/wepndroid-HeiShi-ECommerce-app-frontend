@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { nav } from '../store/navigation';
@@ -9,11 +10,13 @@ export function useAuthGuard() {
   const isLoggedIn = useAuthStore((s) => s.user != null);
   const authReady = useAuthStore((s) => s.authReady);
   const { t } = useTranslation();
+  const pathname = usePathname();
 
   React.useEffect(() => {
     if (authReady && !isLoggedIn) {
+      useAuthStore.getState().setPendingAuthPath(pathname);
       toast(t('toast.loginRequired'));
       nav('login');
     }
-  }, [authReady, isLoggedIn, nav, toast, t]);
+  }, [authReady, isLoggedIn, pathname, t]);
 }

@@ -11,6 +11,8 @@ import {
   sendLocalMessage,
 } from '../data/messagesLocal';
 import type { UiChatMessage, UiConversation } from '../types';
+import type { PrivateOfferDto } from '../api/types';
+import { recordShareEventForListing } from './sharingService';
 
 const inboxRefreshListeners = new Set<() => void>();
 const inboxPollListeners = new Set<(conversations: UiConversation[]) => void>();
@@ -175,6 +177,44 @@ export function triggerInboxPollNow(): void {
   if (pollEnabled) scheduleInboxPoll(0);
 }
 
+export async function createPrivateOffer(
+  conversationId: string,
+  input: {
+    negotiatedPrice: number;
+    quantity?: number;
+    shippingFee?: number;
+    expiresInMinutes?: number;
+  },
+): Promise<PrivateOfferDto> {
+  const offer = await messagesApi.createPrivateOffer(conversationId, input);
+  notifyInboxRefresh();
+  triggerInboxPollNow();
+  return offer;
+}
+
+export async function acceptPrivateOffer(
+  offerId: string,
+): Promise<{ offer: PrivateOfferDto; orderId: number; idempotent: boolean }> {
+  const result = await messagesApi.acceptPrivateOffer(offerId);
+  notifyInboxRefresh();
+  triggerInboxPollNow();
+  return result;
+}
+
+export async function rejectPrivateOffer(offerId: string): Promise<PrivateOfferDto> {
+  const result = await messagesApi.rejectPrivateOffer(offerId);
+  notifyInboxRefresh();
+  triggerInboxPollNow();
+  return result;
+}
+
+export async function cancelPrivateOffer(offerId: string): Promise<PrivateOfferDto> {
+  const result = await messagesApi.cancelPrivateOffer(offerId);
+  notifyInboxRefresh();
+  triggerInboxPollNow();
+  return result;
+}
+
 export async function openConversation(
   input: {
     listingId?: number;
@@ -221,6 +261,11 @@ export async function openConversation(
         listingId: input.listingId,
         counterpartUserId: input.counterpartUserId,
       });
+      void recordShareEventForListing(
+        input.listingId,
+        'conversation',
+        dto.id,
+      ).catch(() => undefined);
       return mapConversationDtoToUi(dto);
     } catch (err) {
       if (err instanceof ApiError && !isNetworkError(err)) throw err;

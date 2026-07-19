@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { nav } from '../../store/navigation';
@@ -210,6 +210,19 @@ export function SettingsScreen() {
           }
           right={<Chevron />}
           onPress={() => nav('help')}
+        />
+        <ListRow
+          left={
+            <>
+              <ListIcon name="chat" />
+              <ListRowMain>
+                <Text style={styles.rowTitle} numberOfLines={1}>{t('screens.support.title')}</Text>
+                <Text style={styles.rowSub} numberOfLines={2}>{t('screens.support.subtitle')}</Text>
+              </ListRowMain>
+            </>
+          }
+          right={<Chevron />}
+          onPress={() => router.push('/support' as Href)}
           border={false}
         />
       </ListCard>

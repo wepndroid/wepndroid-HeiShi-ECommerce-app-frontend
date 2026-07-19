@@ -193,6 +193,8 @@ export function mapChatMessageDtoToUi(dto: ChatMessageDto, currentUserId?: strin
     ackRead,
     kind: dto.kind,
     price: dto.price,
+    privateOffer: dto.structuredPayload,
+    officialPlatformMessage: dto.officialPlatformMessage,
   };
 }
 

@@ -68,7 +68,7 @@ export const authApi = {
   },
 
   /** POST /auth/login/verify */
-  loginVerify(body: { phone: string; verificationCode: string }) {
+  loginVerify(body: { phone: string; verificationCode: string; deviceId?: string; platform?: string; deviceName?: string }) {
     return apiRequest<AuthTokensDto>('/auth/login/verify', { method: 'POST', body, auth: false });
   },
 

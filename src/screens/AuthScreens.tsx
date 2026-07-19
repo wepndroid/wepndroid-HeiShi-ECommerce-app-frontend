@@ -3,7 +3,7 @@ import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, View } from '
 import { Text } from '../components/typography';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
-import { nav } from '../store/navigation';
+import { nav, resumePendingAuthAction } from '../store/navigation';
 import { toast } from '../store/uiStore';
 import {
   AuthErrorKey,
@@ -133,7 +133,7 @@ export function LoginScreen() {
     if ('user' in result) {
       setUser(result.user);
       toast(t('toast.loginSuccess'));
-      nav('profile');
+      resumePendingAuthAction();
     }
   };
 
@@ -141,10 +141,10 @@ export function LoginScreen() {
     if (!socialConfigured) return;
     const sub = Linking.addEventListener('url', () => {
       toast(t('toast.loginSuccess'));
-      nav('profile');
+      resumePendingAuthAction();
     });
     return () => sub.remove();
-  }, [nav, socialConfigured, t, toast]);
+  }, [socialConfigured, t]);
 
   const handleLogin = async () => {
     if (submitting) return;
@@ -157,7 +157,7 @@ export function LoginScreen() {
         return;
       }
       toast(t('toast.loginSuccess'));
-      nav('profile');
+      resumePendingAuthAction();
       return;
     }
     const result = await login(phone, password);
@@ -167,7 +167,7 @@ export function LoginScreen() {
       return;
     }
     toast(t('toast.loginSuccess'));
-    nav('profile');
+    resumePendingAuthAction();
   };
 
   const handleSendLoginCode = async () => {
@@ -318,7 +318,7 @@ export function RegisterScreen() {
     if ('user' in result) {
       setUser(result.user);
       toast(t('toast.registerSuccess'));
-      nav('profile');
+      resumePendingAuthAction();
     }
   };
 
@@ -429,7 +429,7 @@ export function RegisterScreen() {
       return;
     }
     toast(t('toast.registerSuccess'));
-    nav('profile');
+    resumePendingAuthAction();
   };
 
   const handleBack = () => {

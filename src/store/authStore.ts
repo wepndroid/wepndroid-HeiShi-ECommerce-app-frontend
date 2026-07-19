@@ -24,22 +24,32 @@ interface AuthState {
   user: AuthUser | null;
   authReady: boolean;
   profileAvatarUrl?: string;
+  pendingAuthPath?: string;
   setUser: (user: AuthUser | null) => void;
   setAuthReady: (ready: boolean) => void;
   setProfileAvatarUrl: (url?: string) => void;
+  setPendingAuthPath: (path?: string) => void;
+  consumePendingAuthPath: () => string | undefined;
   updateUser: (patch: Partial<AuthUser>) => void;
   login: (phone: string, password: string) => Promise<{ error?: AuthErrorKey }>;
   register: (input: RegisterInput) => Promise<{ error?: AuthErrorKey }>;
   logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   authReady: false,
   profileAvatarUrl: undefined,
+  pendingAuthPath: undefined,
   setUser: (user) => set({ user }),
   setAuthReady: (ready) => set({ authReady: ready }),
   setProfileAvatarUrl: (url) => set({ profileAvatarUrl: url }),
+  setPendingAuthPath: (pendingAuthPath) => set({ pendingAuthPath }),
+  consumePendingAuthPath: () => {
+    const path = get().pendingAuthPath;
+    set({ pendingAuthPath: undefined });
+    return path;
+  },
   updateUser: (patch) => {
     set((state) => {
       if (!state.user) return state;

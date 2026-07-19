@@ -175,8 +175,10 @@ export interface UiChatMessage {
   senderId?: string;
   /** True when the recipient has read an outgoing message (never set for incoming). */
   ackRead: boolean;
-  kind?: 'text' | 'priceChange';
+  kind?: 'text' | 'priceChange' | 'privateOffer';
   price?: number;
+  privateOffer?: import('./api/types').PrivateOfferDto;
+  officialPlatformMessage?: boolean;
 }
 
 /** Grouped inbox row on the messages tab (system / order / follow). */

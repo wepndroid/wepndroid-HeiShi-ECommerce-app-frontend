@@ -12,7 +12,14 @@ import { useCatalogRevision } from '../../utils/catalogSync';
 import { formatMessageTimeLabel } from '../../utils/formatMessageTimeLabel';
 import { ChatCounterpartTitle, ChatListingBar } from '../../components/ChatListingBar';
 import { resolveDetailProduct } from '../../data/detailProducts';
-import { listConversations, openConversation } from '../../services/messagesService';
+import {
+  acceptPrivateOffer,
+  cancelPrivateOffer,
+  createPrivateOffer,
+  listConversations,
+  openConversation,
+  rejectPrivateOffer,
+} from '../../services/messagesService';
 import { blockUser, submitReport } from '../../services/safetyService';
 import { chatListingToProduct, buildChatListingFromId, chatListingFromConversation } from '../../services/chatListingService';
 import { AppIcon } from '../../components/AppIcon';
@@ -203,6 +210,9 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     if (displayListing?.listingId) void loadProduct(displayListing.listingId);
   }, [displayListing?.listingId, loadProduct, messages, t]);
   const [input, setInput] = useState('');
+  const [offerModalOpen, setOfferModalOpen] = useState(false);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [safetyMenuOpen, setSafetyMenuOpen] = useState(false);
   const [reportUserOpen, setReportUserOpen] = useState(false);
   const [reportDescription, setReportDescription] = useState('');
@@ -311,6 +321,45 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     }
   };
 
+  const submitPrivateOffer = useCallback(async () => {
+    const price = Number(offerPrice);
+    if (!Number.isFinite(price) || price <= 0 || offerSubmitting) return;
+    setOfferSubmitting(true);
+    try {
+      await createPrivateOffer(conversationId, {
+        negotiatedPrice: price,
+        expiresInMinutes: 24 * 60,
+      });
+      setOfferModalOpen(false);
+      setOfferPrice('');
+      await reload();
+      toast(t('screens.chat.offerSent'));
+    } catch {
+      toast(t('screens.chat.offerFailed'));
+    } finally {
+      setOfferSubmitting(false);
+    }
+  }, [conversationId, offerPrice, offerSubmitting, reload, t, toast]);
+
+  const actOnOffer = useCallback(
+    async (offerId: string, action: 'accept' | 'reject' | 'cancel') => {
+      if (offerSubmitting) return;
+      setOfferSubmitting(true);
+      try {
+        if (action === 'accept') await acceptPrivateOffer(offerId);
+        else if (action === 'reject') await rejectPrivateOffer(offerId);
+        else await cancelPrivateOffer(offerId);
+        await reload();
+        toast(t(action === 'accept' ? 'screens.chat.offerAccepted' : 'screens.chat.offerUpdated'));
+      } catch {
+        toast(t('screens.chat.offerFailed'));
+      } finally {
+        setOfferSubmitting(false);
+      }
+    },
+    [offerSubmitting, reload, t, toast],
+  );
+
   const scrollChatToEnd = useCallback((animated: boolean) => {
     chatScrollRef.current?.scrollToEnd({ animated });
   }, []);
@@ -355,7 +404,23 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
               }
             />
             {liveListingPrice > 0 ? (
-              <TableNote>{t('screens.chat.priceNegotiationHint')}</TableNote>
+              <>
+                <TableNote>{t('screens.chat.priceNegotiationHint')}</TableNote>
+                {canEditListingPrice ? (
+                  <Pressable
+                    style={styles.privateOfferTrigger}
+                    onPress={() => {
+                      setOfferPrice(String(liveListingPrice));
+                      setOfferModalOpen(true);
+                    }}
+                  >
+                    <AppIcon name="cash" size={16} color={colors.text} />
+                    <Text style={styles.privateOfferTriggerText}>
+                      {t('screens.chat.sendPrivateOffer')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
             ) : null}
           </View>
         ) : null}
@@ -389,7 +454,52 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
                 <PillButton label={t('common.retry')} variant="light" onPress={() => void reload()} />
               </View>
             ) : (
-              messages.map((msg) => msg.kind === 'priceChange' ? (
+              messages.map((msg) => msg.kind === 'privateOffer' && msg.privateOffer ? (
+                <View key={msg.id} style={styles.privateOfferCard}>
+                  <View style={styles.privateOfferHeader}>
+                    <AppIcon name="cash" size={18} color={colors.brand2} />
+                    <Text style={styles.privateOfferTitle}>
+                      {t('screens.chat.privateOffer')}
+                    </Text>
+                  </View>
+                  <Text style={styles.privateOfferAmount}>
+                    {t('common.currencyPrefix')}{msg.privateOffer.totalAmount.toFixed(2)}
+                  </Text>
+                  <Text style={styles.privateOfferStatus}>
+                    {t(`screens.chat.offerStatus.${msg.privateOffer.status}`)}
+                  </Text>
+                  {msg.privateOffer.status === 'PENDING' ? (
+                    <View style={styles.privateOfferActions}>
+                      {msg.side === 'left' ? (
+                        <>
+                          <PillButton
+                            label={t('screens.chat.rejectOffer')}
+                            variant="light"
+                            full
+                            disabled={offerSubmitting}
+                            onPress={() => void actOnOffer(msg.privateOffer!.id, 'reject')}
+                          />
+                          <PillButton
+                            label={t('screens.chat.acceptOffer')}
+                            variant="brand"
+                            full
+                            disabled={offerSubmitting}
+                            onPress={() => void actOnOffer(msg.privateOffer!.id, 'accept')}
+                          />
+                        </>
+                      ) : (
+                        <PillButton
+                          label={t('common.cancel')}
+                          variant="light"
+                          full
+                          disabled={offerSubmitting}
+                          onPress={() => void actOnOffer(msg.privateOffer!.id, 'cancel')}
+                        />
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+              ) : msg.kind === 'priceChange' ? (
                 <View key={msg.id} style={styles.priceChangeNotice}>
                   <AppIcon name="cash" size={16} color={colors.brand2} />
                   <Text style={styles.priceChangeNoticeText}>
@@ -458,6 +568,43 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
         </Pressable>
       </View>
       )}
+      <DismissibleModal
+        visible={offerModalOpen}
+        onClose={() => {
+          if (!offerSubmitting) setOfferModalOpen(false);
+        }}
+        placement="center"
+        animationType="fade"
+      >
+        <View style={styles.privateOfferModal}>
+          <Text style={styles.safetyMenuTitle}>{t('screens.chat.sendPrivateOffer')}</Text>
+          <Text style={styles.privateOfferHelp}>{t('screens.chat.privateOfferHelp')}</Text>
+          <TextInput
+            style={styles.privateOfferInput}
+            value={offerPrice}
+            onChangeText={setOfferPrice}
+            keyboardType="decimal-pad"
+            placeholder={t('screens.chat.pricePlaceholder')}
+            editable={!offerSubmitting}
+          />
+          <View style={styles.privateOfferActions}>
+            <PillButton
+              label={t('common.cancel')}
+              variant="light"
+              full
+              disabled={offerSubmitting}
+              onPress={() => setOfferModalOpen(false)}
+            />
+            <PillButton
+              label={offerSubmitting ? t('common.loading') : t('screens.chat.sendPrivateOffer')}
+              variant="brand"
+              full
+              disabled={!Number.isFinite(Number(offerPrice)) || Number(offerPrice) <= 0 || offerSubmitting}
+              onPress={() => void submitPrivateOffer()}
+            />
+          </View>
+        </View>
+      </DismissibleModal>
       <DismissibleModal
         visible={safetyMenuOpen}
         onClose={closeSafetyMenu}

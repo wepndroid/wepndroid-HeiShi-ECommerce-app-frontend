@@ -2,7 +2,10 @@
   "expo": {
     "name": "heishi-mvp-rn",
     "slug": "heishi-mvp-rn",
-    "scheme": "heishi",
+    "scheme": [
+      "heymarket",
+      "heishi"
+    ],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/logos/app_icon.png",

@@ -36,11 +36,21 @@ export function requireAuthNav(id: ScreenId): void {
   const { authReady, user } = useAuthStore.getState();
   if (!authReady) return;
   if (!user) {
+    useAuthStore.getState().setPendingAuthPath(screenPath(id));
     toast(i18n.t('toast.loginRequired'));
     nav('login');
     return;
   }
   nav(id);
+}
+
+export function resumePendingAuthAction(fallback: ScreenId = 'profile'): void {
+  const pendingPath = useAuthStore.getState().consumePendingAuthPath();
+  if (pendingPath) {
+    router.replace(pendingPath as Href);
+    return;
+  }
+  nav(fallback);
 }
 
 export function openOrderCheckout(bundleItemId?: string): void {

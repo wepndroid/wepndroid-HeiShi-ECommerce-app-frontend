@@ -9,7 +9,13 @@ import { useNotificationSettings } from '../../hooks/useNotificationSettings';
 import { useTransactionReminderSettings } from '../../hooks/useTransactionReminderSettings';
 import { usePrivacySettings } from '../../hooks/usePrivacySettings';
 import { shareUserDataExport } from '../../services/settingsService';
-import { Chevron, ListCard, ListRow, ListRowMain, Switch } from '../../components/FormUI';
+import {
+  listNotificationPreferences,
+  updateNotificationPreference,
+  type NotificationPreference,
+  type NotificationRoleContext,
+} from '../../services/notificationPreferencesService';
+import { Chevron, ListCard, ListRow, ListRowMain, SettingSectionTitle, Switch } from '../../components/FormUI';
 import { SimplePage, styles } from './shared';
 
 export function NotificationSettingsScreen() {
@@ -20,6 +26,68 @@ export function NotificationSettingsScreen() {
   const { settings, toggle } = useNotificationSettings(isLoggedIn, authReady, () =>
     toast(t('toast.settingsUpdateFailed')),
   );
+  const [rolePreferences, setRolePreferences] = React.useState<NotificationPreference[]>([]);
+  const [savingPreference, setSavingPreference] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isLoggedIn || !authReady) return;
+    void listNotificationPreferences()
+      .then(setRolePreferences)
+      .catch(() => toast(t('toast.settingsUpdateFailed')));
+  }, [authReady, isLoggedIn, t]);
+
+  const roleRows: Array<{ role: NotificationRoleContext; categories: string[] }> = [
+    {
+      role: 'buyer',
+      categories: [
+        'product_recommendation', 'chat_message', 'order_update', 'payment_update',
+        'delivery_update', 'refund_update', 'dispute', 'account_security',
+        'platform_notice', 'marketing',
+      ],
+    },
+    {
+      role: 'seller',
+      categories: [
+        'product_recommendation', 'chat_message', 'order_update', 'payment_update',
+        'delivery_update', 'refund_update', 'payout', 'dispute', 'moderation',
+        'account_security', 'platform_notice', 'marketing',
+      ],
+    },
+  ];
+
+  const preferenceFor = (role: NotificationRoleContext, category: string) =>
+    rolePreferences.find(
+      (row) => row.userRoleContext === role && row.category === category,
+    );
+
+  const toggleRolePreference = async (
+    role: NotificationRoleContext,
+    category: string,
+  ) => {
+    const current = preferenceFor(role, category);
+    const key = `${role}:${category}`;
+    if (savingPreference) return;
+    setSavingPreference(key);
+    try {
+      const updated = await updateNotificationPreference({
+        userRoleContext: role,
+        category,
+        inAppEnabled: current?.inAppEnabled ?? true,
+        pushEnabled: !(current?.pushEnabled ?? true),
+        smsEnabled: current?.smsEnabled ?? false,
+      });
+      setRolePreferences((rows) => [
+        ...rows.filter(
+          (row) => !(row.userRoleContext === role && row.category === category),
+        ),
+        updated,
+      ]);
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    } finally {
+      setSavingPreference(null);
+    }
+  };
 
   return (
     <SimplePage screenId="notificationSettings" title={t('screens.notificationSettings.title')}>
@@ -47,6 +115,42 @@ export function NotificationSettingsScreen() {
           border={false}
         />
       </ListCard>
+      {roleRows.map(({ role, categories }) => (
+        <React.Fragment key={role}>
+          <SettingSectionTitle
+            title={t(`screens.notificationSettings.${role}Notifications`)}
+          />
+          <ListCard>
+            {categories.map((category, index) => {
+              const preference = preferenceFor(role, category);
+              return (
+                <ListRow
+                  key={category}
+                  left={
+                    <ListRowMain>
+                      <Text style={styles.rowTitle}>
+                        {t(`screens.notificationSettings.categories.${category}`)}
+                      </Text>
+                      {preference?.mandatory ? (
+                        <Text style={styles.rowSub}>
+                          {t('screens.notificationSettings.mandatoryInApp')}
+                        </Text>
+                      ) : null}
+                    </ListRowMain>
+                  }
+                  right={
+                    <Switch
+                      on={preference?.pushEnabled ?? true}
+                      onToggle={() => void toggleRolePreference(role, category)}
+                    />
+                  }
+                  border={index < categories.length - 1}
+                />
+              );
+            })}
+          </ListCard>
+        </React.Fragment>
+      ))}
     </SimplePage>
   );
 }

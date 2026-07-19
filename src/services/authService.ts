@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { ApiError, authApi, clearAuthTokens, setAuthTokens, userApi } from '../api';
 import { API_USE_MOCK_FALLBACK, AUTH_REFRESH_KEY, AUTH_TOKEN_KEY } from '../api/config';
 import {
@@ -36,6 +37,24 @@ const SUPABASE_RESEND_SECONDS = 60;
 const PHONE_AUTH_PROVIDER = (process.env?.EXPO_PUBLIC_PHONE_AUTH_PROVIDER ?? '').trim().toLowerCase();
 const GOOGLE_DEV_AUTH_FALLBACK =
   (process.env?.EXPO_PUBLIC_GOOGLE_DEV_AUTH_FALLBACK ?? '').trim().toLowerCase() === 'true';
+
+async function deviceSessionMetadata(): Promise<{
+  deviceId: string;
+  platform: string;
+  deviceName: string;
+}> {
+  const key = 'heymarket:device-session-id';
+  let deviceId = await AsyncStorage.getItem(key);
+  if (!deviceId) {
+    deviceId = `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+    await AsyncStorage.setItem(key, deviceId);
+  }
+  return {
+    deviceId,
+    platform: Platform.OS,
+    deviceName: `${Platform.OS} ${String(Platform.Version)}`,
+  };
+}
 
 function isBackendPhoneAuthMode(): boolean {
   return PHONE_AUTH_PROVIDER === 'backend' || PHONE_AUTH_PROVIDER === 'twilio';
@@ -282,7 +301,11 @@ export async function loginWithAuth(
   }
 
   try {
-    const tokens = await authApi.login({ phone: normalized, password });
+    const tokens = await authApi.login({
+      phone: normalized,
+      password,
+      ...(await deviceSessionMetadata()),
+    });
     const user = await applyTokens(tokens);
     await clearSupabaseSessionIfBackendPhoneAuth();
     return { user };
@@ -357,6 +380,7 @@ export async function loginWithOtp(
     const tokens = await authApi.loginVerify({
       phone: normalized,
       verificationCode: verificationCode.trim(),
+      ...(await deviceSessionMetadata()),
     });
     const user = await applyTokens(tokens);
     await clearSupabaseSessionIfBackendPhoneAuth();

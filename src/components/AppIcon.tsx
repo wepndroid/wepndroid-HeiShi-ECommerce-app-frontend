@@ -87,7 +87,8 @@ export type AppIconName =
   | 'alipay'
   | 'bank'
   | 'business'
-  | 'trade';
+  | 'trade'
+  | 'share';
 
 type IconDef =
   | { set: 'ion'; name: keyof typeof Ionicons.glyphMap }
@@ -179,6 +180,7 @@ const ICONS: Record<AppIconName, IconDef> = {
   bank: { set: 'mci', name: 'bank-outline' },
   business: { set: 'ion', name: 'business-outline' },
   trade: { set: 'ion', name: 'swap-horizontal-outline' },
+  share: { set: 'ion', name: 'share-social-outline' },
 };
 
 export function AppIcon({

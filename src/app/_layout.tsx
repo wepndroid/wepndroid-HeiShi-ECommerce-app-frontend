@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, AppState, StyleSheet, View } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
-import { Stack, usePathname } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router, Stack, usePathname, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +18,14 @@ import { SplashOverlay } from '../components/SplashOverlay';
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold, useFonts } from '../components/typography';
 import { showBottomNav } from '../routing/paths';
 import { completeOAuthFromUrl } from '../services/authService';
+import {
+  extractShareToken,
+  recordRegistrationAttribution,
+  recordShareEvent,
+  resolveSharedListing,
+} from '../services/sharingService';
+import { ensureAnonymousSession, linkAnonymousSessionAfterLogin } from '../services/anonymousSessionService';
+import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme';
 
 function AppShell({ children }: { children: React.ReactNode }) {
@@ -42,11 +52,42 @@ export default function RootLayout() {
     Inter_700Bold,
   });
   const [splashDone, setSplashDone] = React.useState(false);
+  const user = useAuthStore((state) => state.user);
+  const authReady = useAuthStore((state) => state.authReady);
+  const clipboardCheckInProgress = useRef(false);
 
   useEffect(() => {
     const handleUrl = (url: string) => {
       if (url.includes('auth/callback')) {
         void completeOAuthFromUrl(url);
+        return;
+      }
+      const shareToken = url.match(/[?&]share=([^&#]+)/)?.[1];
+      const listingId = url.match(/(?:listing|detail)\/(\d+)/)?.[1];
+      if (listingId) {
+        if (shareToken) void recordShareEvent(decodeURIComponent(shareToken), 'open');
+        router.push(`/detail/${listingId}`);
+        return;
+      }
+      const supportId = url.match(/support\/([A-Za-z0-9-]+)/)?.[1];
+      if (supportId) {
+        router.push('/support' as Href);
+        return;
+      }
+      const tokenFromPath = url.match(/\/shares\/([^/?#]+)/)?.[1];
+      if (tokenFromPath) {
+        const token = decodeURIComponent(tokenFromPath);
+        void resolveSharedListing(token)
+          .then((shared) => {
+            void recordShareEvent(token, 'open');
+            router.push(`/detail/${shared.listingId}`);
+          })
+          .catch(() => {
+            Alert.alert(
+              'Listing unavailable',
+              'This shared listing has expired or is no longer available.',
+            );
+          });
       }
     };
     void Linking.getInitialURL().then((url) => {
@@ -55,6 +96,62 @@ export default function RootLayout() {
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     return () => sub.remove();
   }, []);
+
+  useEffect(() => {
+    const inspectClipboardShare = async () => {
+      if (clipboardCheckInProgress.current) return;
+      clipboardCheckInProgress.current = true;
+      try {
+        const text = await Clipboard.getStringAsync();
+        const token = extractShareToken(text);
+        if (!token) return;
+        const lastToken = await AsyncStorage.getItem('heymarket:lastClipboardShareToken');
+        if (lastToken === token) return;
+        const shared = await resolveSharedListing(token);
+        Alert.alert(
+          'Shared product found',
+          `Open “${shared.title}”?`,
+          [
+            { text: 'Not now', style: 'cancel' },
+            {
+              text: 'Open',
+              onPress: () => {
+                void AsyncStorage.setItem('heymarket:lastClipboardShareToken', token);
+                void recordShareEvent(token, 'open');
+                router.push(`/detail/${shared.listingId}`);
+              },
+            },
+          ],
+        );
+      } catch {
+        const text = await Clipboard.getStringAsync().catch(() => '');
+        if (extractShareToken(text)) {
+          Alert.alert(
+            'Listing unavailable',
+            'This shared listing has expired or is no longer available.',
+          );
+        }
+      } finally {
+        clipboardCheckInProgress.current = false;
+      }
+    };
+    if (splashDone) void inspectClipboardShare();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && splashDone) void inspectClipboardShare();
+    });
+    return () => subscription.remove();
+  }, [splashDone]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (user) {
+      void linkAnonymousSessionAfterLogin()
+        .then(() => recordRegistrationAttribution())
+        .catch(() => undefined);
+    } else {
+      void ensureAnonymousSession().catch(() => undefined);
+    }
+  }, [authReady, user]);
 
   if (!fontsLoaded) {
     return null;

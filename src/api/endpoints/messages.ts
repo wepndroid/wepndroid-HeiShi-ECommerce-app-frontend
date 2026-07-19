@@ -6,6 +6,7 @@ import type {
   NotificationCategory,
   NotificationGroupDto,
   Paginated,
+  PrivateOfferDto,
 } from '../types';
 
 export const messagesApi = {
@@ -83,5 +84,39 @@ export const messagesApi = {
   /** DELETE /notifications/:id */
   deleteNotification(notificationId: string) {
     return apiRequest<void>(`/notifications/${notificationId}`, { method: 'DELETE' });
+  },
+
+  createPrivateOffer(
+    conversationId: string,
+    body: {
+      negotiatedPrice: number;
+      quantity?: number;
+      shippingFee?: number;
+      expiresInMinutes?: number;
+    },
+  ) {
+    return apiRequest<PrivateOfferDto>(`/conversations/${conversationId}/offers`, {
+      method: 'POST',
+      body,
+    });
+  },
+
+  getPrivateOffer(offerId: string) {
+    return apiRequest<PrivateOfferDto>(`/offers/${offerId}`);
+  },
+
+  acceptPrivateOffer(offerId: string) {
+    return apiRequest<{ offer: PrivateOfferDto; orderId: number; idempotent: boolean }>(
+      `/offers/${offerId}/accept`,
+      { method: 'POST' },
+    );
+  },
+
+  rejectPrivateOffer(offerId: string) {
+    return apiRequest<PrivateOfferDto>(`/offers/${offerId}/reject`, { method: 'POST' });
+  },
+
+  cancelPrivateOffer(offerId: string) {
+    return apiRequest<PrivateOfferDto>(`/offers/${offerId}/cancel`, { method: 'POST' });
   },
 };

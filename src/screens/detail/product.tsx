@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { resolveListingDetail } from '../../services/catalogService';
 import { userCanChatOnListing } from '../../services/ordersService';
 import { submitReport } from '../../services/safetyService';
+import { shareListing } from '../../services/sharingService';
 import { ReportSheet, type ReportReason } from '../../components/ReportSheet';
 import { useCatalogRevision } from '../../utils/catalogSync';
 import { useRelatedListings } from '../../hooks/useRelatedListings';
@@ -197,6 +198,11 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
     setShowReportSheet(true);
   };
 
+  const handleShareListing = () => {
+    void shareListing(currentItem.id, item.title)
+      .catch(() => toast(t('toast.settingsUpdateFailed')));
+  };
+
   const handleSubmitReport = (reason: ReportReason, details: string) => {
     if (reportSubmitting) return;
     setReportSubmitting(true);
@@ -227,6 +233,7 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
         right={
           orderContext ? undefined : (
             <View style={styles.detailActionsRight}>
+              <IconButton icon="share" onPress={handleShareListing} label={t('common.share')} />
               {!isSelf ? (
                 <IconButton icon="shield" onPress={handleReportListing} label={t('common.report')} />
               ) : null}

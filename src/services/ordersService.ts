@@ -20,6 +20,7 @@ import {
   presentNativeCheckoutPaymentSheet,
   presentNativeGooglePay,
 } from './stripeNative';
+import { recordShareEventForListing } from './sharingService';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
 
@@ -388,10 +389,20 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
       throw err;
     }
   }
+  void recordShareEventForListing(
+    body.listingId,
+    'order',
+    String(created.id),
+  ).catch(() => undefined);
   try {
     const checkout = await runPaymentCheckout(created.id, body.paymentMethodId);
     if (checkout.simulated) {
       const paid = await ordersApi.pay(created.id);
+      void recordShareEventForListing(
+        body.listingId,
+        'payment',
+        String(created.id),
+      ).catch(() => undefined);
       invalidateCatalog();
       return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
@@ -402,6 +413,11 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
       const ready = await finalizeNativeStripeCheckout(created.id, paymentMethod, checkout);
       if (!ready) throw new Error('payment_incomplete');
       const paid = await ordersApi.pay(created.id);
+      void recordShareEventForListing(
+        body.listingId,
+        'payment',
+        String(created.id),
+      ).catch(() => undefined);
       invalidateCatalog();
       return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
