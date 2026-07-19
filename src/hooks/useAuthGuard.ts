@@ -3,6 +3,7 @@ import { usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore';
 import { nav } from '../store/navigation';
+import { createPendingAction } from '../services/pendingActionService';
 import { toast } from '../store/uiStore';
 
 /** Redirect guests to login when a protected screen mounts. */
@@ -15,6 +16,7 @@ export function useAuthGuard() {
   React.useEffect(() => {
     if (authReady && !isLoggedIn) {
       useAuthStore.getState().setPendingAuthPath(pathname);
+      void createPendingAction(pathname).catch(() => undefined);
       toast(t('toast.loginRequired'));
       nav('login');
     }

@@ -6,6 +6,10 @@ import { useAuthStore } from './authStore';
 import { useCheckoutStore } from './checkoutStore';
 import { useSearchStore } from './searchStore';
 import { toast } from './uiStore';
+import {
+  consumePendingAction,
+  createPendingAction,
+} from '../services/pendingActionService';
 
 // Imperative navigation helpers. expo-router's `router` works outside React, so
 // these live as plain functions callable from stores, services, or components.
@@ -37,6 +41,7 @@ export function requireAuthNav(id: ScreenId): void {
   if (!authReady) return;
   if (!user) {
     useAuthStore.getState().setPendingAuthPath(screenPath(id));
+    void createPendingAction(screenPath(id)).catch(() => undefined);
     toast(i18n.t('toast.loginRequired'));
     nav('login');
     return;
@@ -46,11 +51,22 @@ export function requireAuthNav(id: ScreenId): void {
 
 export function resumePendingAuthAction(fallback: ScreenId = 'profile'): void {
   const pendingPath = useAuthStore.getState().consumePendingAuthPath();
-  if (pendingPath) {
-    router.replace(pendingPath as Href);
-    return;
-  }
-  nav(fallback);
+  void consumePendingAction()
+    .then((serverPath) => {
+      const destination = serverPath ?? pendingPath;
+      if (destination) {
+        router.replace(destination as Href);
+        return;
+      }
+      nav(fallback);
+    })
+    .catch(() => {
+      if (pendingPath) {
+        router.replace(pendingPath as Href);
+        return;
+      }
+      nav(fallback);
+    });
 }
 
 export function openOrderCheckout(bundleItemId?: string): void {
