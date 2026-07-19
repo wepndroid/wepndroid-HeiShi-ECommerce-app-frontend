@@ -12,6 +12,14 @@ type CheckoutPaymentSheetConfig = Omit<PaymentSheetConfig, 'setupIntentClientSec
   paymentIntentClientSecret: string;
 };
 
+type GooglePayConfig = {
+  publishableKey: string;
+  paymentIntentClientSecret: string;
+  merchantDisplayName: string;
+  merchantCountryCode: string;
+  currencyCode: string;
+};
+
 function loadStripeSdk() {
   try {
     return require('@stripe/stripe-react-native') as typeof import('@stripe/stripe-react-native');
@@ -74,6 +82,43 @@ export async function presentNativeCheckoutPaymentSheet(
   if (result.didCancel) throw new Error('payment_canceled');
   if (result.error) {
     throw new Error(result.error.message || result.error.code || 'stripe_payment_sheet_failed');
+  }
+}
+
+export async function presentNativeGooglePay(config: GooglePayConfig): Promise<void> {
+  const stripe = loadStripeSdk();
+  if (!stripe) throw new Error('stripe_not_available_on_device');
+
+  await stripe.initStripe({ publishableKey: config.publishableKey, urlScheme: 'heishi' });
+  const testEnv = config.publishableKey.startsWith('pk_test_');
+  const supported = await stripe.isPlatformPaySupported({
+    googlePay: {
+      testEnv,
+      existingPaymentMethodRequired: true,
+    },
+  });
+  if (!supported) throw new Error('google_pay_not_supported');
+
+  const result = await stripe.confirmPlatformPayPayment(
+    config.paymentIntentClientSecret,
+    {
+      googlePay: {
+        testEnv,
+        merchantName: config.merchantDisplayName,
+        merchantCountryCode: config.merchantCountryCode,
+        currencyCode: config.currencyCode,
+        isEmailRequired: true,
+        existingPaymentMethodRequired: true,
+        billingAddressConfig: {
+          isRequired: true,
+          isPhoneNumberRequired: false,
+          format: stripe.PlatformPay.BillingAddressFormat.Full,
+        },
+      },
+    },
+  );
+  if (result.error) {
+    throw new Error(result.error.message || result.error.code || 'google_pay_failed');
   }
 }
 

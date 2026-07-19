@@ -22,6 +22,18 @@ export async function presentNativeCheckoutPaymentSheet(
   throw new Error('stripe_not_available_on_web');
 }
 
+export async function presentNativeGooglePay(
+  _config: {
+    publishableKey: string;
+    paymentIntentClientSecret: string;
+    merchantDisplayName: string;
+    merchantCountryCode: string;
+    currencyCode: string;
+  },
+): Promise<void> {
+  throw new Error('google_pay_not_available_on_web');
+}
+
 export async function handleNativeNextAction(_clientSecret: string): Promise<void> {
   throw new Error('stripe_not_available_on_web');
 }

@@ -453,6 +453,7 @@ const styles = StyleSheet.create({
   leaveBtn: {
     flexShrink: 0,
     paddingHorizontal: 10,
+    paddingVertical: 0,
     minHeight: 32,
     height: 32,
   },

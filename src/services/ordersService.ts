@@ -16,7 +16,10 @@ import type { ReviewCriteriaDto } from '../data/reviewCriteria';
 import type { OrderFilterKey, OrderStatus, Product, UiOrder } from '../types';
 import { invalidateCatalog } from '../utils/catalogSync';
 import { resolveCheckoutMethodFromSelection } from './paymentsService';
-import { presentNativeCheckoutPaymentSheet } from './stripeNative';
+import {
+  presentNativeCheckoutPaymentSheet,
+  presentNativeGooglePay,
+} from './stripeNative';
 
 export type OrderAction = 'pay' | 'remindShip' | 'ship' | 'confirmReceive' | 'submitReview' | 'cancel' | 'dispute';
 
@@ -275,7 +278,9 @@ async function runPaymentCheckout(orderId: number, paymentMethodId?: string) {
   return checkoutApi.create({
     orderId,
     paymentMethod,
-    nativePaymentSheet: Platform.OS !== 'web' && paymentMethod === 'card',
+    nativePaymentSheet:
+      (Platform.OS !== 'web' && paymentMethod === 'card') ||
+      (Platform.OS === 'android' && paymentMethod === 'google'),
   });
 }
 
@@ -317,6 +322,46 @@ async function finalizeNativeCardCheckout(
   return confirmed.paymentStatus === 'succeeded';
 }
 
+async function finalizeNativeGooglePayCheckout(
+  orderId: number,
+  checkout: {
+    paymentStatus: string;
+    clientSecret?: string | null;
+    publishableKey?: string | null;
+  },
+): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  if (checkout.paymentStatus === 'succeeded') return true;
+  if (!checkout.clientSecret || !checkout.publishableKey) return false;
+
+  await presentNativeGooglePay({
+    publishableKey: checkout.publishableKey,
+    paymentIntentClientSecret: checkout.clientSecret,
+    merchantDisplayName: 'HeyMarket',
+    merchantCountryCode: 'AU',
+    currencyCode: 'AUD',
+  });
+  const confirmed = await checkoutApi.confirm({ orderId });
+  return confirmed.paymentStatus === 'succeeded';
+}
+
+async function finalizeNativeStripeCheckout(
+  orderId: number,
+  paymentMethod: 'card' | 'apple' | 'google' | 'alipay' | 'wechat' | 'paypal',
+  checkout: {
+    paymentStatus: string;
+    clientSecret?: string | null;
+    publishableKey?: string | null;
+    customerId?: string | null;
+    ephemeralKey?: string | null;
+  },
+): Promise<boolean> {
+  if (paymentMethod === 'google') {
+    return finalizeNativeGooglePayCheckout(orderId, checkout);
+  }
+  return finalizeNativeCardCheckout(orderId, checkout);
+}
+
 async function openHostedCheckout(checkoutUrl: string): Promise<void> {
   try {
     await Linking.openURL(checkoutUrl);
@@ -350,9 +395,11 @@ async function createAndPayOrder(body: CreateOrderRequest): Promise<CheckoutResu
       invalidateCatalog();
       return { order: mapOrderDtoToUiOrder(paid), paid: true };
     }
-    // Native card charge (PaymentIntent, no redirect): confirm 3-D Secure then finalise.
+    // Native Stripe charge (card PaymentSheet or Android Google Pay): confirm the
+    // PaymentIntent, reconcile it with the backend, then finalise the order.
     if (!checkout.checkoutUrl) {
-      const ready = await finalizeNativeCardCheckout(created.id, checkout);
+      const paymentMethod = await paymentMethodForCheckout(body.paymentMethodId);
+      const ready = await finalizeNativeStripeCheckout(created.id, paymentMethod, checkout);
       if (!ready) throw new Error('payment_incomplete');
       const paid = await ordersApi.pay(created.id);
       invalidateCatalog();
@@ -444,7 +491,13 @@ export async function performOrderAction(
             } else if (checkout.checkoutUrl) {
               await openHostedCheckout(checkout.checkoutUrl);
               return order.status;
-            } else if (await finalizeNativeCardCheckout(order.id, checkout)) {
+            } else if (
+              await finalizeNativeStripeCheckout(
+                order.id,
+                await paymentMethodForCheckout(order.paymentMethodId),
+                checkout,
+              )
+            ) {
               dto = await ordersApi.pay(order.id);
             } else {
               throw new Error('payment_pending');

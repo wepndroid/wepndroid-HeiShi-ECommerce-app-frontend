@@ -1,5 +1,5 @@
-export const LOGO_ZH = require('./logos/logo_china.png');
-export const LOGO_EN = require('./logos/logo_english.png');
+export const LOGO_ZH = require('./logos/horizontal_logo_transparent.png');
+export const LOGO_EN = require('./logos/horizontal_logo_transparent.png');
 
 /** Width / height of the header logos (transparent PNG). */
-export const LOGO_ASPECT = 640 / 232;
+export const LOGO_ASPECT = 768 / 316;

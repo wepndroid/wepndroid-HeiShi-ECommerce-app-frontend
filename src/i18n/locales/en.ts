@@ -716,7 +716,7 @@ export default {
       cardOption: 'Visa / Mastercard',
       cardOptionSub: 'Enter a Visa or Mastercard securely in Stripe Checkout.',
       applePayOptionSub: 'Opens Stripe Checkout. Apple Pay appears when this device and browser support it.',
-      googlePayOptionSub: 'Opens Stripe Checkout. Google Pay appears when this device and browser support it.',
+      googlePayOptionSub: 'Opens the secure Google Pay wallet on a supported Android device.',
       paypalOptionSub: 'Approve the payment in PayPal and return to the app.',
       redirectOptionSub: 'Continue in the provider checkout page and return when payment is approved.',
     },

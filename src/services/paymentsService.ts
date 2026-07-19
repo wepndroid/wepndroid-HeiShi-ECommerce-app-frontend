@@ -49,7 +49,7 @@ function checkoutApplePaySubtitle(): string {
 
 function checkoutGooglePaySubtitle(): string {
   return i18n.t('screens.order.googlePayOptionSub', {
-    defaultValue: 'Opens Stripe Checkout. Google Pay appears when this device and browser support it.',
+    defaultValue: 'Opens the secure Google Pay wallet on a supported Android device.',
   });
 }
 
