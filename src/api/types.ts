@@ -36,6 +36,7 @@ export interface ListingSummaryDto {
   locationLabel: string;
   imageUrl: string;
   images?: string[];
+  videos?: string[];
   seller: {
     id: string;
     nickname: string;
@@ -57,6 +58,7 @@ export interface ListingSummaryDto {
 
 export interface ListingDetailDto extends ListingSummaryDto {
   images: string[];
+  videos?: string[];
   conditionKey?: string;
   negotiable?: boolean;
   escrowSupported?: boolean;
@@ -149,6 +151,9 @@ export interface RegisterRequest {
   verificationCode: string;
   city: string;
   avatarUrl?: string;
+  deviceId?: string;
+  platform?: string;
+  deviceName?: string;
 }
 
 export interface SyncProfileRequest {
@@ -183,6 +188,7 @@ export interface OrderDto {
   deliveryMethod?: string;
   paymentMethodId?: string;
   bundleItemId?: string;
+  privateOfferId?: string;
   couponId?: string;
   discountAmount?: number;
   createdAt: string;
@@ -246,10 +252,13 @@ export interface ChatMessageDto {
 
 export type PrivateOfferStatus =
   | 'PENDING'
+  | 'VIEWED'
+  | 'ACCEPTED'
   | 'REJECTED'
   | 'CANCELLED'
   | 'EXPIRED'
-  | 'CONVERTED_TO_ORDER';
+  | 'CONVERTED_TO_ORDER'
+  | 'INVALIDATED';
 
 export interface PrivateOfferDto {
   id: string;
@@ -273,10 +282,22 @@ export type NotificationCategory = 'system' | 'order' | 'follow';
 
 export interface InboxNotificationDto {
   id: string;
+  notificationId: string;
+  userId: string;
+  userRoleContext?: 'buyer' | 'seller' | 'both' | null;
+  notificationCategory: string;
+  notificationType?: string | null;
   category: NotificationCategory;
   title: string;
   body: string;
+  content: string;
+  businessType?: string | null;
+  businessId?: string | null;
+  deepLink?: string | null;
+  pushStatus: string;
+  readStatus: 'read' | 'unread';
   createdAt: string;
+  readAt?: string | null;
   unread: boolean;
   actionType?: string;
   actionRef?: string;
@@ -492,6 +513,7 @@ export interface CreateListingRequest {
   regionState?: string;
   regionCity?: string;
   imageUrls: string[];
+  videoUrls?: string[];
   pickupMethods?: string[];
   bundleItems?: { id?: string; title: string; sharePrice: number; separatePrice?: number; imageUrl?: string; imageUrls?: string[] }[];
   pickupDeadline?: string;

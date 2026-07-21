@@ -40,7 +40,7 @@ const CHAT_ORDER_STATUSES = new Set([
   'completed',
 ]);
 
-const BUYER_HIDDEN_STATUSES = new Set<OrderStatus>(['cancelled', 'pendingPay']);
+const BUYER_HIDDEN_STATUSES = new Set<OrderStatus>(['cancelled']);
 
 function visibleBuyerOrders(orders: UiOrder[]): UiOrder[] {
   return orders.filter((item) => !BUYER_HIDDEN_STATUSES.has(item.status));

@@ -51,7 +51,13 @@ export function PublishBundleScreen({ embedded = false }: { embedded?: boolean }
   const isEditMode = editListingId != null && Number.isFinite(editListingId);
   useAuthGuard();
   const { options, loading } = useFormOptions();
-  const { imageUrls, uploading, addPhotosFromLibrary, setImageUrls } = useListingPhotos(
+  const {
+    imageUrls,
+    uploading,
+    uploadProgress,
+    addPhotosFromLibrary,
+    setImageUrls,
+  } = useListingPhotos(
     isLoggedIn,
     toast,
     MAX_LISTING_PHOTOS,
@@ -475,6 +481,7 @@ export function PublishBundleScreen({ embedded = false }: { embedded?: boolean }
         onAdd={handleAddCoverPhotos}
         onRemove={(url) => setImageUrls((prev) => prev.filter((photo) => photo !== url))}
         uploading={uploading}
+        uploadProgress={uploadProgress}
         maxPhotos={1}
       />
       <FormCard roundedFields>

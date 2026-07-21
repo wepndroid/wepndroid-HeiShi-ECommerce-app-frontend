@@ -43,6 +43,7 @@ export function mapListingToProduct(dto: ListingSummaryDto): Product {
     height: '',
     imageUrl: images[0] ?? normalizeMediaUrl(dto.imageUrl) ?? '',
     imageUrls: images,
+    videoUrls: collectMediaUrls(dto.videos),
     apiTitle: dto.title,
     apiDesc: dto.description,
     apiVisual: dto.title,
@@ -153,6 +154,7 @@ export function mapOrderDtoToUiOrder(dto: OrderDto): UiOrder {
     paymentMethodId: dto.paymentMethodId,
     escrowFee: dto.escrowFee,
     bundleItemId: dto.bundleItemId,
+    privateOfferId: dto.privateOfferId,
     couponId: dto.couponId,
     discountAmount: dto.discountAmount,
     displayAmountCny: dto.displayAmountCny,
@@ -205,6 +207,7 @@ export function mapListingDtoToUiListing(dto: ListingSummaryDto): UiListing {
     title: dto.title,
     imageUrl: images[0] ?? normalizeMediaUrl(dto.imageUrl) ?? dto.imageUrl,
     imageUrls: images,
+    videoUrls: collectMediaUrls(dto.videos),
     listingType: dto.type,
     price: dto.price,
     status:

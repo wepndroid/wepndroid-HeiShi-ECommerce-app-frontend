@@ -8,9 +8,10 @@ import { colors, fonts } from '../../theme';
 
 export const SUPPORT_EMAIL = 'support@heishi.app';
 
-export type BindKind = 'wechat' | 'alipay' | 'identity' | 'business';
+export type BindKind = 'phone' | 'wechat' | 'alipay' | 'identity' | 'business';
 
 export function nextBindKind(status: VerificationStatus | null): BindKind | null {
+  if (!status?.phoneVerified) return 'phone';
   if (!status?.wechatBound) return 'wechat';
   if (!status.alipayBound) return 'alipay';
   if (!status.identityVerified) {

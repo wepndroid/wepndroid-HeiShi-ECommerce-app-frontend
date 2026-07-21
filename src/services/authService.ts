@@ -25,6 +25,7 @@ import { uploadAvatarImage } from './listingsService';
 import { unregisterDevicePushToken } from './messageNotifications';
 import { requestGoogleIdToken } from './googleNative';
 import { requestWeChatAuthCode } from './wechatNative';
+import type { AuthIdentityDto, DeviceSessionDto } from '../api/endpoints/auth';
 
 async function clearStoredSession(): Promise<void> {
   await unregisterDevicePushToken();
@@ -142,6 +143,66 @@ async function applyTokens(tokens: AuthTokensDto): Promise<AuthUser> {
   const user = mapUser(tokens.user);
   await saveSession(user);
   return user;
+}
+
+export async function listAuthIdentities(): Promise<AuthIdentityDto[]> {
+  return authApi.identities();
+}
+
+export async function unbindAuthIdentity(identityId: string): Promise<void> {
+  await authApi.unbindIdentity(identityId);
+}
+
+export async function sendBindPhoneCode(phone: string) {
+  const normalized = toE164Phone(phone);
+  return authApi.sendBindPhoneCode(normalized);
+}
+
+export async function verifyBindPhone(
+  phone: string,
+  verificationCode: string,
+): Promise<void> {
+  await authApi.verifyBindPhone(toE164Phone(phone), verificationCode.trim());
+}
+
+export async function listDeviceSessions(): Promise<DeviceSessionDto[]> {
+  return authApi.sessions();
+}
+
+export async function revokeDeviceSession(sessionId: string): Promise<void> {
+  await authApi.revokeSession(sessionId);
+}
+
+export async function mergePhoneAccount(
+  phone: string,
+  password: string,
+): Promise<AuthUser> {
+  return applyTokens(
+    await authApi.mergePhoneAccount({
+      phone: toE164Phone(phone),
+      password,
+    }),
+  );
+}
+
+export async function mergeThirdPartyAccount(
+  provider: 'wechat' | 'alipay',
+): Promise<boolean> {
+  if (provider === 'wechat') {
+    const authorization = await requestWeChatAuthCode();
+    if (!('code' in authorization)) {
+      throw new Error(`wechat_oauth_${authorization.error}`);
+    }
+    const result = await authApi.mergeThirdPartyAccount(provider, authorization.code);
+    return result.merged;
+  }
+  const { requestAlipayAuthCode } = await import('./alipayOAuth');
+  const authorization = await requestAlipayAuthCode();
+  if (!('authCode' in authorization)) {
+    throw new Error(`alipay_oauth_${authorization.error}`);
+  }
+  const result = await authApi.mergeThirdPartyAccount(provider, authorization.authCode);
+  return result.merged;
 }
 
 async function refreshBackendSession(): Promise<AuthUser | null> {
@@ -503,12 +564,14 @@ export async function registerWithAuth(input: {
   }
 
   try {
+    const sessionMetadata = await deviceSessionMetadata();
     const tokens = await authApi.register({
       nickname: input.nickname.trim(),
       phone: normalizedPhone,
       password: input.password,
       verificationCode: input.verificationCode.trim(),
       city: input.city,
+      ...sessionMetadata,
     });
     pendingRegisterCodes.delete(normalizedPhone);
     await applyTokens(tokens);
@@ -553,7 +616,7 @@ export async function logoutWithAuth() {
   await clearStoredSession();
 }
 
-export type OAuthProvider = 'google' | 'apple' | 'wechat';
+export type OAuthProvider = 'google' | 'apple' | 'wechat' | 'alipay';
 
 function mapGoogleNativeError(error: Awaited<ReturnType<typeof requestGoogleIdToken>>): AuthErrorKey {
   if (!('error' in error)) return 'networkError';
@@ -598,7 +661,12 @@ export async function loginWithOAuth(
     const nativeResult = await requestGoogleIdToken();
     if ('idToken' in nativeResult) {
       try {
-        const user = await applyTokens(await authApi.googleLogin({ idToken: nativeResult.idToken }));
+        const user = await applyTokens(
+          await authApi.googleLogin({
+            idToken: nativeResult.idToken,
+            ...(await deviceSessionMetadata()),
+          }),
+        );
         await clearSupabaseSessionIfBackendPhoneAuth();
         return { user };
       } catch (err) {
@@ -629,7 +697,12 @@ export async function loginWithOAuth(
     const nativeResult = await requestWeChatAuthCode();
     if ('code' in nativeResult) {
       try {
-        const user = await applyTokens(await authApi.wechat({ code: nativeResult.code }));
+        const user = await applyTokens(
+          await authApi.wechat({
+            code: nativeResult.code,
+            ...(await deviceSessionMetadata()),
+          }),
+        );
         await clearSupabaseSessionIfBackendPhoneAuth();
         return { user };
       } catch (err) {
@@ -651,6 +724,34 @@ export async function loginWithOAuth(
                 ? 'oauthUnavailable'
                 : 'networkError',
       };
+    }
+  }
+
+  if (provider === 'alipay') {
+    const { requestAlipayAuthCode } = await import('./alipayOAuth');
+    const authorization = await requestAlipayAuthCode();
+    if (!('authCode' in authorization)) {
+      return {
+        error:
+          authorization.error === 'cancelled'
+            ? 'oauthCancelled'
+            : authorization.error === 'unavailable'
+              ? 'oauthUnavailable'
+              : 'networkError',
+      };
+    }
+    try {
+      const user = await applyTokens(
+        await authApi.alipay({
+          authCode: authorization.authCode,
+          oauthState: authorization.oauthState,
+          ...(await deviceSessionMetadata()),
+        }),
+      );
+      await clearSupabaseSessionIfBackendPhoneAuth();
+      return { user };
+    } catch (err) {
+      return { error: mapAuthApiError(err, 'networkError') };
     }
   }
 
@@ -710,7 +811,12 @@ export async function registerWithOAuth(
     const nickname = input?.nickname?.trim() || undefined;
     const city = input?.city?.trim() || undefined;
     const user = await applyTokens(
-      await authApi.googleRegister({ idToken: nativeResult.idToken, nickname, city }),
+      await authApi.googleRegister({
+        idToken: nativeResult.idToken,
+        nickname,
+        city,
+        ...(await deviceSessionMetadata()),
+      }),
     );
     await clearSupabaseSessionIfBackendPhoneAuth();
     return { user };

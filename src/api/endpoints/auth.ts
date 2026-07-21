@@ -8,6 +8,31 @@ import type {
   SyncProfileRequest,
 } from '../types';
 
+type DeviceSessionMetadata = {
+  deviceId?: string;
+  platform?: string;
+  deviceName?: string;
+};
+
+export type AuthIdentityDto = {
+  id: string;
+  provider: 'phone' | 'wechat' | 'alipay' | 'google';
+  verified: boolean;
+  boundAt: string;
+  lastUsedAt?: string | null;
+};
+
+export type DeviceSessionDto = {
+  id: string;
+  deviceId: string;
+  platform?: string | null;
+  deviceName?: string | null;
+  countryCode?: string | null;
+  suspicious: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+};
+
 export const authApi = {
   /** POST /auth/register/send-code — legacy OTP when Supabase Auth is not configured */
   sendRegisterCode(body: SendRegisterCodeRequest) {
@@ -34,17 +59,67 @@ export const authApi = {
   },
 
   /** POST /auth/wechat - native WeChat Open Platform login/register */
-  wechat(body: { code: string; nickname?: string; city?: string }) {
+  wechat(body: { code: string; nickname?: string; city?: string } & DeviceSessionMetadata) {
     return apiRequest<AuthTokensDto>('/auth/wechat', { method: 'POST', body, auth: false });
   },
 
+  alipayAuthorize() {
+    return apiRequest<{
+      authorizationUrl: string;
+      state: string;
+      redirectUri: string;
+      expiresIn: number;
+    }>('/auth/alipay/authorize', { auth: false });
+  },
+
+  alipay(
+    body: {
+      authCode: string;
+      oauthState?: string;
+      nickname?: string;
+      city?: string;
+    } & DeviceSessionMetadata,
+  ) {
+    return apiRequest<AuthTokensDto>('/auth/alipay', { method: 'POST', body, auth: false });
+  },
+
+  bindWechat(code: string) {
+    return apiRequest<{ bound: true; provider: 'wechat' }>('/auth/identities/wechat/bind', {
+      method: 'POST',
+      body: { code },
+    });
+  },
+
+  bindAlipay(authCode: string, oauthState?: string) {
+    return apiRequest<{ bound: true; provider: 'alipay' }>('/auth/identities/alipay/bind', {
+      method: 'POST',
+      body: { authCode, oauthState },
+    });
+  },
+
+  sendBindPhoneCode(phone: string) {
+    return apiRequest<import('../types').SendRegisterCodeResponse>(
+      '/auth/identities/phone/send-code',
+      { method: 'POST', body: { phone } },
+    );
+  },
+
+  verifyBindPhone(phone: string, verificationCode: string) {
+    return apiRequest<{ bound: true; provider: 'phone' }>(
+      '/auth/identities/phone/verify',
+      { method: 'POST', body: { phone, verificationCode } },
+    );
+  },
+
   /** POST /auth/google/login - native Google Sign-In for existing accounts */
-  googleLogin(body: { idToken: string }) {
+  googleLogin(body: { idToken: string } & DeviceSessionMetadata) {
     return apiRequest<AuthTokensDto>('/auth/google/login', { method: 'POST', body, auth: false });
   },
 
   /** POST /auth/google/register - native Google Sign-In for new accounts */
-  googleRegister(body: { idToken: string; nickname?: string; city?: string }) {
+  googleRegister(
+    body: { idToken: string; nickname?: string; city?: string } & DeviceSessionMetadata,
+  ) {
     return apiRequest<AuthTokensDto>('/auth/google/register', { method: 'POST', body, auth: false });
   },
 
@@ -94,5 +169,42 @@ export const authApi = {
   /** POST /auth/change-password */
   changePassword(body: { currentPassword: string; newPassword: string }) {
     return apiRequest<void>('/auth/change-password', { method: 'POST', body });
+  },
+
+  identities() {
+    return apiRequest<AuthIdentityDto[]>('/auth/identities');
+  },
+
+  unbindIdentity(identityId: string) {
+    return apiRequest<void>(`/auth/identities/${encodeURIComponent(identityId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  sessions() {
+    return apiRequest<DeviceSessionDto[]>('/auth/sessions');
+  },
+
+  revokeSession(sessionId: string) {
+    return apiRequest<void>(`/auth/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  mergePhoneAccount(body: { phone: string; password: string }) {
+    return apiRequest<AuthTokensDto>('/auth/account-merge/phone', {
+      method: 'POST',
+      body,
+    });
+  },
+
+  mergeThirdPartyAccount(
+    provider: 'wechat' | 'alipay',
+    authorizationCode: string,
+  ) {
+    return apiRequest<{ merged: boolean; provider: 'wechat' | 'alipay' }>(
+      '/auth/account-merge/identity',
+      { method: 'POST', body: { provider, authorizationCode } },
+    );
   },
 };

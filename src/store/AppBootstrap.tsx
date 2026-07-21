@@ -159,6 +159,10 @@ export function AppBootstrap() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     return registerNotificationOpenHandler((payload) => {
+      if (payload.type === 'deepLink') {
+        router.push(payload.path as Href);
+        return;
+      }
       if (payload.type === 'order') {
         const filter = payload.filter ?? 'pendingShip';
         router.push(`/profile/sold?filter=${filter}` as Href);

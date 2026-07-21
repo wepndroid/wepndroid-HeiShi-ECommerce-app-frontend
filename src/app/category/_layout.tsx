@@ -1,4 +1,6 @@
-import { AuthRequiredStackLayout } from '../../routing/AuthRequiredStackLayout';
+import { Stack } from 'expo-router';
 
-/** Local tab and nested routes require sign-in. */
-export default AuthRequiredStackLayout;
+/** Product categories and their public listing pages are available to guests. */
+export default function CategoryStackLayout() {
+  return <Stack screenOptions={{ headerShown: false, animation: 'none' }} />;
+}

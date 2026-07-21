@@ -37,7 +37,13 @@ export function PublishServiceScreen() {
   const isEditMode = editListingId != null && Number.isFinite(editListingId);
   useAuthGuard();
   const { options, loading } = useFormOptions();
-  const { imageUrls, uploading, addPhotosFromLibrary, setImageUrls } = useListingPhotos(isLoggedIn, toast);
+  const {
+    imageUrls,
+    uploading,
+    uploadProgress,
+    addPhotosFromLibrary,
+    setImageUrls,
+  } = useListingPhotos(isLoggedIn, toast);
   const [serviceName, setServiceName] = useState('');
   const [serviceTypeKey, setServiceTypeKey] = useState('');
   const [price, setPrice] = useState('');
@@ -276,6 +282,7 @@ export function PublishServiceScreen() {
         onAdd={addPhotosFromLibrary}
         onRemove={(url) => setImageUrls((prev) => prev.filter((photo) => photo !== url))}
         uploading={uploading}
+        uploadProgress={uploadProgress}
       />
       <FormCard roundedFields>
         <FormSection

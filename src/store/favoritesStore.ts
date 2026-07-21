@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import i18n from '../i18n';
 import { resolveSellerUserId, setFavorite, setFollow } from '../services/userDataService';
+import { createPendingAction } from '../services/pendingActionService';
+import { screenPath } from '../routing/paths';
 import { isCurrentUserSeller } from '../utils/sellerAvatar';
 import { useAuthStore } from './authStore';
 import { useCatalogStore } from './catalogStore';
@@ -30,6 +32,9 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
   toggleFavoriteById: async (listingId) => {
     const user = useAuthStore.getState().user;
     if (!user) {
+      const returnPath = screenPath('detail', { productId: listingId });
+      useAuthStore.getState().setPendingAuthPath(returnPath);
+      void createPendingAction(returnPath, 'favorite_listing').catch(() => undefined);
       toast(i18n.t('toast.loginRequired'));
       nav('login');
       return;
@@ -83,6 +88,12 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     const { authReady, user } = useAuthStore.getState();
     if (!authReady) return;
     if (!user) {
+      const currentListingId = useCatalogStore.getState().currentItem.id;
+      const returnPath = currentListingId > 0
+        ? screenPath('detail', { productId: currentListingId })
+        : screenPath('profile');
+      useAuthStore.getState().setPendingAuthPath(returnPath);
+      void createPendingAction(returnPath, 'follow_seller').catch(() => undefined);
       toast(i18n.t('toast.loginRequired'));
       nav('login');
       return;

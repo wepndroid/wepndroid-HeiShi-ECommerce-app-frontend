@@ -246,13 +246,40 @@ export async function syncAppIconBadgeCount(count: number): Promise<void> {
 
 export type NotificationOpenPayload =
   | { type: 'chat'; conversationId: string }
-  | { type: 'order'; filter?: string; orderId?: number };
+  | { type: 'order'; filter?: string; orderId?: number }
+  | { type: 'deepLink'; path: string };
+
+/** Convert only application-owned links into router paths. */
+export function safeNotificationPath(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 1000) return null;
+  let path = value.trim();
+  if (path.startsWith('heymarket://')) {
+    path = path.slice('heymarket://'.length);
+  } else if (path.startsWith('/')) {
+    // Already an internal path.
+  } else {
+    return null;
+  }
+  path = `/${path.replace(/^\/+/, '')}`;
+  if (path.includes('\\') || /[\u0000-\u001f]/.test(path) || path.startsWith('//')) return null;
+
+  const listing = path.match(/^\/listing\/(\d+)(?:[/?#].*)?$/);
+  if (listing) return `/detail/${listing[1]}`;
+  if (/^\/order\/\d+(?:[/?#].*)?$/.test(path)) return '/profile/orders';
+  if (/^\/chat\/[A-Za-z0-9-]+(?:[/?#].*)?$/.test(path)) return path;
+  if (/^\/support(?:\/[A-Za-z0-9-]+)?(?:[/?#].*)?$/.test(path)) return '/support';
+  if (path === '/home') return '/';
+  if (path === '/settings/account-safety') return path;
+  return null;
+}
 
 let lastNotificationOpenId: string | null = null;
 let lastNotificationOpenAt = 0;
 
 function payloadFromResponse(response: NotificationResponse): NotificationOpenPayload | null {
   const data = response.notification.request.content.data;
+  const deepLinkPath = safeNotificationPath(data?.deepLink);
+  if (deepLinkPath) return { type: 'deepLink', path: deepLinkPath };
   if (data && data.type === 'order') {
     const filter = typeof data.filter === 'string' ? data.filter : 'pendingShip';
     const orderId = typeof data.orderId === 'number' ? data.orderId : undefined;

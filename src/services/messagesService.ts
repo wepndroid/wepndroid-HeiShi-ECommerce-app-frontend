@@ -192,6 +192,12 @@ export async function createPrivateOffer(
   return offer;
 }
 
+export async function getPrivateOffer(offerId: string): Promise<PrivateOfferDto> {
+  const offer = await messagesApi.getPrivateOffer(offerId);
+  notifyInboxRefresh();
+  return offer;
+}
+
 export async function acceptPrivateOffer(
   offerId: string,
 ): Promise<{ offer: PrivateOfferDto; orderId: number; idempotent: boolean }> {

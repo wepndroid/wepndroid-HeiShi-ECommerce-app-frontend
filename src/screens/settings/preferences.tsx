@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -63,6 +64,7 @@ export function NotificationSettingsScreen() {
   const toggleRolePreference = async (
     role: NotificationRoleContext,
     category: string,
+    channel: 'inAppEnabled' | 'pushEnabled' | 'smsEnabled',
   ) => {
     const current = preferenceFor(role, category);
     const key = `${role}:${category}`;
@@ -72,9 +74,18 @@ export function NotificationSettingsScreen() {
       const updated = await updateNotificationPreference({
         userRoleContext: role,
         category,
-        inAppEnabled: current?.inAppEnabled ?? true,
-        pushEnabled: !(current?.pushEnabled ?? true),
-        smsEnabled: current?.smsEnabled ?? false,
+        inAppEnabled:
+          channel === 'inAppEnabled'
+            ? !(current?.inAppEnabled ?? true)
+            : (current?.inAppEnabled ?? true),
+        pushEnabled:
+          channel === 'pushEnabled'
+            ? !(current?.pushEnabled ?? true)
+            : (current?.pushEnabled ?? true),
+        smsEnabled:
+          channel === 'smsEnabled'
+            ? !(current?.smsEnabled ?? false)
+            : (current?.smsEnabled ?? false),
       });
       setRolePreferences((rows) => [
         ...rows.filter(
@@ -139,10 +150,29 @@ export function NotificationSettingsScreen() {
                     </ListRowMain>
                   }
                   right={
-                    <Switch
-                      on={preference?.pushEnabled ?? true}
-                      onToggle={() => void toggleRolePreference(role, category)}
-                    />
+                    <View style={{ gap: 6 }}>
+                      {(['inAppEnabled', 'pushEnabled', 'smsEnabled'] as const).map((channel) => {
+                        const mandatoryInApp = channel === 'inAppEnabled' && preference?.mandatory;
+                        return (
+                          <View
+                            key={channel}
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}
+                          >
+                            <Text style={styles.rowSub}>
+                              {t(`screens.notificationSettings.channels.${channel}`)}
+                            </Text>
+                            <Switch
+                              on={preference?.[channel] ?? (channel !== 'smsEnabled')}
+                              onToggle={
+                                mandatoryInApp
+                                  ? undefined
+                                  : () => void toggleRolePreference(role, category, channel)
+                              }
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
                   }
                   border={index < categories.length - 1}
                 />

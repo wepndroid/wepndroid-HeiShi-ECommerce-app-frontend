@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +9,18 @@ import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { bindVerification, submitIdentityVerification } from '../../services/userService';
 import { uploadListingImage } from '../../services/listingsService';
 import { pickImagesFromLibrary } from '../../services/mediaPicker';
-import { changePasswordWithAuth } from '../../services/authService';
+import {
+  changePasswordWithAuth,
+  listAuthIdentities,
+  listDeviceSessions,
+  mergePhoneAccount,
+  mergeThirdPartyAccount,
+  revokeDeviceSession,
+  sendBindPhoneCode,
+  unbindAuthIdentity,
+  verifyBindPhone,
+} from '../../services/authService';
+import type { AuthIdentityDto, DeviceSessionDto } from '../../api/endpoints/auth';
 import { useVerificationStatus } from '../../hooks/useTrustProfile';
 import {
   Chevron,
@@ -47,6 +58,17 @@ export function AccountSafetyScreen() {
   const [businessRegUrl, setBusinessRegUrl] = useState('');
   const [uploadingIdSide, setUploadingIdSide] = useState<'front' | 'back' | 'business' | null>(null);
   const [submittingIdentity, setSubmittingIdentity] = useState(false);
+  const [identities, setIdentities] = useState<AuthIdentityDto[]>([]);
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSessionDto[]>([]);
+  const [loadingSecurity, setLoadingSecurity] = useState(false);
+  const [securityAction, setSecurityAction] = useState<string | null>(null);
+  const [showMergeForm, setShowMergeForm] = useState(false);
+  const [mergePhone, setMergePhone] = useState('');
+  const [mergePassword, setMergePassword] = useState('');
+  const [showPhoneBindForm, setShowPhoneBindForm] = useState(false);
+  const [bindPhone, setBindPhone] = useState('');
+  const [bindPhoneCode, setBindPhoneCode] = useState('');
+  const [bindPhoneCodeSent, setBindPhoneCodeSent] = useState(false);
 
   const identityPending = status?.submissionStatus === 'pending' && !status.identityVerified;
   const verificationComplete = !!status?.identityVerified && !!status?.businessVerified;
@@ -54,6 +76,143 @@ export function AccountSafetyScreen() {
   // fully verified — this also lets an identity-verified user add business docs.
   const canSubmitIdentity =
     isLoggedIn && status?.submissionStatus !== 'pending' && !verificationComplete;
+
+  const refreshSecurityData = useCallback(async () => {
+    if (!isLoggedIn || !authReady) return;
+    setLoadingSecurity(true);
+    try {
+      const [nextIdentities, nextSessions] = await Promise.all([
+        listAuthIdentities(),
+        listDeviceSessions(),
+      ]);
+      setIdentities(nextIdentities);
+      setDeviceSessions(nextSessions);
+    } catch {
+      toast(t('toast.settingsUpdateFailed'));
+    } finally {
+      setLoadingSecurity(false);
+    }
+  }, [authReady, isLoggedIn, t]);
+
+  useEffect(() => {
+    void refreshSecurityData();
+  }, [refreshSecurityData]);
+
+  const confirmUnbindIdentity = (identity: AuthIdentityDto) => {
+    Alert.alert(
+      t('screens.accountSafety.unbindTitle'),
+      t('screens.accountSafety.unbindBody', { provider: identity.provider }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('screens.accountSafety.remove'),
+          style: 'destructive',
+          onPress: () => {
+            setSecurityAction(identity.id);
+            void unbindAuthIdentity(identity.id)
+              .then(refreshSecurityData)
+              .catch((error) => {
+                const isLastMethod =
+                  error instanceof ApiError && error.code === 'LAST_LOGIN_METHOD';
+                toast(
+                  isLastMethod
+                    ? t('screens.accountSafety.lastLoginMethod')
+                    : t('toast.settingsUpdateFailed'),
+                );
+              })
+              .finally(() => setSecurityAction(null));
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmRevokeSession = (session: DeviceSessionDto) => {
+    Alert.alert(
+      t('screens.accountSafety.revokeSessionTitle'),
+      t('screens.accountSafety.revokeSessionBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('screens.accountSafety.revoke'),
+          style: 'destructive',
+          onPress: () => {
+            setSecurityAction(session.id);
+            void revokeDeviceSession(session.id)
+              .then(refreshSecurityData)
+              .catch(() => toast(t('toast.settingsUpdateFailed')))
+              .finally(() => setSecurityAction(null));
+          },
+        },
+      ],
+    );
+  };
+
+  const handleMergePhoneAccount = async () => {
+    if (securityAction || !mergePhone.trim() || !mergePassword) return;
+    setSecurityAction('merge');
+    try {
+      await mergePhoneAccount(mergePhone, mergePassword);
+      setMergePhone('');
+      setMergePassword('');
+      setShowMergeForm(false);
+      await refreshSecurityData();
+      toast(t('screens.accountSafety.mergeComplete'));
+    } catch (error) {
+      const requiresSupport =
+        error instanceof ApiError && error.code === 'MERGE_REQUIRES_SUPPORT';
+      toast(
+        requiresSupport
+          ? t('screens.accountSafety.mergeRequiresSupport')
+          : t('screens.accountSafety.mergeFailed'),
+      );
+    } finally {
+      setSecurityAction(null);
+    }
+  };
+
+  const handleSendBindPhoneCode = async () => {
+    if (securityAction || !bindPhone.trim()) return;
+    setSecurityAction('bind-phone-code');
+    try {
+      const result = await sendBindPhoneCode(bindPhone);
+      setBindPhoneCodeSent(true);
+      if (result.devCode) setBindPhoneCode(result.devCode);
+      toast(t('screens.accountSafety.phoneCodeSent'));
+    } catch {
+      toast(t('screens.accountSafety.phoneBindFailed'));
+    } finally {
+      setSecurityAction(null);
+    }
+  };
+
+  const handleVerifyBindPhone = async () => {
+    if (securityAction || !bindPhone.trim() || bindPhoneCode.trim().length !== 6) return;
+    setSecurityAction('bind-phone-verify');
+    try {
+      await verifyBindPhone(bindPhone, bindPhoneCode);
+      setBindPhone('');
+      setBindPhoneCode('');
+      setBindPhoneCodeSent(false);
+      setShowPhoneBindForm(false);
+      await Promise.all([refreshSecurityData(), Promise.resolve(refresh())]);
+      toast(t('screens.accountSafety.phoneBound'));
+    } catch (error) {
+      const mergeRequired =
+        error instanceof ApiError && error.code === 'ACCOUNT_MERGE_REQUIRED';
+      toast(
+        mergeRequired
+          ? t('screens.accountSafety.phoneMergeRequired')
+          : t('screens.accountSafety.phoneBindFailed'),
+      );
+      if (mergeRequired) {
+        setMergePhone(bindPhone);
+        setShowMergeForm(true);
+      }
+    } finally {
+      setSecurityAction(null);
+    }
+  };
 
   const handleUploadIdPhoto = async (side: 'front' | 'back' | 'business') => {
     if (!isLoggedIn || uploadingIdSide) return;
@@ -146,6 +305,10 @@ export function AccountSafetyScreen() {
       setShowIdentityForm(true);
       return;
     }
+    if (next === 'phone') {
+      setShowPhoneBindForm(true);
+      return;
+    }
     const title = t(`screens.accountSafety.bindConfirm.${next}`);
     Alert.alert(title, t('screens.accountSafety.bindConfirmBody'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -160,6 +323,45 @@ export function AccountSafetyScreen() {
             .catch((err) => {
               if (err instanceof Error && err.message === 'verification_use_submit') {
                 setShowIdentityForm(true);
+                return;
+              }
+              if (
+                err instanceof ApiError
+                && err.code === 'ACCOUNT_MERGE_REQUIRED'
+                && (next === 'wechat' || next === 'alipay')
+              ) {
+                Alert.alert(
+                  t('screens.accountSafety.mergeIdentityTitle'),
+                  t('screens.accountSafety.mergeIdentityBody', { provider: next }),
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                      text: t('screens.accountSafety.mergeConfirm'),
+                      onPress: () => {
+                        setSecurityAction(`merge-${next}`);
+                        void mergeThirdPartyAccount(next)
+                          .then(async () => {
+                            await Promise.all([
+                              refreshSecurityData(),
+                              Promise.resolve(refresh()),
+                            ]);
+                            toast(t('screens.accountSafety.mergeComplete'));
+                          })
+                          .catch((mergeError) => {
+                            const requiresSupport =
+                              mergeError instanceof ApiError
+                              && mergeError.code === 'MERGE_REQUIRES_SUPPORT';
+                            toast(
+                              requiresSupport
+                                ? t('screens.accountSafety.mergeRequiresSupport')
+                                : t('screens.accountSafety.mergeFailed'),
+                            );
+                          })
+                          .finally(() => setSecurityAction(null));
+                      },
+                    },
+                  ],
+                );
                 return;
               }
               toast(t('toast.settingsUpdateFailed'));
@@ -265,6 +467,39 @@ export function AccountSafetyScreen() {
           border={false}
         />
       </ListCard>
+      {showPhoneBindForm ? (
+        <FormCard>
+          <SettingSectionTitle title={t('screens.accountSafety.bindPhoneTitle')} />
+          <FieldInputStacked
+            label={t('screens.accountSafety.bindPhoneNumber')}
+            value={bindPhone}
+            onChangeText={setBindPhone}
+            keyboardType="phone-pad"
+          />
+          {bindPhoneCodeSent ? (
+            <FieldInputStacked
+              label={t('screens.accountSafety.bindPhoneCode')}
+              value={bindPhoneCode}
+              onChangeText={setBindPhoneCode}
+              keyboardType="number-pad"
+            />
+          ) : null}
+          <PillButton
+            label={
+              bindPhoneCodeSent
+                ? t('screens.accountSafety.verifyPhone')
+                : t('screens.accountSafety.sendPhoneCode')
+            }
+            variant="brand"
+            full
+            onPress={() =>
+              void (bindPhoneCodeSent
+                ? handleVerifyBindPhone()
+                : handleSendBindPhoneCode())
+            }
+          />
+        </FormCard>
+      ) : null}
       {identityPending ? (
         <TableNote>{t('screens.accountSafety.identityPendingHint')}</TableNote>
       ) : null}
@@ -364,6 +599,93 @@ export function AccountSafetyScreen() {
             variant="brand"
             full
             onPress={() => void handleChangePassword()}
+          />
+        </FormCard>
+      ) : null}
+      <SettingSectionTitle title={t('screens.accountSafety.loginMethodsTitle')} />
+      <ListCard>
+        {identities.map((identity, index) => (
+          <ListRow
+            key={identity.id}
+            left={
+              <ListRowMain>
+                <Text style={styles.rowTitle}>
+                  {t(`screens.accountSafety.providers.${identity.provider}`)}
+                </Text>
+                <Text style={styles.rowSub}>
+                  {identity.verified
+                    ? t('screens.accountSafety.verifiedLogin')
+                    : t('screens.accountSafety.unverifiedLogin')}
+                </Text>
+              </ListRowMain>
+            }
+            right={
+              identities.length > 1 ? (
+                <PillButton
+                  label={t('screens.accountSafety.remove')}
+                  variant="light"
+                  onPress={() => confirmUnbindIdentity(identity)}
+                />
+              ) : null
+            }
+            border={index < identities.length - 1}
+          />
+        ))}
+      </ListCard>
+      <SettingSectionTitle title={t('screens.accountSafety.sessionsTitle')} />
+      <ListCard>
+        {deviceSessions.map((session, index) => (
+          <ListRow
+            key={session.id}
+            left={
+              <ListRowMain>
+                <Text style={styles.rowTitle}>
+                  {session.deviceName || session.platform || t('screens.accountSafety.unknownDevice')}
+                </Text>
+                <Text style={styles.rowSub}>
+                  {new Date(session.lastSeenAt).toLocaleString()}
+                  {session.suspicious ? ` · ${t('screens.accountSafety.suspicious')}` : ''}
+                </Text>
+              </ListRowMain>
+            }
+            right={
+              <PillButton
+                label={t('screens.accountSafety.revoke')}
+                variant="light"
+                onPress={() => confirmRevokeSession(session)}
+              />
+            }
+            border={index < deviceSessions.length - 1}
+          />
+        ))}
+      </ListCard>
+      {loadingSecurity ? <ActivityIndicator style={{ marginVertical: 8 }} /> : null}
+      <PillButton
+        label={t('screens.accountSafety.mergeAccount')}
+        variant="light"
+        full
+        onPress={() => setShowMergeForm((open) => !open)}
+      />
+      {showMergeForm ? (
+        <FormCard>
+          <TableNote>{t('screens.accountSafety.mergeHint')}</TableNote>
+          <FieldInputStacked
+            label={t('screens.accountSafety.mergePhone')}
+            value={mergePhone}
+            onChangeText={setMergePhone}
+            keyboardType="phone-pad"
+          />
+          <FieldInputStacked
+            label={t('screens.accountSafety.mergePassword')}
+            value={mergePassword}
+            onChangeText={setMergePassword}
+            secureTextEntry
+          />
+          <PillButton
+            label={t('screens.accountSafety.mergeConfirm')}
+            variant="brand"
+            full
+            onPress={() => void handleMergePhoneAccount()}
           />
         </FormCard>
       ) : null}

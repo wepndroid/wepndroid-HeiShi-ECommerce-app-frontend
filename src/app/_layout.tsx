@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Alert, AppState, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, StyleSheet, View } from 'react-native';
+import * as Application from 'expo-application';
 import { BlurTargetView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,9 +25,15 @@ import {
   recordShareEvent,
   resolveSharedListing,
 } from '../services/sharingService';
-import { ensureAnonymousSession, linkAnonymousSessionAfterLogin } from '../services/anonymousSessionService';
+import {
+  ensureAnonymousSession,
+  hasPromptedForAnonymousAnalyticsConsent,
+  linkAnonymousSessionAfterLogin,
+  setAnonymousAnalyticsConsent,
+} from '../services/anonymousSessionService';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme';
+import i18n from '../i18n';
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -52,54 +59,93 @@ export default function RootLayout() {
     Inter_700Bold,
   });
   const [splashDone, setSplashDone] = React.useState(false);
+  const [initialLinkCheckDone, setInitialLinkCheckDone] = React.useState(false);
   const user = useAuthStore((state) => state.user);
   const authReady = useAuthStore((state) => state.authReady);
   const clipboardCheckInProgress = useRef(false);
+  const preferredNavigationHandled = useRef(false);
+  const consentPromptInProgress = useRef(false);
 
   useEffect(() => {
     const handleUrl = (url: string) => {
       if (url.includes('auth/callback')) {
         void completeOAuthFromUrl(url);
-        return;
+        return true;
       }
       const shareToken = url.match(/[?&]share=([^&#]+)/)?.[1];
       const listingId = url.match(/(?:listing|detail)\/(\d+)/)?.[1];
       if (listingId) {
-        if (shareToken) void recordShareEvent(decodeURIComponent(shareToken), 'open');
+        if (shareToken) {
+          const token = decodeURIComponent(shareToken);
+          void resolveSharedListing(token)
+            .then((shared) => {
+              void recordShareEvent(token, 'open').catch(() => undefined);
+              router.push(`/detail/${shared.listingId}`);
+            })
+            .catch(() => {
+              router.replace('/shared-unavailable' as Href);
+            });
+          return true;
+        }
         router.push(`/detail/${listingId}`);
-        return;
+        return true;
       }
       const supportId = url.match(/support\/([A-Za-z0-9-]+)/)?.[1];
       if (supportId) {
         router.push('/support' as Href);
-        return;
+        return true;
       }
-      const tokenFromPath = url.match(/\/shares\/([^/?#]+)/)?.[1];
+      const tokenFromPath = url.match(/\/(?:shares|s)\/([^/?#]+)/)?.[1];
       if (tokenFromPath) {
         const token = decodeURIComponent(tokenFromPath);
         void resolveSharedListing(token)
           .then((shared) => {
-            void recordShareEvent(token, 'open');
+            void recordShareEvent(token, 'open').catch(() => undefined);
             router.push(`/detail/${shared.listingId}`);
           })
           .catch(() => {
-            Alert.alert(
-              'Listing unavailable',
-              'This shared listing has expired or is no longer available.',
-            );
+            router.replace('/shared-unavailable' as Href);
           });
+        return true;
+      }
+      return false;
+    };
+    const inspectInitialNavigation = async () => {
+      const initialUrl = await Linking.getInitialURL().catch(() => null);
+      if (initialUrl && handleUrl(initialUrl)) {
+        preferredNavigationHandled.current = true;
+        return;
+      }
+      if (Platform.OS !== 'android') return;
+      const referrer = await Application.getInstallReferrerAsync().catch(() => '');
+      const token = extractShareToken(referrer);
+      if (!token) return;
+      const lastToken = await AsyncStorage.getItem('heymarket:lastInstallReferrerShareToken');
+      if (lastToken === token) return;
+      try {
+        const shared = await resolveSharedListing(token);
+        await AsyncStorage.setItem('heymarket:lastInstallReferrerShareToken', token);
+        // Attribution is best-effort and must never make a valid shared
+        // product look unavailable when analytics delivery is interrupted.
+        await recordShareEvent(token, 'open').catch(() => undefined);
+        preferredNavigationHandled.current = true;
+        router.replace(`/detail/${shared.listingId}`);
+      } catch {
+        preferredNavigationHandled.current = true;
+        router.replace('/shared-unavailable' as Href);
       }
     };
-    void Linking.getInitialURL().then((url) => {
-      if (url) handleUrl(url);
+    void inspectInitialNavigation().finally(() => setInitialLinkCheckDone(true));
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (handleUrl(url)) preferredNavigationHandled.current = true;
     });
-    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     return () => sub.remove();
   }, []);
 
   useEffect(() => {
     const inspectClipboardShare = async () => {
       if (clipboardCheckInProgress.current) return;
+      if (!initialLinkCheckDone || preferredNavigationHandled.current) return;
       clipboardCheckInProgress.current = true;
       try {
         const text = await Clipboard.getStringAsync();
@@ -117,7 +163,7 @@ export default function RootLayout() {
               text: 'Open',
               onPress: () => {
                 void AsyncStorage.setItem('heymarket:lastClipboardShareToken', token);
-                void recordShareEvent(token, 'open');
+                void recordShareEvent(token, 'open').catch(() => undefined);
                 router.push(`/detail/${shared.listingId}`);
               },
             },
@@ -126,21 +172,25 @@ export default function RootLayout() {
       } catch {
         const text = await Clipboard.getStringAsync().catch(() => '');
         if (extractShareToken(text)) {
-          Alert.alert(
-            'Listing unavailable',
-            'This shared listing has expired or is no longer available.',
-          );
+          router.replace('/shared-unavailable' as Href);
         }
       } finally {
         clipboardCheckInProgress.current = false;
       }
     };
-    if (splashDone) void inspectClipboardShare();
+    if (splashDone && initialLinkCheckDone) void inspectClipboardShare();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && splashDone) void inspectClipboardShare();
+      if (state !== 'active') {
+        // A verified/deferred deep link only outranks clipboard recognition for
+        // the current app entry. A later foreground entry must be eligible to
+        // recognize a newly copied share command.
+        preferredNavigationHandled.current = false;
+        return;
+      }
+      if (splashDone) void inspectClipboardShare();
     });
     return () => subscription.remove();
-  }, [splashDone]);
+  }, [initialLinkCheckDone, splashDone]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -152,6 +202,44 @@ export default function RootLayout() {
       void ensureAnonymousSession().catch(() => undefined);
     }
   }, [authReady, user]);
+
+  useEffect(() => {
+    if (!authReady || user || !splashDone || consentPromptInProgress.current) return;
+    const requestConsent = async () => {
+      if (await hasPromptedForAnonymousAnalyticsConsent()) return;
+      consentPromptInProgress.current = true;
+      const zh = i18n.language.toLowerCase().startsWith('zh');
+      Alert.alert(
+        zh ? '帮助改善商品推荐' : 'Help improve recommendations',
+        zh
+          ? '是否允许我们使用游客浏览和分享事件来改善推荐？我们不会将这些数据关联到您的账户，除非您同意并后续登录。'
+          : 'Allow guest browsing and sharing events to improve recommendations? We will not associate this data with your account unless you consent and later sign in.',
+        [
+          {
+            text: zh ? '不允许' : "Don't allow",
+            style: 'cancel',
+            onPress: () => {
+              void setAnonymousAnalyticsConsent('denied').finally(() => {
+                consentPromptInProgress.current = false;
+              });
+            },
+          },
+          {
+            text: zh ? '允许' : 'Allow',
+            onPress: () => {
+              void setAnonymousAnalyticsConsent('granted').finally(() => {
+                consentPromptInProgress.current = false;
+              });
+            },
+          },
+        ],
+        { cancelable: false },
+      );
+    };
+    void requestConsent().catch(() => {
+      consentPromptInProgress.current = false;
+    });
+  }, [authReady, splashDone, user]);
 
   if (!fontsLoaded) {
     return null;

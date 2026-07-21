@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../store/authStore';
 import { useCatalogStore } from '../../store/catalogStore';
@@ -7,7 +7,8 @@ import { useChatStore } from '../../store/chatStore';
 import { useFavoritesStore } from '../../store/favoritesStore';
 import { useRegionStore } from '../../store/regionStore';
 import { useUiStore } from '../../store/uiStore';
-import { requireAuthNav, openOrderCheckout } from '../../store/navigation';
+import { openOrderCheckout } from '../../store/navigation';
+import { createPendingAction } from '../../services/pendingActionService';
 import { Text } from '../../components/typography';
 import { useTranslation } from 'react-i18next';
 import { resolveListingDetail } from '../../services/catalogService';
@@ -27,6 +28,7 @@ import {
 } from '../../components/FormUI';
 import { ProductGrid } from '../../components/ProductUI';
 import { DetailImageGallery } from '../../components/DetailImageGallery';
+import { ListingVideoPlayer } from '../../components/ListingVideo';
 import { SellerAuthorRow } from '../../components/SellerAvatar';
 import { resolveProductImages } from '../../utils/productImages';
 import {
@@ -192,15 +194,30 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
 
   const handleReportListing = () => {
     if (!isLoggedIn) {
-      requireAuthNav('login');
+      const returnPath = `/detail/${currentItem.id}`;
+      useAuthStore.getState().setPendingAuthPath(returnPath);
+      void createPendingAction(returnPath, 'report_listing').catch(() => undefined);
+      router.push('/login');
       return;
     }
     setShowReportSheet(true);
   };
 
   const handleShareListing = () => {
-    void shareListing(currentItem.id, item.title)
-      .catch(() => toast(t('toast.settingsUpdateFailed')));
+    const share = (channel: 'wechat' | 'system_share' | 'clipboard') => {
+      void shareListing(currentItem.id, item.title, channel)
+        .catch(() => toast(t('toast.settingsUpdateFailed')));
+    };
+    Alert.alert(
+      t('common.share'),
+      undefined,
+      [
+        { text: 'WeChat', onPress: () => share('wechat') },
+        { text: 'Copy link', onPress: () => share('clipboard') },
+        { text: 'More', onPress: () => share('system_share') },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
   };
 
   const handleSubmitReport = (reason: ReportReason, details: string) => {
@@ -259,6 +276,11 @@ export function DetailScreen({ orderContext = false }: { orderContext?: boolean 
           locationLabel={currentItem.loc}
         />
       )}
+      {currentItem.videoUrls?.[0] ? (
+        <View style={{ marginHorizontal: 14, marginTop: 12, overflow: 'hidden', borderRadius: 14 }}>
+          <ListingVideoPlayer url={currentItem.videoUrls[0]} />
+        </View>
+      ) : null}
       {currentItem.reviewStatus === 'rejected' ? (
         <View style={styles.rejectionNotice}>
           <Text style={styles.rejectionNoticeTitle}>{t('common.rejected')}</Text>

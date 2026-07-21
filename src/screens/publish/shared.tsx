@@ -421,6 +421,31 @@ export const styles = StyleSheet.create({
     fontWeight: fonts.weights.bold,
     color: colors.brand2,
   },
+  privateOfferDetails: {
+    gap: 5,
+    paddingVertical: 4,
+  },
+  privateOfferProduct: {
+    marginBottom: 2,
+    fontSize: 13,
+    fontWeight: fonts.weights.bold,
+    color: colors.text,
+  },
+  privateOfferDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  privateOfferDetailLabel: {
+    flexShrink: 1,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  privateOfferDetailValue: {
+    fontSize: 12,
+    fontWeight: fonts.weights.semibold,
+    color: colors.text,
+  },
   privateOfferStatus: {
     fontSize: 12,
     color: colors.muted,

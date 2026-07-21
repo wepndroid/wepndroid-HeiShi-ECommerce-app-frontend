@@ -82,7 +82,7 @@ async function main() {
 
   const verificationCode = send.devCode;
   if (!verificationCode) {
-    console.log('\nAborted â€” backend did not expose a dev OTP code.');
+    console.log('\nAborted - backend did not expose a dev OTP code.');
     process.exit(1);
   }
 

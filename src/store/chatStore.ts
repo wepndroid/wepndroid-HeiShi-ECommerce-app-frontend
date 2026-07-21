@@ -4,6 +4,7 @@ import i18n from '../i18n';
 import { ApiError } from '../api/client';
 import { screenPath } from '../routing/paths';
 import { listConversations, openConversation } from '../services/messagesService';
+import { createPendingAction } from '../services/pendingActionService';
 import {
   buildChatListingFromId,
   chatListingFromConversation,
@@ -93,6 +94,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { authReady, user } = useAuthStore.getState();
     if (!authReady) return;
     if (!user) {
+      const returnPath = params.listingId
+        ? screenPath('detail', { productId: params.listingId })
+        : screenPath('messages');
+      useAuthStore.getState().setPendingAuthPath(returnPath);
+      void createPendingAction(returnPath, 'send_message').catch(() => undefined);
       toast(i18n.t('toast.loginRequired'));
       nav('login');
       return;

@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { listingsApi } from '../api';
-import { ApiError, getAuthRequestHeaders, isNetworkError } from '../api/client';
+import { ApiError, apiRequest, getAuthRequestHeaders, isNetworkError } from '../api/client';
 import { resolveApiBaseUrl } from '../api/config';
 import {
   mapDetailDtoToProduct,
@@ -38,6 +39,12 @@ function inferUploadMimeType(fileName: string, mimeType?: string): string {
       return 'image/webp';
     case 'gif':
       return 'image/gif';
+    case 'mp4':
+      return 'video/mp4';
+    case 'mov':
+      return 'video/quicktime';
+    case 'webm':
+      return 'video/webm';
     default:
       return 'image/jpeg';
   }
@@ -156,6 +163,357 @@ async function uploadImageToServer(
   }
 }
 
+type MediaUploadSessionResponse = {
+  id: string;
+  status: string;
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+  processingError?: string | null;
+  originalUrl?: string | null;
+  variants?: Record<string, string>;
+  uploadSession: {
+    id: string;
+    status: string;
+    chunkUrl: string;
+    finalizeUrl: string;
+    bytesUploaded: number;
+    totalBytes: number;
+  };
+  directUpload?: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    publicUrl: string;
+  };
+};
+
+const MEDIA_READY_STATES = new Set(['READY', 'DELETED']);
+const MEDIA_FAILED_STATES = new Set([
+  'FAILED',
+  'UPLOAD_FAILED',
+  'PROCESSING_FAILED',
+  'MODERATION_FAILED',
+]);
+
+async function waitForMediaProcessing(
+  initial: MediaUploadSessionResponse,
+  allowRetry = true,
+): Promise<MediaUploadSessionResponse> {
+  let current = initial;
+  const deadline = Date.now() + 5 * 60_000;
+  while (!MEDIA_READY_STATES.has(current.status)) {
+    if (current.status === 'REJECTED') {
+      throw new ApiError(
+        current.processingError ?? 'Media was rejected during moderation',
+        422,
+        'MEDIA_REJECTED',
+      );
+    }
+    if (MEDIA_FAILED_STATES.has(current.status)) {
+      if (!allowRetry) {
+        throw new ApiError(
+          current.processingError ?? 'Media processing failed',
+          422,
+          'MEDIA_PROCESSING_FAILED',
+        );
+      }
+      current = await apiRequest<MediaUploadSessionResponse>(
+        `/media/assets/${encodeURIComponent(current.id)}/retry`,
+        { method: 'POST', timeoutMs: 30_000 },
+      );
+      allowRetry = false;
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new ApiError(
+        'Media processing is taking longer than expected',
+        408,
+        'MEDIA_PROCESSING_TIMEOUT',
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    current = await apiRequest<MediaUploadSessionResponse>(
+      `/media/assets/${encodeURIComponent(current.id)}`,
+      { timeoutMs: 30_000 },
+    );
+  }
+  if (current.status === 'DELETED' && current.processingError?.startsWith('DUPLICATE_OF:')) {
+    const duplicateId = current.processingError.slice('DUPLICATE_OF:'.length);
+    const duplicate = await apiRequest<MediaUploadSessionResponse>(
+      `/media/assets/${encodeURIComponent(duplicateId)}`,
+      { timeoutMs: 30_000 },
+    );
+    // Historical duplicates may predate automatic moderation approval. Apply
+    // the same readiness/moderation gate instead of bypassing it by returning
+    // the duplicate response directly.
+    return waitForMediaProcessing(duplicate, false);
+  }
+  if (current.moderationStatus !== 'approved') {
+    throw new ApiError(
+      current.processingError ?? 'Media moderation is still pending',
+      409,
+      'MEDIA_MODERATION_PENDING',
+    );
+  }
+  return current;
+}
+
+async function readUploadBlob(uri: string): Promise<Blob> {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  if (!blob.size) {
+    throw new ApiError('Selected image is empty', 400, 'EMPTY_MEDIA');
+  }
+  return blob;
+}
+
+async function readUploadResponseError(response: Response): Promise<ApiError> {
+  const text = await response.text();
+  let message = `Upload failed (${response.status})`;
+  let code: string | undefined;
+  let details: unknown;
+  try {
+    const payload = JSON.parse(text) as {
+      message?: string;
+      code?: string;
+      details?: unknown;
+      detail?: { message?: string; code?: string; details?: unknown };
+    };
+    message = payload.message ?? payload.detail?.message ?? message;
+    code = payload.code ?? payload.detail?.code;
+    details = payload.details ?? payload.detail?.details;
+  } catch {
+    // Keep the HTTP-derived error when the storage provider returns plain text.
+  }
+  return new ApiError(message, response.status, code, details);
+}
+
+async function throwUploadResponse(response: Response): Promise<never> {
+  throw await readUploadResponseError(response);
+}
+
+async function uploadDirectAsset(
+  direct: NonNullable<MediaUploadSessionResponse['directUpload']>,
+  blob: Blob,
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      if (onProgress && typeof XMLHttpRequest !== 'undefined') {
+        await new Promise<void>((resolve, reject) => {
+          const request = new XMLHttpRequest();
+          request.open(direct.method || 'PUT', direct.url);
+          for (const [key, value] of Object.entries(direct.headers ?? {})) {
+            request.setRequestHeader(key, value);
+          }
+          request.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) {
+              onProgress(Math.min(0.99, event.loaded / event.total));
+            }
+          };
+          request.onerror = () => reject(new ApiError('Media upload failed', 0, 'NETWORK_ERROR'));
+          request.onload = () => {
+            if (request.status >= 200 && request.status < 300) {
+              onProgress(0.99);
+              resolve();
+            } else {
+              reject(new ApiError(`Upload failed (${request.status})`, request.status));
+            }
+          };
+          request.send(blob);
+        });
+      } else {
+        const response = await fetch(direct.url, {
+          method: direct.method || 'PUT',
+          headers: direct.headers,
+          body: blob,
+        });
+        if (!response.ok) await throwUploadResponse(response);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (
+        error instanceof ApiError
+        && error.status >= 400
+        && error.status < 500
+        && error.status !== 408
+        && error.status !== 429
+      ) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new ApiError('Media upload failed', 0, 'NETWORK_ERROR');
+}
+
+async function uploadResumableAsset(
+  session: MediaUploadSessionResponse['uploadSession'],
+  blob: Blob,
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  const authHeaders = await assertUploadAuthHeaders();
+  const chunkSize = 4 * 1024 * 1024;
+  let offset = Math.max(0, Math.min(session.bytesUploaded ?? 0, blob.size));
+  onProgress?.(Math.min(0.99, offset / blob.size));
+  while (offset < blob.size) {
+    const chunk = blob.slice(offset, Math.min(offset + chunkSize, blob.size));
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        response = await fetch(
+          `${resolveApiBaseUrl()}${session.chunkUrl.replace(/^\/v1/, '')}?offset=${offset}`,
+          {
+            method: 'PUT',
+            headers: {
+              ...authHeaders,
+              'Content-Type': 'application/octet-stream',
+            },
+            body: chunk,
+          },
+        );
+        if (response.ok || response.status < 500) break;
+      } catch {
+        if (attempt === 2) {
+          throw new ApiError('Media chunk upload failed', 0, 'NETWORK_ERROR');
+        }
+      }
+    }
+    if (!response?.ok) {
+      if (response) {
+        const error = await readUploadResponseError(response);
+        const expectedOffset =
+          error.details
+          && typeof error.details === 'object'
+          && 'expectedOffset' in error.details
+            ? Number((error.details as { expectedOffset?: unknown }).expectedOffset)
+            : Number.NaN;
+        if (
+          response.status === 409
+          && error.code === 'UPLOAD_OFFSET_MISMATCH'
+          && Number.isInteger(expectedOffset)
+          && expectedOffset >= 0
+          && expectedOffset <= blob.size
+          && expectedOffset !== offset
+        ) {
+          offset = expectedOffset;
+          onProgress?.(Math.min(0.99, offset / blob.size));
+          continue;
+        }
+        throw error;
+      }
+      throw new ApiError('Media chunk upload failed', 0, 'NETWORK_ERROR');
+    }
+    offset += chunk.size;
+    onProgress?.(Math.min(0.99, offset / blob.size));
+  }
+}
+
+async function uploadListingAsset(
+  localUri: string,
+  mimeType = 'image/jpeg',
+  fileName = 'photo.jpg',
+  onProgress?: (progress: number) => void,
+): Promise<string> {
+  const prepared = await prepareMediaForUpload(localUri, fileName);
+  const normalizedMime = inferUploadMimeType(prepared.fileName, mimeType);
+  const blob = await readUploadBlob(prepared.uri);
+  const mediaType = normalizedMime.startsWith('video/') ? 'video' : 'image';
+  const resumeKey = [
+    'heymarket:media-upload',
+    mediaType,
+    blob.size,
+    encodeURIComponent(prepared.fileName),
+    encodeURIComponent(prepared.uri.slice(-160)),
+  ].join(':');
+  let created: MediaUploadSessionResponse | null = null;
+  if (mediaType === 'video') {
+    const previousSessionId = await AsyncStorage.getItem(resumeKey);
+    if (previousSessionId) {
+      try {
+        const resumable = await apiRequest<MediaUploadSessionResponse>(
+          `/media/upload-sessions/${encodeURIComponent(previousSessionId)}`,
+        );
+        if (
+          resumable.uploadSession.totalBytes === blob.size
+          && ['PENDING_UPLOAD', 'UPLOADING', 'UPLOADED'].includes(
+            resumable.uploadSession.status,
+          )
+        ) {
+          created = resumable;
+        } else {
+          await AsyncStorage.removeItem(resumeKey);
+        }
+      } catch {
+        // An expired or inaccessible server session cannot be resumed.
+        await AsyncStorage.removeItem(resumeKey);
+      }
+    }
+  }
+  if (!created) {
+    created = await apiRequest<MediaUploadSessionResponse>('/media/upload-sessions', {
+      method: 'POST',
+      body: {
+        mediaType,
+        contentType: normalizedMime,
+        filename: prepared.fileName,
+        fileSize: blob.size,
+        // Prefer object-storage direct upload for a fresh video. If a previous
+        // resumable session exists, it is restored above; local storage also
+        // naturally falls back to the offset-checked chunk endpoint.
+        resumablePreferred: mediaType === 'video',
+      },
+      timeoutMs: 30_000,
+    });
+    if (mediaType === 'video') {
+      await AsyncStorage.setItem(resumeKey, created.uploadSession.id);
+    }
+  }
+  let completed: MediaUploadSessionResponse;
+  if (created.directUpload) {
+    try {
+      await uploadDirectAsset(created.directUpload, blob, onProgress);
+      completed = await apiRequest<MediaUploadSessionResponse>(
+        `/media/upload-sessions/${encodeURIComponent(created.uploadSession.id)}/complete`,
+        {
+          method: 'POST',
+          body: { originalUrl: created.directUpload.publicUrl },
+          timeoutMs: 30_000,
+        },
+      );
+    } catch (directUploadError) {
+      if (mediaType !== 'video') throw directUploadError;
+      // A failed object-storage upload has no confirmed partial offset. Switch
+      // the same durable session to the offset-checked multipart endpoint; any
+      // later interruption resumes from the server-confirmed byte count.
+      await AsyncStorage.setItem(resumeKey, created.uploadSession.id);
+      await uploadResumableAsset(created.uploadSession, blob, onProgress);
+      completed = await apiRequest<MediaUploadSessionResponse>(
+        `/media/upload-sessions/${encodeURIComponent(created.uploadSession.id)}/finalize`,
+        { method: 'POST', timeoutMs: 30_000 },
+      );
+    }
+  } else {
+    await uploadResumableAsset(created.uploadSession, blob, onProgress);
+    completed = await apiRequest<MediaUploadSessionResponse>(
+      `/media/upload-sessions/${encodeURIComponent(created.uploadSession.id)}/finalize`,
+      { method: 'POST', timeoutMs: 30_000 },
+    );
+  }
+  completed = await waitForMediaProcessing(completed);
+  const url = completed.variants?.preview ?? completed.originalUrl;
+  if (!url) {
+    throw new ApiError('Media processing did not return a listing URL', 500, 'UPLOAD_INVALID_RESPONSE');
+  }
+  if (mediaType === 'video') {
+    await AsyncStorage.removeItem(resumeKey);
+  }
+  onProgress?.(1);
+  return assertPersistedUploadUrl(url);
+}
+
 /** Upload profile avatar — must succeed on the server; never returns a local file URI. */
 export async function uploadAvatarImage(
   localUri: string,
@@ -172,21 +530,29 @@ export async function uploadListingImage(
   isLoggedIn: boolean,
   mimeType = 'image/jpeg',
   fileName = 'photo.jpg',
+  onProgress?: (progress: number) => void,
 ): Promise<string> {
   if (!isLoggedIn) throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
   const headers = await getAuthRequestHeaders();
   if (!headers.Authorization) {
-    // Mock/offline demo session has no bearer token — keep the picked local URI.
-    if (API_USE_MOCK_FALLBACK) return localUri;
     throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
   }
-  try {
-    return await uploadImageToServer(localUri, mimeType, fileName);
-  } catch (err) {
-    // Backend unreachable in mock dev — compose the listing with the local URI.
-    if (API_USE_MOCK_FALLBACK && isNetworkError(err)) return localUri;
-    throw err;
+  return uploadListingAsset(localUri, mimeType, fileName, onProgress);
+}
+
+export async function uploadListingVideo(
+  localUri: string,
+  isLoggedIn: boolean,
+  mimeType = 'video/mp4',
+  fileName = 'video.mp4',
+  onProgress?: (progress: number) => void,
+): Promise<string> {
+  if (!isLoggedIn) throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
+  const headers = await getAuthRequestHeaders();
+  if (!headers.Authorization) {
+    throw new Error('LISTING_UPLOAD_REQUIRES_AUTH');
   }
+  return uploadListingAsset(localUri, mimeType, fileName, onProgress);
 }
 
 function assertPersistedListingImages(imageUrls: string[]): void {

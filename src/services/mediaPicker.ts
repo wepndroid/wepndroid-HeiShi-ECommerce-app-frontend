@@ -6,6 +6,7 @@ export type PickedMedia = {
   uri: string;
   mimeType?: string;
   fileName?: string;
+  type?: 'image' | 'video';
 };
 
 export const MAX_LISTING_PHOTOS = 9;
@@ -62,7 +63,29 @@ export async function pickImagesFromLibrary(options: {
     uri: asset.uri,
     mimeType: asset.mimeType ?? undefined,
     fileName: asset.fileName ?? undefined,
+    type: 'image' as const,
   }));
+}
+
+export async function pickVideoFromLibrary(): Promise<PickedMedia | undefined> {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    await ensureLibraryPermission();
+  }
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['videos'],
+    allowsMultipleSelection: false,
+    quality: 1,
+    videoMaxDuration: 600,
+    ...(Platform.OS === 'android' ? { legacy: true } : {}),
+  });
+  const asset = result.canceled ? undefined : result.assets?.[0];
+  if (!asset) return undefined;
+  return {
+    uri: asset.uri,
+    mimeType: asset.mimeType ?? undefined,
+    fileName: asset.fileName ?? undefined,
+    type: 'video',
+  };
 }
 
 /** Android gallery returns content:// URIs that RN fetch FormData cannot read — copy to cache first. */
@@ -76,7 +99,7 @@ export async function prepareMediaForUpload(
   uri: string,
   fileName = 'photo.jpg',
 ): Promise<{ uri: string; fileName: string }> {
-  const safeName = fileName?.match(/\.(jpe?g|png|webp|gif)$/i)
+  const safeName = fileName?.match(/\.(jpe?g|png|webp|gif|mp4|mov|webm)$/i)
     ? fileName
     : `${(fileName ?? 'photo').replace(/\.\w+$/, '') || 'photo'}.jpg`;
 

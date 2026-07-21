@@ -40,7 +40,7 @@ function OAuthButton({
   disabled,
   onPress,
 }: {
-  provider: 'google' | 'apple' | 'wechat';
+  provider: 'google' | 'apple' | 'wechat' | 'alipay';
   label: string;
   disabled?: boolean;
   onPress: () => void;
@@ -53,7 +53,11 @@ function OAuthButton({
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Image source={OAUTH_LOGOS[provider]} style={styles.oauthButtonLogo} resizeMode="contain" />
+      {provider === 'alipay' ? (
+        <AppIcon name="alipay" size={24} color="#1677FF" />
+      ) : (
+        <Image source={OAUTH_LOGOS[provider]} style={styles.oauthButtonLogo} resizeMode="contain" />
+      )}
     </Pressable>
   );
 }
@@ -117,7 +121,7 @@ export function LoginScreen() {
     return () => clearTimeout(timer);
   }, [resendAfter]);
 
-  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat') => {
+  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat' | 'alipay') => {
     if (oauthSubmitting) return;
     setOauthSubmitting(true);
     const result = await loginWithOAuth(provider);
@@ -273,6 +277,12 @@ export function LoginScreen() {
           disabled={oauthSubmitting}
           onPress={() => void handleOAuth('wechat')}
         />
+        <OAuthButton
+          provider="alipay"
+          label={t('payments.alipay')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('alipay')}
+        />
       </View>
       <Pressable style={styles.linkRow} onPress={() => nav('register')}>
         <Text style={styles.linkText}>{t('screens.login.toRegister')}</Text>
@@ -302,7 +312,7 @@ export function RegisterScreen() {
   const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const pickedAvatarRef = useRef<PickedMedia | null>(null);
 
-  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat') => {
+  const handleOAuth = async (provider: 'google' | 'apple' | 'wechat' | 'alipay') => {
     if (oauthSubmitting) return;
     setOauthSubmitting(true);
     const result = await registerWithOAuth(provider, { nickname, city });
@@ -601,6 +611,12 @@ export function RegisterScreen() {
           label={t('screens.login.wechat')}
           disabled={oauthSubmitting}
           onPress={() => void handleOAuth('wechat')}
+        />
+        <OAuthButton
+          provider="alipay"
+          label={t('payments.alipay')}
+          disabled={oauthSubmitting}
+          onPress={() => void handleOAuth('alipay')}
         />
       </View>
 

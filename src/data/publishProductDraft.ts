@@ -16,6 +16,7 @@ export interface PublishProductDraft {
   meetInPublic: boolean;
   listingCityKey: string;
   imageUrls: string[];
+  videoUrls?: string[];
 }
 
 export async function loadPublishProductDraft(): Promise<PublishProductDraft | null> {

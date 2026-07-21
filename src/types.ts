@@ -100,6 +100,8 @@ export interface Product {
   imageUrl: string;
   /** All listing photos for detail gallery (first item matches imageUrl when set). */
   imageUrls?: string[];
+  /** Server-processed listing videos, ordered by the seller. */
+  videoUrls?: string[];
   /** When set, detail copy comes from these i18n keys instead of products.items.{id}.* */
   titleKey?: string;
   descKey?: string;
@@ -209,6 +211,7 @@ export interface UiListing {
   title: string;
   imageUrl: string;
   imageUrls?: string[];
+  videoUrls?: string[];
   listingType?: 'product' | 'service' | 'bundle' | 'job' | 'rental';
   price: number;
   status: 'active' | 'draft' | 'inactive' | 'sold';
@@ -257,6 +260,7 @@ export interface UiOrder {
   paymentMethodId?: string;
   escrowFee?: number;
   bundleItemId?: string;
+  privateOfferId?: string;
   couponId?: string;
   discountAmount?: number;
   displayAmountCny?: number;

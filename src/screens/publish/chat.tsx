@@ -16,6 +16,7 @@ import {
   acceptPrivateOffer,
   cancelPrivateOffer,
   createPrivateOffer,
+  getPrivateOffer,
   listConversations,
   openConversation,
   rejectPrivateOffer,
@@ -31,6 +32,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useCatalogStore } from '../../store/catalogStore';
 import { useChatStore } from '../../store/chatStore';
 import { useFavoritesStore } from '../../store/favoritesStore';
+import { nav } from '../../store/navigation';
 import { styles } from './shared';
 
 export function ChatScreen({ conversationId }: { conversationId: string }) {
@@ -212,6 +214,7 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const [input, setInput] = useState('');
   const [offerModalOpen, setOfferModalOpen] = useState(false);
   const [offerPrice, setOfferPrice] = useState('');
+  const [offerShippingFee, setOfferShippingFee] = useState('0');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [safetyMenuOpen, setSafetyMenuOpen] = useState(false);
   const [reportUserOpen, setReportUserOpen] = useState(false);
@@ -219,9 +222,29 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
   const [reportEvidence, setReportEvidence] = useState<PickedMedia[]>([]);
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const chatScrollRef = useRef<ScrollView>(null);
+  const viewedOfferIdsRef = useRef(new Set<string>());
   const title = chatTitle || localizedListing.seller || t('common.messages');
   const counterpartKey = chatCounterpartKey || localizedListing.sellerKey;
   const counterpartAvatarUrl = chatCounterpartAvatarUrl;
+
+  React.useEffect(() => {
+    const unseenOfferIds = messages
+      .filter(
+        (message) =>
+          message.side === 'left' &&
+          message.kind === 'privateOffer' &&
+          message.privateOffer?.status === 'PENDING' &&
+          !viewedOfferIdsRef.current.has(message.privateOffer.id),
+      )
+      .map((message) => message.privateOffer!.id);
+    if (!unseenOfferIds.length) return;
+    unseenOfferIds.forEach((offerId) => viewedOfferIdsRef.current.add(offerId));
+    void Promise.all(unseenOfferIds.map((offerId) => getPrivateOffer(offerId)))
+      .then(() => reload())
+      .catch(() => {
+        unseenOfferIds.forEach((offerId) => viewedOfferIdsRef.current.delete(offerId));
+      });
+  }, [messages, reload]);
 
   const closeSafetyMenu = useCallback(() => setSafetyMenuOpen(false), []);
 
@@ -323,15 +346,24 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
 
   const submitPrivateOffer = useCallback(async () => {
     const price = Number(offerPrice);
-    if (!Number.isFinite(price) || price <= 0 || offerSubmitting) return;
+    const shippingFee = Number(offerShippingFee);
+    if (
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(shippingFee) ||
+      shippingFee < 0 ||
+      offerSubmitting
+    ) return;
     setOfferSubmitting(true);
     try {
       await createPrivateOffer(conversationId, {
         negotiatedPrice: price,
+        shippingFee,
         expiresInMinutes: 24 * 60,
       });
       setOfferModalOpen(false);
       setOfferPrice('');
+      setOfferShippingFee('0');
       await reload();
       toast(t('screens.chat.offerSent'));
     } catch {
@@ -339,18 +371,24 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
     } finally {
       setOfferSubmitting(false);
     }
-  }, [conversationId, offerPrice, offerSubmitting, reload, t, toast]);
+  }, [conversationId, offerPrice, offerShippingFee, offerSubmitting, reload, t, toast]);
 
   const actOnOffer = useCallback(
     async (offerId: string, action: 'accept' | 'reject' | 'cancel') => {
       if (offerSubmitting) return;
       setOfferSubmitting(true);
       try {
-        if (action === 'accept') await acceptPrivateOffer(offerId);
+        if (action === 'accept') {
+          await acceptPrivateOffer(offerId);
+          await reload();
+          toast(t('screens.chat.offerAccepted'));
+          nav('orders');
+          return;
+        }
         else if (action === 'reject') await rejectPrivateOffer(offerId);
         else await cancelPrivateOffer(offerId);
         await reload();
-        toast(t(action === 'accept' ? 'screens.chat.offerAccepted' : 'screens.chat.offerUpdated'));
+        toast(t('screens.chat.offerUpdated'));
       } catch {
         toast(t('screens.chat.offerFailed'));
       } finally {
@@ -463,12 +501,53 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
                     </Text>
                   </View>
                   <Text style={styles.privateOfferAmount}>
-                    {t('common.currencyPrefix')}{msg.privateOffer.totalAmount.toFixed(2)}
+                    {msg.privateOffer.currency} {msg.privateOffer.totalAmount.toFixed(2)}
                   </Text>
+                  <View style={styles.privateOfferDetails}>
+                    <Text style={styles.privateOfferProduct} numberOfLines={2}>
+                      {localizedListing.title}
+                    </Text>
+                    <View style={styles.privateOfferDetailRow}>
+                      <Text style={styles.privateOfferDetailLabel}>
+                        {t('screens.chat.originalPrice')}
+                      </Text>
+                      <Text style={styles.privateOfferDetailValue}>
+                        {msg.privateOffer.currency} {msg.privateOffer.originalPrice.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.privateOfferDetailRow}>
+                      <Text style={styles.privateOfferDetailLabel}>
+                        {t('screens.chat.negotiatedPrice')}
+                      </Text>
+                      <Text style={styles.privateOfferDetailValue}>
+                        {msg.privateOffer.currency} {msg.privateOffer.negotiatedPrice.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View style={styles.privateOfferDetailRow}>
+                      <Text style={styles.privateOfferDetailLabel}>
+                        {t('screens.chat.shippingFee')}
+                      </Text>
+                      <Text style={styles.privateOfferDetailValue}>
+                        {msg.privateOffer.shippingFee > 0
+                          ? `${msg.privateOffer.currency} ${msg.privateOffer.shippingFee.toFixed(2)}`
+                          : t('screens.chat.freeShipping')}
+                      </Text>
+                    </View>
+                    <View style={styles.privateOfferDetailRow}>
+                      <Text style={styles.privateOfferDetailLabel}>
+                        {t('screens.chat.offerExpires')}
+                      </Text>
+                      <Text style={styles.privateOfferDetailValue}>
+                        {new Date(msg.privateOffer.expirationTime).toLocaleString(i18n.language)}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.privateOfferStatus}>
                     {t(`screens.chat.offerStatus.${msg.privateOffer.status}`)}
                   </Text>
-                  {msg.privateOffer.status === 'PENDING' ? (
+                  {(['PENDING', 'VIEWED'] as const).includes(
+                    msg.privateOffer.status as 'PENDING' | 'VIEWED',
+                  ) ? (
                     <View style={styles.privateOfferActions}>
                       {msg.side === 'left' ? (
                         <>
@@ -587,6 +666,14 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
             placeholder={t('screens.chat.pricePlaceholder')}
             editable={!offerSubmitting}
           />
+          <TextInput
+            style={styles.privateOfferInput}
+            value={offerShippingFee}
+            onChangeText={setOfferShippingFee}
+            keyboardType="decimal-pad"
+            placeholder={t('screens.chat.shippingFeePlaceholder')}
+            editable={!offerSubmitting}
+          />
           <View style={styles.privateOfferActions}>
             <PillButton
               label={t('common.cancel')}
@@ -599,7 +686,13 @@ export function ChatScreen({ conversationId }: { conversationId: string }) {
               label={offerSubmitting ? t('common.loading') : t('screens.chat.sendPrivateOffer')}
               variant="brand"
               full
-              disabled={!Number.isFinite(Number(offerPrice)) || Number(offerPrice) <= 0 || offerSubmitting}
+              disabled={
+                !Number.isFinite(Number(offerPrice)) ||
+                Number(offerPrice) <= 0 ||
+                !Number.isFinite(Number(offerShippingFee)) ||
+                Number(offerShippingFee) < 0 ||
+                offerSubmitting
+              }
               onPress={() => void submitPrivateOffer()}
             />
           </View>

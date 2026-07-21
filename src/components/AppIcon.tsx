@@ -5,6 +5,7 @@ import { colors } from '../theme';
 export type AppIconName =
   | 'search'
   | 'camera'
+  | 'video'
   | 'messages'
   | 'settings'
   | 'more'
@@ -97,6 +98,7 @@ type IconDef =
 const ICONS: Record<AppIconName, IconDef> = {
   search: { set: 'ion', name: 'search-outline' },
   camera: { set: 'ion', name: 'camera-outline' },
+  video: { set: 'ion', name: 'videocam-outline' },
   messages: { set: 'ion', name: 'chatbubble-ellipses-outline' },
   settings: { set: 'ion', name: 'settings-outline' },
   more: { set: 'ion', name: 'ellipsis-horizontal' },

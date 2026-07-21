@@ -12,6 +12,7 @@ export function useListingPhotos(
   const { t } = useTranslation();
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const addPhotosFromLibrary = useCallback(async () => {
     if (uploading) return;
@@ -28,6 +29,7 @@ export function useListingPhotos(
     }
 
     setUploading(true);
+    setUploadProgress(0);
     try {
       const picked = await pickImagesFromLibrary({
         max: replaceSingle ? 1 : remaining,
@@ -36,14 +38,21 @@ export function useListingPhotos(
       if (!picked.length) return;
 
       const uploaded: string[] = [];
-      for (const asset of picked) {
+      for (let index = 0; index < picked.length; index += 1) {
+        const asset = picked[index];
         const url = await uploadListingImage(
           asset.uri,
           isLoggedIn,
           asset.mimeType,
           asset.fileName,
+          (assetProgress) => {
+            setUploadProgress(
+              Math.min(1, (index + Math.max(0, assetProgress)) / picked.length),
+            );
+          },
         );
         uploaded.push(url);
+        setUploadProgress((index + 1) / picked.length);
       }
       setImageUrls((prev) => (replaceSingle ? uploaded : [...prev, ...uploaded]));
       onToast(t('toast.photoAdded'));
@@ -55,6 +64,10 @@ export function useListingPhotos(
       } else if (error instanceof ApiError) {
         if (error.status === 401) {
           onToast(t('toast.loginRequired'));
+        } else if (error.code === 'MEDIA_REJECTED') {
+          onToast(t('toast.mediaRejected', { reason: error.message }));
+        } else if (error.code === 'MEDIA_MODERATION_PENDING') {
+          onToast(t('toast.mediaModerationPending'));
         } else if (error.code === 'VALIDATION_ERROR' || error.status === 400) {
           onToast(t('toast.uploadFailed'));
         } else {
@@ -67,6 +80,7 @@ export function useListingPhotos(
       }
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   }, [imageUrls.length, isLoggedIn, maxPhotos, onToast, t, uploading]);
 
@@ -74,6 +88,7 @@ export function useListingPhotos(
     imageUrls,
     setImageUrls,
     uploading,
+    uploadProgress,
     addPhotosFromLibrary,
     maxPhotos,
   };

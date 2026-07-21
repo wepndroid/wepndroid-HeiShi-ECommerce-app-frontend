@@ -14,6 +14,7 @@ type Props = {
   imageUrls: string[];
   onAdd: () => void;
   uploading?: boolean;
+  uploadProgress?: number;
   onRemove?: (url: string) => void;
   maxPhotos?: number;
   horizontalInset?: number;
@@ -26,6 +27,7 @@ export function PublishPhotoUploadSection({
   imageUrls,
   onAdd,
   uploading,
+  uploadProgress,
   onRemove,
   maxPhotos = MAX_LISTING_PHOTOS,
   horizontalInset,
@@ -47,7 +49,14 @@ export function PublishPhotoUploadSection({
           accessibilityLabel={t('screens.publish.tapToUpload')}
         >
           {uploading ? (
-            <ActivityIndicator color={colors.brand2} size="large" />
+            <>
+              <ActivityIndicator color={colors.brand2} size="large" />
+              {typeof uploadProgress === 'number' && uploadProgress > 0 ? (
+                <Text style={styles.progressText}>
+                  {Math.round(uploadProgress * 100)}%
+                </Text>
+              ) : null}
+            </>
           ) : (
             <>
               <View style={styles.tapIconCircle}>
@@ -64,6 +73,7 @@ export function PublishPhotoUploadSection({
           onAdd={onAdd}
           onRemove={onRemove}
           uploading={uploading}
+          uploadProgress={uploadProgress}
           maxPhotos={maxPhotos}
           horizontalInset={horizontalInset}
         />
@@ -141,5 +151,10 @@ const styles = StyleSheet.create({
     color: '#987b45',
     fontSize: 12,
     lineHeight: 17,
+  },
+  progressText: {
+    color: colors.sub,
+    fontSize: 13,
+    fontWeight: fonts.weights.bold,
   },
 });

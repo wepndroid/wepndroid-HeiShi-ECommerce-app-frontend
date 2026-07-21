@@ -18,6 +18,7 @@ type Props = {
   onAdd: () => void;
   onRemove?: (url: string) => void;
   uploading?: boolean;
+  uploadProgress?: number;
   maxPhotos?: number;
   columns?: number;
   horizontalInset?: number;
@@ -29,6 +30,7 @@ export function PhotoUploadGrid({
   onAdd,
   onRemove,
   uploading,
+  uploadProgress,
   maxPhotos = MAX_LISTING_PHOTOS,
   columns = PHOTO_GRID_COLUMNS,
   horizontalInset = UPLOAD_MAIN_PHOTO_INSET,
@@ -69,7 +71,14 @@ export function PhotoUploadGrid({
       {canAdd ? (
         <Pressable style={[styles.addBtn, slotStyle]} onPress={onAdd} disabled={uploading}>
           {uploading ? (
-            <ActivityIndicator color={colors.text} />
+            <>
+              <ActivityIndicator color={colors.text} />
+              {typeof uploadProgress === 'number' && uploadProgress > 0 ? (
+                <Text style={styles.progressLabel}>
+                  {Math.round(uploadProgress * 100)}%
+                </Text>
+              ) : null}
+            </>
           ) : (
             <>
               <AppIcon name="camera" size={compact ? 16 : 18} color={colors.sub} />
@@ -132,5 +141,10 @@ const styles = StyleSheet.create({
   },
   addLabelCompact: {
     fontSize: 8,
+  },
+  progressLabel: {
+    color: colors.sub,
+    fontSize: 10,
+    fontWeight: fonts.weights.bold,
   },
 });

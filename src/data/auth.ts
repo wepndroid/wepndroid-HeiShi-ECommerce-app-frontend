@@ -22,7 +22,7 @@ const DEMO_ACCOUNT: StoredAccount = {
   id: '00000000-0000-4000-8000-000000000001',
   heishiId: 'HS12345678',
   nickname: 'Holden',
-  phone: '0400000000',
+  phone: '+61400000000',
   password: 'demo123',
 };
 
@@ -104,19 +104,18 @@ export async function saveSession(user: AuthUser | null) {
 }
 
 export function normalizePhone(phone: string) {
-  const cleaned = phone.replace(/\s+/g, '');
-  if (cleaned.startsWith('+86')) return cleaned;
-  if (cleaned.startsWith('86') && cleaned.length >= 13) return `+${cleaned}`;
+  const cleaned = phone.trim().replace(/[\s().-]+/g, '');
+  if (/^\+[1-9]\d{7,14}$/.test(cleaned)) return cleaned;
+  if (/^861[3-9]\d{9}$/.test(cleaned)) return `+${cleaned}`;
   if (/^1[3-9]\d{9}$/.test(cleaned)) return `+86${cleaned}`;
-  if (cleaned.startsWith('+61')) return `0${cleaned.slice(3)}`;
-  if (cleaned.startsWith('61') && cleaned.length >= 11) return `0${cleaned.slice(2)}`;
+  if (/^61\d{9}$/.test(cleaned)) return `+${cleaned}`;
+  if (/^0\d{9}$/.test(cleaned)) return `+61${cleaned.slice(1)}`;
   return cleaned;
 }
 
 export function isValidPhone(phone: string) {
   const normalized = normalizePhone(phone.trim());
-  if (normalized.startsWith('+86')) return /^\+861[3-9]\d{9}$/.test(normalized);
-  return /^(\+?61|0)\d{8,10}$/.test(normalized);
+  return /^\+[1-9]\d{7,14}$/.test(normalized);
 }
 
 export function validateRegisterPhoneStep(input: {
@@ -167,7 +166,9 @@ export function validateRegisterInput(input: {
 }
 
 export function validateLoginInput(phone: string, password: string): AuthErrorKey | null {
-  if (!normalizePhone(phone.trim())) return 'phoneRequired';
+  const normalized = normalizePhone(phone.trim());
+  if (!normalized) return 'phoneRequired';
+  if (!isValidPhone(normalized)) return 'phoneInvalid';
   if (!password) return 'passwordRequired';
   return null;
 }
@@ -192,7 +193,9 @@ export async function registerAccount(input: {
   if (code !== '123456') return { error: 'codeInvalid' };
 
   const accounts = await readAccounts();
-  if (accounts.some((a) => a.phone === phone)) return { error: 'phoneTaken' };
+  if (accounts.some((a) => a.phone && normalizePhone(a.phone) === phone)) {
+    return { error: 'phoneTaken' };
+  }
 
   const user: StoredAccount = {
     id: `local-${Date.now()}`,
@@ -222,7 +225,9 @@ export async function loginAccount(
   const normalizedPhone = normalizePhone(phone.trim());
 
   const accounts = await readAccounts();
-  const match = accounts.find((a) => a.phone === normalizedPhone && a.password === password);
+  const match = accounts.find(
+    (a) => a.phone && normalizePhone(a.phone) === normalizedPhone && a.password === password,
+  );
   if (!match) return { error: 'invalidCredentials' };
 
   const user: AuthUser = {

@@ -15,6 +15,8 @@ import { listingRegionFields, normalizeProfileCity } from '../../data/region';
 import { PublishPhotoUploadSection } from '../../components/PublishPhotoUploadSection';
 import { BackButton, EmptyState, LoadingState, Notice, ScreenScroll, TitleBar } from '../../components/UI';
 import { useListingPhotos } from '../../hooks/useListingPhotos';
+import { useListingVideo } from '../../hooks/useListingVideo';
+import { ListingVideoUpload } from '../../components/ListingVideo';
 import { useFormOptions } from '../../hooks/useFormOptions';
 import { nav } from '../../store/navigation';
 import { toast } from '../../store/uiStore';
@@ -54,7 +56,20 @@ export function UploadProductScreen({
   const isEditMode = editListingId != null && Number.isFinite(editListingId);
   useAuthGuard();
   const { options, loading } = useFormOptions();
-  const { imageUrls, setImageUrls, uploading, addPhotosFromLibrary } = useListingPhotos(isLoggedIn, toast);
+  const {
+    imageUrls,
+    setImageUrls,
+    uploading,
+    uploadProgress,
+    addPhotosFromLibrary,
+  } = useListingPhotos(isLoggedIn, toast);
+  const {
+    videoUrls,
+    setVideoUrls,
+    uploadingVideo,
+    videoUploadProgress,
+    addVideoFromLibrary,
+  } = useListingVideo(isLoggedIn, toast);
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
   const [categoryKey, setCategoryKey] = useState('');
@@ -114,8 +129,9 @@ export function UploadProductScreen({
       setMeetInPublic(draft.meetInPublic);
       setListingCityKey(draft.listingCityKey);
       setImageUrls(normalizeMediaUrls(draft.imageUrls));
+      setVideoUrls(normalizeMediaUrls(draft.videoUrls));
     });
-  }, [isEditMode, setImageUrls]);
+  }, [isEditMode, setImageUrls, setVideoUrls]);
 
   const buildProductDraft = useCallback(
     (resumeAfterPicker: boolean): PublishProductDraft => ({
@@ -132,6 +148,7 @@ export function UploadProductScreen({
       meetInPublic,
       listingCityKey,
       imageUrls,
+      videoUrls,
     }),
     [
       categoryKey,
@@ -139,6 +156,7 @@ export function UploadProductScreen({
       description,
       escrowEnabled,
       imageUrls,
+      videoUrls,
       listingCityKey,
       meetInPublic,
       negotiableEnabled,
@@ -160,6 +178,15 @@ export function UploadProductScreen({
     await persistProductDraft(true);
     try {
       await addPhotosFromLibrary();
+    } finally {
+      await persistProductDraft(false);
+    }
+  };
+
+  const handleAddProductVideo = async () => {
+    await persistProductDraft(true);
+    try {
+      await addVideoFromLibrary();
     } finally {
       await persistProductDraft(false);
     }
@@ -189,6 +216,7 @@ export function UploadProductScreen({
         setMeetInPublic(product.meetInPublic !== false);
         setNegotiableEnabled(Boolean(product.negotiable));
         setImageUrls(listingEditImageUrls(product));
+        setVideoUrls(normalizeMediaUrls(product.videoUrls));
       })
       .finally(() => {
         if (!cancelled) setLoadingListing(false);
@@ -196,7 +224,15 @@ export function UploadProductScreen({
     return () => {
       cancelled = true;
     };
-  }, [authReady, editListingId, isEditMode, isLoggedIn, region.city, setImageUrls]);
+  }, [
+    authReady,
+    editListingId,
+    isEditMode,
+    isLoggedIn,
+    region.city,
+    setImageUrls,
+    setVideoUrls,
+  ]);
 
   const handleSubmit = async () => {
     if (submitting) return;
@@ -232,6 +268,7 @@ export function UploadProductScreen({
         locationLabel: listingCityKey,
         ...listingRegionFields(listingCityKey),
         imageUrls,
+        videoUrls,
         pickupMethods: pickupMethodKey ? [pickupMethodKey] : undefined,
         escrowSupported: escrowEnabled,
         negotiable: negotiableEnabled,
@@ -250,6 +287,7 @@ export function UploadProductScreen({
             tagKey: conditionKey,
             locationLabel: listingCityKey,
             imageUrls,
+            videoUrls,
             escrowSupported: escrowEnabled,
             negotiable: negotiableEnabled,
             meetInPublic,
@@ -300,6 +338,7 @@ export function UploadProductScreen({
           locationLabel: listingCityKey,
           ...listingRegionFields(listingCityKey),
           imageUrls: imageUrls.filter(Boolean),
+          videoUrls: videoUrls.filter(Boolean),
           pickupMethods: pickupMethodKey ? [pickupMethodKey] : ['meetup'],
           escrowSupported: escrowEnabled,
           negotiable: negotiableEnabled,
@@ -373,6 +412,14 @@ export function UploadProductScreen({
         imageUrls={imageUrls}
         onAdd={handleAddProductPhotos}
         uploading={uploading}
+        uploadProgress={uploadProgress}
+      />
+      <ListingVideoUpload
+        videoUrl={videoUrls[0]}
+        uploading={uploadingVideo}
+        uploadProgress={videoUploadProgress}
+        onAdd={handleAddProductVideo}
+        onRemove={() => setVideoUrls([])}
       />
       <FormCard roundedFields>
         <FormSection

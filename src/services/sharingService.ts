@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Share } from 'react-native';
-import { apiRequest } from '../api/client';
+import * as Clipboard from 'expo-clipboard';
+import { Linking, Share } from 'react-native';
+import { ApiError, apiRequest } from '../api/client';
+import { ensureAnonymousSession } from './anonymousSessionService';
 
 export interface ListingShare {
   shareId: string;
@@ -43,9 +45,17 @@ async function rememberShareAttribution(listingId: number, token: string): Promi
 }
 
 export function extractShareToken(text: string): string | null {
-  const explicit = text.match(SHARE_TOKEN_PATTERN)?.[1];
+  let normalized = text;
+  try {
+    normalized = decodeURIComponent(text.replace(/\+/g, ' '));
+  } catch {
+    // A normal share message is not necessarily URI encoded.
+  }
+  const explicit = normalized.match(SHARE_TOKEN_PATTERN)?.[1];
   if (explicit) return explicit;
-  const urlToken = text.match(/(?:\/shares\/|[?&]share=)([A-Za-z0-9_-]{20,})/i)?.[1];
+  const urlToken = normalized.match(
+    /(?:\/(?:shares|s)\/|[?&](?:share|share_token)=)([A-Za-z0-9_-]{20,})/i,
+  )?.[1];
   return urlToken ?? null;
 }
 
@@ -80,7 +90,10 @@ export async function recordShareEvent(
   eventType: ShareEventType,
   businessId?: string,
 ): Promise<void> {
-  const anonymousSessionId = await AsyncStorage.getItem('heymarket:anonymous-session-id');
+  let anonymousSessionId = await AsyncStorage.getItem('heymarket:anonymous-session-id');
+  if (!anonymousSessionId) {
+    anonymousSessionId = await ensureAnonymousSession();
+  }
   await apiRequest(`/shares/${encodeURIComponent(token)}/events`, {
     method: 'POST',
     body: {
@@ -124,8 +137,16 @@ export async function recordRegistrationAttribution(): Promise<void> {
     try {
       await recordShareEvent(token, 'registration');
       recordedTokens.add(token);
-    } catch {
-      // Leave failed events eligible for retry after the next successful login.
+    } catch (error) {
+      if (
+        error instanceof ApiError
+        && error.code === 'REGISTRATION_NOT_ATTRIBUTABLE'
+      ) {
+        // The recipient already had an account before the share. This is a
+        // conclusive non-conversion, so do not retry it on every future login.
+        recordedTokens.add(token);
+      }
+      // Transient failures remain eligible for retry after the next login.
     }
   }
 
@@ -135,11 +156,34 @@ export async function recordRegistrationAttribution(): Promise<void> {
   );
 }
 
-export async function shareListing(listingId: number, title: string): Promise<void> {
-  const link = await createListingShare(listingId);
+export type ExternalShareChannel = 'wechat' | 'system_share' | 'clipboard';
+
+export async function shareListing(
+  listingId: number,
+  title: string,
+  channel: ExternalShareChannel = 'system_share',
+): Promise<void> {
+  const wechatAvailable =
+    channel === 'wechat' && await Linking.canOpenURL('weixin://').catch(() => false);
+  const recordedChannel =
+    channel === 'wechat' && !wechatAvailable ? 'system_share' : channel;
+  const link = await createListingShare(listingId, recordedChannel);
+  const message = `${title}\n${link.deepLink}\n【HeyMarket】${link.token}`;
+  if (channel === 'clipboard') {
+    await Clipboard.setStringAsync(message);
+    return;
+  }
+  if (channel === 'wechat' && wechatAvailable) {
+    // The user explicitly selected WeChat. Copying the structured share text
+    // before opening WeChat preserves the secure token without pretending that
+    // a generic share-sheet destination is known.
+    await Clipboard.setStringAsync(message);
+    await Linking.openURL('weixin://');
+    return;
+  }
   await Share.share({
     title,
-    message: `${title}\n${link.deepLink}\n【HeyMarket】${link.token}`,
+    message,
     url: link.deepLink,
   });
 }

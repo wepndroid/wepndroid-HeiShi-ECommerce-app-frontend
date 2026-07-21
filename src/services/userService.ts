@@ -1,4 +1,4 @@
-import { paymentsApi, userApi } from '../api';
+import { authApi, paymentsApi, userApi } from '../api';
 import { ApiError } from '../api/client';
 import { mapListingToProduct } from '../api/mappers';
 import { API_USE_MOCK_FALLBACK } from '../api/config';
@@ -16,6 +16,7 @@ import type {
 import type { AuthUser } from '../data/auth';
 import { isPersistedAvatarUrl } from '../utils/sellerAvatar';
 import { uploadAvatarImage } from './listingsService';
+import { requestWeChatAuthCode } from './wechatNative';
 import { mockPublicListingProducts, mockPublicProfile } from '../data/publicProfiles';
 import {
   addLocalAddress,
@@ -316,10 +317,33 @@ export async function bindVerification(
 ): Promise<VerificationStatus> {
   if (isLoggedIn) {
     try {
+      if (type === 'wechat') {
+        const authorization = await requestWeChatAuthCode();
+        if (!('code' in authorization)) {
+          throw new Error(`wechat_oauth_${authorization.error}`);
+        }
+        await authApi.bindWechat(authorization.code);
+        return await userApi.getVerificationStatus();
+      }
+      if (type === 'alipay') {
+        const { requestAlipayAuthCode } = await import('./alipayOAuth');
+        const authorization = await requestAlipayAuthCode();
+        if (!('authCode' in authorization)) {
+          throw new Error(`alipay_oauth_${authorization.error}`);
+        }
+        await authApi.bindAlipay(
+          authorization.authCode,
+          authorization.oauthState,
+        );
+        return await userApi.getVerificationStatus();
+      }
       return await userApi.bindVerification(type);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'USE_SUBMIT_ENDPOINT') {
         throw new Error('verification_use_submit');
+      }
+      if (err instanceof ApiError && err.code === 'ACCOUNT_MERGE_REQUIRED') {
+        throw err;
       }
       if (!API_USE_MOCK_FALLBACK) throw new Error('verification_bind_failed');
     }

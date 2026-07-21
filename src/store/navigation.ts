@@ -9,7 +9,9 @@ import { toast } from './uiStore';
 import {
   consumePendingAction,
   createPendingAction,
+  type PendingActionContext,
 } from '../services/pendingActionService';
+import { setFavorite } from '../services/userDataService';
 
 // Imperative navigation helpers. expo-router's `router` works outside React, so
 // these live as plain functions callable from stores, services, or components.
@@ -52,10 +54,11 @@ export function requireAuthNav(id: ScreenId): void {
 export function resumePendingAuthAction(fallback: ScreenId = 'profile'): void {
   const pendingPath = useAuthStore.getState().consumePendingAuthPath();
   void consumePendingAction()
-    .then((serverPath) => {
-      const destination = serverPath ?? pendingPath;
+    .then((pendingAction) => {
+      const destination = pendingAction?.returnPath ?? pendingPath;
       if (destination) {
         router.replace(destination as Href);
+        if (pendingAction) void replayPendingAction(pendingAction);
         return;
       }
       nav(fallback);
@@ -67,6 +70,23 @@ export function resumePendingAuthAction(fallback: ScreenId = 'profile'): void {
       }
       nav(fallback);
     });
+}
+
+async function replayPendingAction(action: PendingActionContext): Promise<void> {
+  // Replaying a favorite is safe and idempotent because the desired final state
+  // is explicit. Messaging/following need additional target or draft context,
+  // so those actions return to their originating screen without guessing.
+  if (action.actionType !== 'favorite_listing') return;
+  const listingId = Number(action.returnPath.match(/^\/detail\/(\d+)(?:[/?#]|$)/)?.[1]);
+  if (!Number.isInteger(listingId) || listingId <= 0) return;
+  try {
+    const favorites = await setFavorite(listingId, true, true);
+    const { useFavoritesStore } = await import('./favoritesStore');
+    useFavoritesStore.getState().setFavs(favorites);
+    toast(i18n.t('toast.favorited'));
+  } catch {
+    toast(i18n.t('toast.favoriteFailed'));
+  }
 }
 
 export function openOrderCheckout(bundleItemId?: string): void {
